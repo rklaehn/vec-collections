@@ -3,13 +3,21 @@ extern crate lazy_static;
 extern crate regex;
 
 use regex::Regex;
-use std::cmp::Ordering;
 use std::fmt;
 use std::io::{self, BufRead};
 use std::str;
 
-#[derive(Debug)]
-enum Interval<T> {
+#[cfg(test)]
+mod tests;
+
+#[cfg(test)]
+mod checks;
+
+#[cfg(test)]
+extern crate quickcheck;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Interval<T: Eq> {
     Empty,
     All,
     Point(T),
@@ -19,14 +27,14 @@ enum Interval<T> {
 }
 
 fn lower_bound(included: bool) -> &'static str {
-    if (included) {
+    if included {
         "["
     } else {
         "("
     }
 }
 fn upper_bound(included: bool) -> &'static str {
-    if (included) {
+    if included {
         "]"
     } else {
         ")"
@@ -36,7 +44,7 @@ fn upper_bound(included: bool) -> &'static str {
 // let emptyRe = Regex::new(r"^ *\\( *Ø *\\) *$").unwrap();
 // let whitespace = Regex::new(r"\w+").unwrap();
 
-impl<T> fmt::Display for Interval<T>
+impl<T: Eq> fmt::Display for Interval<T>
 where
     T: fmt::Display,
 {
@@ -63,7 +71,7 @@ where
     }
 }
 
-impl<T> Interval<T> {
+impl<T: Eq> Interval<T> {
     pub fn at(value: T) -> Interval<T> {
         Interval::Point(value)
     }
@@ -71,7 +79,7 @@ impl<T> Interval<T> {
         Interval::Above(value, false)
     }
     pub fn at_or_above(value: T) -> Interval<T> {
-        Interval::Above(value, false)
+        Interval::Above(value, true)
     }
     pub fn below(value: T) -> Interval<T> {
         Interval::Below(value, false)
@@ -82,11 +90,15 @@ impl<T> Interval<T> {
 }
 
 impl<T: Ord> Interval<T> {
-
-    pub fn range(min: T, min_included: bool, max: T, max_included: bool) -> Result<Interval<T>, String> {
-        if(min < max) {
+    pub fn range(
+        min: T,
+        min_included: bool,
+        max: T,
+        max_included: bool,
+    ) -> Result<Interval<T>, String> {
+        if min < max {
             Ok(Interval::Bounded(min, min_included, max, max_included))
-        } else if(min == max && min_included && max_included) {
+        } else if min == max && min_included && max_included {
             Ok(Interval::Point(min))
         } else {
             Err(String::from("Error"))
@@ -111,10 +123,10 @@ where
 
         fn to_value<T: str::FromStr>(text: &str) -> Result<T, String> {
             text.parse::<T>()
-                .map_err(|err| String::from("Parse error!"))
+                .map_err(|_err| String::from("Parse error!"))
         }
 
-        if (nullRe.is_match(s)) {
+        if nullRe.is_match(s) {
             Ok(Interval::Empty)
         } else {
             match singleRe.captures(s) {
@@ -132,7 +144,8 @@ where
                             ("(", min, "∞", ")") => to_value(min).map(Interval::above),
                             ("[", min, "∞", ")") => to_value(min).map(Interval::at_or_above),
                             ("(", min, max, ")") => to_value(min).and_then(|min| {
-                                to_value(max).and_then(|max| Interval::range(min, false, max, false))
+                                to_value(max)
+                                    .and_then(|max| Interval::range(min, false, max, false))
                             }),
                             ("(", min, max, "]") => to_value(min).and_then(|min| {
                                 to_value(max).and_then(|max| Interval::range(min, false, max, true))
