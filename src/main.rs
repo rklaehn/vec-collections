@@ -3,9 +3,10 @@ extern crate lazy_static;
 extern crate regex;
 
 use regex::Regex;
-use std::fmt;
-use std::str;
 use std::cmp::Ordering;
+use std::fmt;
+use std::io::{self, BufRead};
+use std::str;
 
 #[derive(Debug)]
 enum Interval<T> {
@@ -78,8 +79,8 @@ impl<T> Interval<T> {
     pub fn at_or_below(value: T) -> Interval<T> {
         Interval::Below(value, true)
     }
-    pub fn range(min: T, min_included:bool, max:T, max_included: bool) -> Interval<T> {
-        Interval::Bounded(min,min_included,max,max_included)
+    pub fn range(min: T, min_included: bool, max: T, max_included: bool) -> Interval<T> {
+        Interval::Bounded(min, min_included, max, max_included)
     }
 }
 
@@ -98,17 +99,16 @@ where
                 Regex::new(r"^ *(\[|\() *(.+?) *, *(.+?) *(\]|\)) *$").unwrap();
         }
 
+        fn to_value<T: str::FromStr>(text: &str) -> Result<T, String> {
+            text.parse::<T>()
+                .map_err(|err| String::from("Parse error!"))
+        }
+
         if (nullRe.is_match(s)) {
             Ok(Interval::Empty)
         } else {
-            fn to_value<T: str::FromStr>(text: &str) -> Result<T, String> {
-                text.parse::<T>()
-                    .map_err(|err| String::from("Parse error!"))
-            }
             match singleRe.captures(s) {
-                Some(captures) => {
-                    to_value(captures.get(1).unwrap().as_str()).map(Interval::Point)
-                }
+                Some(captures) => to_value(captures.get(1).unwrap().as_str()).map(Interval::Point),
                 None => match pairRe.captures(s) {
                     Some(captures) => {
                         let left = captures.get(1).unwrap().as_str();
@@ -121,10 +121,18 @@ where
                             ("(", "-∞", max, "]") => to_value(max).map(Interval::at_or_below),
                             ("(", min, "∞", ")") => to_value(min).map(Interval::above),
                             ("[", min, "∞", ")") => to_value(min).map(Interval::at_or_above),
-                            ("(", min, max, ")") => to_value(min).and_then(|min| to_value(max).map(|max| Interval::range(min, false, max, false))),
-                            ("(", min, max, "]") => to_value(min).and_then(|min| to_value(max).map(|max| Interval::range(min, false, max, true))),
-                            ("[", min, max, ")") => to_value(min).and_then(|min| to_value(max).map(|max| Interval::range(min, true, max, false))),
-                            ("[", min, max, "]") => to_value(min).and_then(|min| to_value(max).map(|max| Interval::range(min, true, max, true))),
+                            ("(", min, max, ")") => to_value(min).and_then(|min| {
+                                to_value(max).map(|max| Interval::range(min, false, max, false))
+                            }),
+                            ("(", min, max, "]") => to_value(min).and_then(|min| {
+                                to_value(max).map(|max| Interval::range(min, false, max, true))
+                            }),
+                            ("[", min, max, ")") => to_value(min).and_then(|min| {
+                                to_value(max).map(|max| Interval::range(min, true, max, false))
+                            }),
+                            ("[", min, max, "]") => to_value(min).and_then(|min| {
+                                to_value(max).map(|max| Interval::range(min, true, max, true))
+                            }),
                             _ => Err(String::from("Parse error!")),
                         }
                     }
@@ -141,4 +149,12 @@ fn main() {
     let x = " ( Ø ) ".parse::<Interval<i32>>().unwrap();
     let y = "[0,1)".parse::<Interval<i32>>().unwrap();
     println!("Hello, world! {} {} {} {}", i1, i2, x, y);
+    for line in io::stdin().lock().lines() {
+        let text = line.unwrap();
+        let res = text
+            .parse::<Interval<i32>>()
+            .map(|x| format!("{}", x))
+            .unwrap_or(String::from("Error"));
+        println!("{}", res);
+    }
 }
