@@ -79,8 +79,18 @@ impl<T> Interval<T> {
     pub fn at_or_below(value: T) -> Interval<T> {
         Interval::Below(value, true)
     }
-    pub fn range(min: T, min_included: bool, max: T, max_included: bool) -> Interval<T> {
-        Interval::Bounded(min, min_included, max, max_included)
+}
+
+impl<T: Ord> Interval<T> {
+
+    pub fn range(min: T, min_included: bool, max: T, max_included: bool) -> Result<Interval<T>, String> {
+        if(min < max) {
+            Ok(Interval::Bounded(min, min_included, max, max_included))
+        } else if(min == max && min_included && max_included) {
+            Ok(Interval::Point(min))
+        } else {
+            Err(String::from("Error"))
+        }
     }
 }
 
@@ -122,16 +132,16 @@ where
                             ("(", min, "∞", ")") => to_value(min).map(Interval::above),
                             ("[", min, "∞", ")") => to_value(min).map(Interval::at_or_above),
                             ("(", min, max, ")") => to_value(min).and_then(|min| {
-                                to_value(max).map(|max| Interval::range(min, false, max, false))
+                                to_value(max).and_then(|max| Interval::range(min, false, max, false))
                             }),
                             ("(", min, max, "]") => to_value(min).and_then(|min| {
-                                to_value(max).map(|max| Interval::range(min, false, max, true))
+                                to_value(max).and_then(|max| Interval::range(min, false, max, true))
                             }),
                             ("[", min, max, ")") => to_value(min).and_then(|min| {
-                                to_value(max).map(|max| Interval::range(min, true, max, false))
+                                to_value(max).and_then(|max| Interval::range(min, true, max, false))
                             }),
                             ("[", min, max, "]") => to_value(min).and_then(|min| {
-                                to_value(max).map(|max| Interval::range(min, true, max, true))
+                                to_value(max).and_then(|max| Interval::range(min, true, max, true))
                             }),
                             _ => Err(String::from("Parse error!")),
                         }
