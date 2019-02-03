@@ -33,15 +33,7 @@ impl<T: Arbitrary + Eq + Ord + Copy> Arbitrary for Interval<T> {
 quickcheck! {
     fn roundtrip(a: Interval<i64>) -> bool {
         let text = format!("{}", a);
-        println!("{}", text);
-        let b = text.parse::<Interval<i64>>();
-        println!("{:?}", b);
-        a == b.unwrap()
-    }
-    fn range(a: i64, b: i64) -> bool {
-        let i1 = Interval::range(Ord::min(a, b), true, Ord::max(a, b), true).unwrap();
-        let text = format!("{}",i1);
-        let i2 = text.parse::<Interval<i64>>().unwrap();
-        i1 == i2
+        let b = text.parse::<Interval<i64>>().unwrap();
+        a == b
     }
 }
