@@ -67,12 +67,19 @@ pub struct IntervalSeq<T: Eq + Ord> {
     kinds: Vec<Kind>,
 }
 
-impl<T: Eq + Ord> IntervalSeq<T> {
+impl<T: Ord + Copy> IntervalSeq<T> {
     fn singleton(below_all: bool, value: T, kind: Kind) -> IntervalSeq<T> {
         IntervalSeq {
             below_all,
             values: vec![value],
             kinds: vec![kind],
+        }
+    }
+    fn from_to(from: T, fk: Kind, to: T, tk: Kind) -> IntervalSeq<T> {
+        IntervalSeq {
+            below_all: false,
+            values: vec![from, to],
+            kinds: vec![fk, tk],
         }
     }
     pub fn empty() -> IntervalSeq<T> {
@@ -107,6 +114,24 @@ impl<T: Eq + Ord> IntervalSeq<T> {
     pub fn above(value: T) -> IntervalSeq<T> {
         IntervalSeq::singleton(false, value, Kind::K01)
     }
+    pub fn from_interval(value: Interval<T>) -> IntervalSeq<T> {
+        match (value.lower_bound(), value.upper_bound()) {
+            (Bound::Closed(a), Bound::Closed(b)) if a == b => IntervalSeq::at(a),
+            (Bound::Unbound, Bound::Open(x)) => IntervalSeq::below(x),
+            (Bound::Unbound, Bound::Closed(x)) => IntervalSeq::at_or_below(x),
+            (Bound::Open(x), Bound::Unbound) => IntervalSeq::above(x),
+            (Bound::Closed(x), Bound::Unbound) => IntervalSeq::at_or_above(x),
+            (Bound::Closed(a), Bound::Closed(b)) => {
+                IntervalSeq::from_to(a, Kind::K11, b, Kind::K10)
+            }
+            (Bound::Closed(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K11, b, Kind::K00),
+            (Bound::Open(a), Bound::Closed(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K10),
+            (Bound::Open(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K00),
+            (Bound::Unbound, Bound::Unbound) => IntervalSeq::all(),
+            (Bound::Empty, Bound::Empty) => IntervalSeq::empty(),
+            _ => IntervalSeq::empty(),
+        }
+    }
 }
 
 struct IntervalIterator<'a, T: Ord> {
@@ -116,8 +141,59 @@ struct IntervalIterator<'a, T: Ord> {
     i: usize,
 }
 
-impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
+trait MergeOps<T: Ord> {
+    fn a(&self) -> IntervalSeq<T>;
+    fn b(&self) -> IntervalSeq<T>;
+    fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> ();
+    fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> ();
+    fn op(&mut self, a: bool, b: bool) -> ();
+    fn collision(&mut self, ai: usize, bi: usize) -> ();
+    fn merge0(&mut self, a0: usize, a1: usize, b0: usize, b1: usize) -> () {
+        if a0 == a1 {
+            self.from_b(self.a().below_index(a0), b0, b1)
+        } else if b0 == b1 {
+            self.from_a(a0, a1, self.b().below_index(b0))
+        } else {
+            let am: usize = (a0 + a1) / 2;
+            match self.b().values[b0..b1].binary_search(&self.a().values[am]) {
+                Result::Ok(bm) => {
+                    // same elements. bm is the index corresponding to am
+                    // merge everything below a(am) with everything below the found element
+                    self.merge0(a0, am, b0, bm);
+                    // add the elements a(am) and b(bm)
+                    self.collision(am, bm);
+                    // merge everything above a(am) with everything above the found element
+                    self.merge0(am + 1, a1, bm + 1, b1);
+                }
+                Result::Err(bi) => {
+                    // not found. bi is the insertion point
+                    // merge everything below a(am) with everything below the found insertion point
+                    self.merge0(a0, am, b0, bi);
+                    // add a(am)
+                    self.from_a(am, am + 1, self.b().below_index(bi));
+                    // everything above a(am) with everything above the found insertion point
+                    self.merge0(am + 1, a1, bi, b1);
+                }
+            }
+        }
+    }
+}
 
+struct AndMerger<T: Ord> {
+    a: IntervalSeq<T>,
+    b: IntervalSeq<T>,
+}
+
+impl<T: Ord + FromStr + Display + Copy> FromStr for IntervalSeq<T> {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let _intervals: Result<Vec<Interval<T>>, _> =
+            s.split(";").map(|x| x.parse::<Interval<T>>()).collect();
+        Ok(IntervalSeq::empty())
+    }
+}
+
+impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
     fn next_interval(self: &mut IntervalIterator<'a, T>) -> Option<Interval<T>> {
         if self.i < self.values.len() {
             let value = self.values[self.i];
@@ -167,7 +243,6 @@ impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
             }
         }
     }
-
 }
 
 impl<'a, T: Ord + Copy> std::iter::Iterator for IntervalIterator<'a, T> {
@@ -178,7 +253,7 @@ impl<'a, T: Ord + Copy> std::iter::Iterator for IntervalIterator<'a, T> {
         match IntervalIterator::next_interval(self) {
             Some(x) => Some(x),
             None if has_next => IntervalIterator::next(self),
-            _ => None
+            _ => None,
         }
     }
 }
