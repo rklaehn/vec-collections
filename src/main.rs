@@ -8,6 +8,8 @@ use std::fmt::Display;
 use std::io::{self, BufRead};
 use std::str::FromStr;
 
+mod interval_seq;
+
 #[cfg(test)]
 mod tests;
 
@@ -17,17 +19,21 @@ mod checks;
 #[cfg(test)]
 extern crate quickcheck;
 
-enum Bound<'a, T> {
+#[derive(Clone, Copy, Debug)]
+enum Bound<T> {
     Empty,
     Unbound,
-    Open(&'a T),
-    Closed(&'a T),
+    Open(T),
+    Closed(T),
 }
 
-impl<'a, T> Bound<'a, T> {
-
-    fn mk_bound(value: &'a T, included: bool) -> Bound<'a, T> {
-        if included { Bound::Closed(value) } else { Bound::Open(value) }
+impl<T> Bound<T> {
+    fn mk_bound(value: T, included: bool) -> Bound<T> {
+        if included {
+            Bound::Closed(value)
+        } else {
+            Bound::Open(value)
+        }
     }
 }
 
@@ -105,26 +111,41 @@ impl<T: Eq> Interval<T> {
 }
 
 impl<T: Ord> Interval<T> {
-
-    fn lower_bound<'a>(self: &'a Interval<T>) -> Bound<'a, T> {
-        match self {
-            Interval::All => Bound::Unbound,
-            Interval::Empty => Bound::Empty,
-            Interval::Point(x) => Bound::Closed(x),
-            Interval::Above(x, x_i) => Bound::mk_bound(x, *x_i),
-            Interval::Below(_, _) => Bound::Unbound,
-            Interval::Bounded(min, min_i, _, _) => Bound::mk_bound(min, *min_i),
+    fn from_bounds(lower: Bound<T>, upper: Bound<T>) -> Interval<T> {
+        match (lower, upper) {
+            (Bound::Empty, Bound::Empty) => Interval::Empty,
+            (Bound::Closed(x), Bound::Closed(y)) => Interval::range(x, true, y, true).unwrap(),
+            (Bound::Closed(x), Bound::Open(y)) => Interval::range(x, true, y, false).unwrap(),
+            (Bound::Open(x), Bound::Closed(y)) => Interval::range(x, false, y, true).unwrap(),
+            (Bound::Open(x), Bound::Open(y)) => Interval::range(x, false, y, false).unwrap(),
+            (Bound::Unbound, Bound::Open(y)) => Interval::below(y),
+            (Bound::Unbound, Bound::Closed(y)) => Interval::at_or_below(y),
+            (Bound::Open(x), Bound::Unbound) => Interval::above(x),
+            (Bound::Closed(x), Bound::Unbound) => Interval::at_or_above(x),
+            (Bound::Unbound, Bound::Unbound) => Interval::All,
+            _ => panic!("invalid empty bound"),
         }
     }
 
-    fn upper_bound<'a>(self: &'a Interval<T>) -> Bound<'a, T> {
+    fn lower_bound(self: Interval<T>) -> Bound<T> {
         match self {
             Interval::All => Bound::Unbound,
             Interval::Empty => Bound::Empty,
             Interval::Point(x) => Bound::Closed(x),
-            Interval::Below(x, x_i) => Bound::mk_bound(x, *x_i),
+            Interval::Above(x, x_i) => Bound::mk_bound(x, x_i),
+            Interval::Below(_, _) => Bound::Unbound,
+            Interval::Bounded(min, min_i, _, _) => Bound::mk_bound(min, min_i),
+        }
+    }
+
+    fn upper_bound(self: Interval<T>) -> Bound<T> {
+        match self {
+            Interval::All => Bound::Unbound,
+            Interval::Empty => Bound::Empty,
+            Interval::Point(x) => Bound::Closed(x),
+            Interval::Below(x, x_i) => Bound::mk_bound(x, x_i),
             Interval::Above(_, _) => Bound::Unbound,
-            Interval::Bounded(_, _, max, max_i) => Bound::mk_bound(max, *max_i)
+            Interval::Bounded(_, _, max, max_i) => Bound::mk_bound(max, max_i),
         }
     }
 
@@ -222,6 +243,9 @@ fn main() {
     let i2: Interval<i32> = Interval::at(0);
     let x = " ( Ø ) ".parse::<Interval<i32>>().unwrap();
     let y = "[0,1)".parse::<Interval<i32>>().unwrap();
+    let z: interval_seq::IntervalSeq<i64> = interval_seq::IntervalSeq::except(10);
+    println!("{:?}", z);
+    println!("{}", z);
     println!("Hello, world! {} {} {} {}", i1, i2, x, y);
     for line in io::stdin().lock().lines() {
         let text = line.unwrap();
