@@ -1,7 +1,10 @@
 use super::*;
-use core::ops::Neg;
 use std::fmt;
 use std::fmt::Display;
+use std::marker::PhantomData;
+use std::ops::BitAnd;
+use std::ops::BitOr;
+use std::ops::Not;
 use std::slice::*;
 
 impl<T: Ord + Eq> IntoIterator for IntervalSeq<T> {
@@ -27,24 +30,42 @@ trait IntervalSet<T: Eq> {
 #[repr(u8)]
 enum Kind {
     K00 = 0,
-    K10 = 1,
-    K01 = 2,
+    K01 = 1,
+    K10 = 2,
     K11 = 3,
 }
 
-impl Neg for Kind {
+impl BitAnd for Kind {
     type Output = Kind;
-    fn neg(self: Kind) -> Kind {
-        match self {
-            Kind::K00 => Kind::K11,
-            Kind::K10 => Kind::K01,
-            Kind::K01 => Kind::K10,
-            Kind::K11 => Kind::K00,
-        }
+    fn bitand(self: Kind, that: Kind) -> Kind {
+        Kind::from_u8((self as u8) & (that as u8))
+    }
+}
+
+impl BitOr for Kind {
+    type Output = Kind;
+    fn bitor(self: Kind, that: Kind) -> Kind {
+        Kind::from_u8((self as u8) | (that as u8))
+    }
+}
+
+impl Not for Kind {
+    type Output = Kind;
+    fn not(self: Kind) -> Kind {
+        Kind::from_u8(self as u8)
     }
 }
 
 impl Kind {
+    fn from_u8(value: u8) -> Kind {
+        match value & 3 {
+            0 => Kind::K00,
+            1 => Kind::K01,
+            2 => Kind::K10,
+            3 => Kind::K11,
+            _ => panic!(),
+        }
+    }
     fn value_at(self: &Kind) -> bool {
         match self {
             Kind::K10 | Kind::K11 => true,
@@ -61,7 +82,7 @@ impl Kind {
 }
 
 #[derive(Debug)]
-pub struct IntervalSeq<T: Eq + Ord> {
+pub struct IntervalSeq<T: Ord> {
     below_all: bool,
     values: Vec<T>,
     kinds: Vec<Kind>,
@@ -80,6 +101,13 @@ impl<T: Ord + Copy> IntervalSeq<T> {
             below_all: false,
             values: vec![from, to],
             kinds: vec![fk, tk],
+        }
+    }
+    pub fn from_bool(value: bool) -> IntervalSeq<T> {
+        if value {
+            IntervalSeq::all()
+        } else {
+            IntervalSeq::empty()
         }
     }
     pub fn empty() -> IntervalSeq<T> {
@@ -141,12 +169,82 @@ struct IntervalIterator<'a, T: Ord> {
     i: usize,
 }
 
-trait MergeOps<T: Ord> {
-    fn a(&self) -> IntervalSeq<T>;
-    fn b(&self) -> IntervalSeq<T>;
+/**
+ * Provide the abiltiy to read from an OpState
+ */
+trait Read<T: Ord> {
+    fn a(&self) -> &IntervalSeq<T>;
+    fn b(&self) -> &IntervalSeq<T>;
+}
+
+trait Builder<T: Ord> {
+    fn copy_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> ();
+    fn flip_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> ();
+    fn append(&mut self, value: T, kind: Kind) -> ();
+}
+
+impl<T: Ord + Clone> Builder<T> for IntervalSeq<T> {
+    fn copy_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
+        self.values.extend_from_slice(&src.values[i0..i1]);
+        self.kinds.extend_from_slice(&src.kinds[i0..i1]);
+    }
+    fn flip_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
+        self.values.extend_from_slice(&src.values[i0..i1]);
+        self.kinds.extend_from_slice(&src.kinds[i0..i1]);
+        for i in i0..i1 {
+            self.kinds[i] = !self.kinds[i]
+        }
+    }
+    fn append(&mut self, value: T, kind: Kind) -> () {
+        self.values.push(value);
+        self.kinds.push(kind);
+    }
+}
+
+/**
+ * State of an operation. Parametrized on the result type and the operation kind.
+ */
+struct OpState<T: Ord, R, K> {
+    a: IntervalSeq<T>,
+    b: IntervalSeq<T>,
+    r: R,
+    k: PhantomData<K>,
+}
+
+/**
+ * Read impl for OpState
+ */
+impl<T: Ord, R, K> Read<T> for OpState<T, R, K> {
+    fn a(&self) -> &IntervalSeq<T> {
+        &self.a
+    }
+    fn b(&self) -> &IntervalSeq<T> {
+        &self.b
+    }
+}
+
+impl<T: Ord + Clone, K> Builder<T> for OpState<T, IntervalSeq<T>, K> {
+    fn copy_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
+        self.r.copy_from(src, i0, i1)
+    }
+    fn flip_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
+        self.r.flip_from(src, i0, i1)
+    }
+    fn append(&mut self, value: T, kind: Kind) -> () {
+        let current = self.r.above_all();
+        // do not append redundant values
+        if (current && kind != Kind::K11) || (!current && kind != Kind::K00) {
+            self.r.append(value, kind)
+        }
+    }
+}
+
+/**
+ * Basic binary operation.
+ */
+trait BinaryOperation<T: Ord>: Read<T> {
     fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> ();
     fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> ();
-    fn op(&mut self, a: bool, b: bool) -> ();
     fn collision(&mut self, ai: usize, bi: usize) -> ();
     fn merge0(&mut self, a0: usize, a1: usize, b0: usize, b1: usize) -> () {
         if a0 == a1 {
@@ -179,9 +277,74 @@ trait MergeOps<T: Ord> {
     }
 }
 
-struct AndMerger<T: Ord> {
-    a: IntervalSeq<T>,
-    b: IntervalSeq<T>,
+struct AndOperation {}
+
+impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
+    fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> () {
+        if b {
+            self.r.copy_from(&self.a, a0, a1)
+        }
+    }
+    fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> () {
+        if a {
+            self.r.copy_from(&self.b, b0, b1)
+        }
+    }
+    fn collision(&mut self, ai: usize, bi: usize) -> () {
+        let value = self.a.values[ai];
+        let kind = self.a.kinds[ai] & self.b.kinds[bi];
+        self.r.append(value, kind)
+    }
+}
+
+impl<T: Ord + Copy> BitAnd for IntervalSeq<T> {
+    type Output = IntervalSeq<T>;
+    fn bitand(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
+        let r_below_all = IntervalSeq::from_bool(self.below_all & that.below_all);
+        let mut r: OpState<T, IntervalSeq<T>, AndOperation> = OpState {
+            a: self,
+            b: that,
+            r: r_below_all,
+            k: PhantomData {},
+        };
+        r.merge0(0, r.a.values.len(), 0, r.b.values.len());
+        r.r
+    }
+}
+
+struct OrOperation {}
+
+impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
+    fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> () {
+        if !b {
+            self.r.copy_from(&self.a, a0, a1)
+        }
+    }
+    fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> () {
+        if !a {
+            self.r.copy_from(&self.b, b0, b1)
+        }
+    }
+    fn collision(&mut self, ai: usize, bi: usize) -> () {
+        let value = self.a.values[ai];
+        let kind = self.a.kinds[ai] | self.b.kinds[bi];
+        self.r.append(value, kind)
+    }
+}
+
+impl<T: Ord + Copy> BitOr for IntervalSeq<T> {
+    type Output = IntervalSeq<T>;
+    fn bitor(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
+        let r_below_all = IntervalSeq::from_bool(self.below_all | that.below_all);
+        let mut r: OpState<T, IntervalSeq<T>, OrOperation> = OpState {
+            a: self,
+            b: that,
+            r: r_below_all,
+            k: PhantomData {},
+        };
+        r.merge0(0, r.a.values.len(), 0, r.b.values.len());
+        r.r
+    }
 }
 
 impl<T: Ord + FromStr + Display + Copy> FromStr for IntervalSeq<T> {

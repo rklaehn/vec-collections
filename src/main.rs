@@ -238,14 +238,19 @@ impl<T: Ord + FromStr + Display> FromStr for Interval<T> {
     }
 }
 
+use interval_seq::*;
+
 fn main() {
     let i1: Interval<i32> = Interval::Empty;
     let i2: Interval<i32> = Interval::at(0);
     let x = " ( Ø ) ".parse::<Interval<i32>>().unwrap();
     let y = "[0,1)".parse::<Interval<i32>>().unwrap();
-    let z: interval_seq::IntervalSeq<i64> = interval_seq::IntervalSeq::except(10);
+    let z: IntervalSeq<i64> = IntervalSeq::at_or_above(10) & IntervalSeq::at_or_below(11);
+    let w: IntervalSeq<i64> = IntervalSeq::from_interval(Interval::range(10, false, 20, false).unwrap());
     println!("{:?}", z);
     println!("{}", z);
+    println!("{:?}", w);
+    println!("{}", w);
     println!("Hello, world! {} {} {} {}", i1, i2, x, y);
     for line in io::stdin().lock().lines() {
         let text = line.unwrap();
