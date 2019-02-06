@@ -149,8 +149,12 @@ impl<T: Ord> Interval<T> {
         }
     }
 
-    pub fn intersects(self: &Interval<T>, that: Interval<T>) -> bool {
-        false
+    #[cfg(test)]
+    fn is_valid(self: Interval<T>) -> bool {
+        match self {
+            Interval::Bounded(min, _, max, _) => min < max,
+            _ => true,
+        }
     }
 
     pub fn contains(self: &Interval<T>, value: T) -> bool {
@@ -187,9 +191,9 @@ impl<T: Ord + FromStr + Display> FromStr for Interval<T> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref nullRe: Regex = Regex::new(r"^ *\( *Ø *\) *$").unwrap();
-            static ref singleRe: Regex = Regex::new(r"^ *\[ *([^,]+) *\] *$").unwrap();
-            static ref pairRe: Regex =
+            static ref NULL_RE: Regex = Regex::new(r"^ *\( *Ø *\) *$").unwrap();
+            static ref SINGLE_RE: Regex = Regex::new(r"^ *\[ *([^,]+) *\] *$").unwrap();
+            static ref PAIR_RE: Regex =
                 Regex::new(r"^ *(\[|\() *(.+?) *, *(.+?) *(\]|\)) *$").unwrap();
         }
 
@@ -198,12 +202,12 @@ impl<T: Ord + FromStr + Display> FromStr for Interval<T> {
                 .map_err(|_err| String::from("Parse error!"))
         }
 
-        if nullRe.is_match(s) {
+        if NULL_RE.is_match(s) {
             Ok(Interval::Empty)
         } else {
-            match singleRe.captures(s) {
+            match SINGLE_RE.captures(s) {
                 Some(captures) => to_value(captures.get(1).unwrap().as_str()).map(Interval::Point),
-                None => match pairRe.captures(s) {
+                None => match PAIR_RE.captures(s) {
                     Some(captures) => {
                         let left = captures.get(1).unwrap().as_str();
                         let x = captures.get(2).unwrap().as_str();
@@ -246,7 +250,8 @@ fn main() {
     let x = " ( Ø ) ".parse::<Interval<i32>>().unwrap();
     let y = "[0,1)".parse::<Interval<i32>>().unwrap();
     let z: IntervalSeq<i64> = IntervalSeq::at_or_above(10) & IntervalSeq::at_or_below(11);
-    let w: IntervalSeq<i64> = IntervalSeq::from_interval(Interval::range(10, false, 20, false).unwrap());
+    let w: IntervalSeq<i64> =
+        IntervalSeq::from_interval(&Interval::range(10, false, 20, false).unwrap());
     println!("{:?}", z);
     println!("{}", z);
     println!("{:?}", w);
