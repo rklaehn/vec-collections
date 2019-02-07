@@ -180,7 +180,7 @@ impl<T: Ord + Copy> IntervalSeq<T> {
     }
 }
 
-struct IntervalIterator<'a, T: Ord> {
+pub struct Intervals<'a, T: Ord> {
     values: &'a Vec<T>,
     kinds: &'a Vec<Kind>,
     lower: Option<Bound<T>>,
@@ -284,7 +284,7 @@ trait BinaryOperation<T: Ord>: Read<T> {
     }
 }
 
-struct AndOperation {}
+struct AndOperation;
 
 impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
     fn init(&mut self) -> () {
@@ -337,7 +337,7 @@ impl<T: Ord + Copy> BitAnd for IntervalSeq<T> {
     }
 }
 
-struct OrOperation {}
+struct OrOperation;
 
 impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
     fn init(&mut self) -> () {
@@ -375,7 +375,7 @@ impl<T: Ord + Copy> BitOr for IntervalSeq<T> {
     }
 }
 
-struct XorOperation {}
+struct XorOperation;
 
 impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperation> {
     fn init(&mut self) -> () {
@@ -417,7 +417,7 @@ impl<T: Ord + Copy> BitXor for IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + FromStr + Display + Copy> FromStr for IntervalSeq<T> {
+impl<T: Ord + FromStr + Copy> FromStr for IntervalSeq<T> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.trim().is_empty() {
@@ -435,8 +435,8 @@ impl<T: Ord + FromStr + Display + Copy> FromStr for IntervalSeq<T> {
     }
 }
 
-impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
-    fn next_interval(self: &mut IntervalIterator<'a, T>) -> Option<Interval<T>> {
+impl<'a, T: Ord + Copy> Intervals<'a, T> {
+    fn next_interval(self: &mut Intervals<'a, T>) -> Option<Interval<T>> {
         if self.i < self.values.len() {
             let value = self.values[self.i];
             let kind = self.kinds[self.i];
@@ -489,14 +489,14 @@ impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
     }
 }
 
-impl<'a, T: Ord + Copy> std::iter::Iterator for IntervalIterator<'a, T> {
+impl<'a, T: Ord + Copy> std::iter::Iterator for Intervals<'a, T> {
     type Item = Interval<T>;
 
-    fn next(self: &mut IntervalIterator<'a, T>) -> Option<Interval<T>> {
+    fn next(self: &mut Intervals<'a, T>) -> Option<Interval<T>> {
         let has_next = self.i < self.values.len() || self.lower.is_some();
-        match IntervalIterator::next_interval(self) {
+        match Intervals::next_interval(self) {
             Some(x) => Some(x),
-            None if has_next => IntervalIterator::next(self),
+            None if has_next => Intervals::next(self),
             _ => None,
         }
     }
@@ -533,8 +533,8 @@ impl<T: Ord> IntervalSeq<T> {
         }
     }
 
-    fn intervals(self: &IntervalSeq<T>) -> IntervalIterator<T> {
-        IntervalIterator {
+    pub fn intervals(self: &IntervalSeq<T>) -> Intervals<T> {
+        Intervals {
             i: 0,
             kinds: &self.kinds,
             values: &self.values,
@@ -546,8 +546,18 @@ impl<T: Ord> IntervalSeq<T> {
         }
     }
 
-    pub fn edges(self: IntervalSeq<T>) -> Vec<T> {
-        self.values
+    pub fn edges(self: &IntervalSeq<T>) -> Edges<T> {
+        Edges(self.values.iter())
+    }
+}
+
+pub struct Edges<'a, T>(std::slice::Iter<'a, T>);
+
+impl<'a, T: Ord> std::iter::Iterator for Edges<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<&'a T> {
+        let Edges(inner) = self;
+        inner.next()
     }
 }
 

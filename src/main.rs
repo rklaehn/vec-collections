@@ -50,10 +50,7 @@ pub enum Interval<T: Eq> {
 // let emptyRe = Regex::new(r"^ *\\( *Ø *\\) *$").unwrap();
 // let whitespace = Regex::new(r"\w+").unwrap();
 
-impl<T: Eq> fmt::Display for Interval<T>
-where
-    T: fmt::Display,
-{
+impl<T: Eq + Display> Display for Interval<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fn lower_bound(included: bool) -> &'static str {
             if included {
@@ -187,7 +184,7 @@ impl<T: Ord> Interval<T> {
     }
 }
 
-impl<T: Ord + FromStr + Display> FromStr for Interval<T> {
+impl<T: Ord + FromStr> FromStr for Interval<T> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
