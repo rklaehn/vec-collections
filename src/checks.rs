@@ -34,47 +34,65 @@ impl<T: Arbitrary + Ord + Copy> Arbitrary for Interval<T> {
 
 impl<T: Arbitrary + Ord + Copy + Debug + Display> Arbitrary for IntervalSeq<T> {
     fn arbitrary<G: Gen>(g: &mut G) -> IntervalSeq<T> {
-        let a: Interval<T> = gen(g);
-        let b: Interval<T> = gen(g);
-        let r = IntervalSeq::from_interval(&a) ^ IntervalSeq::from_interval(&b);
-        assert!(a.is_valid() && b.is_valid(), "Intervals are invalid");
-        if !r.is_valid() {
-            println!("BOOM {} {} {:?}", a, b, r);
-        }
-        r
-        // let intervals: Vec<Interval<T>> = gen(g);
-        // let result = intervals
-        //     .iter()
-        //     .map(IntervalSeq::from_interval)
-        //     .fold(IntervalSeq::empty(), |a,b| {
-        //         if !a.is_valid() {
-        //             println!("a {:?}", a)
-        //         }
-        //         assert!(a.is_valid(), "a is valid");
-        //         assert!(b.is_valid(), "b is valid");
-        //         a ^ b
-        //     }
-        //     );
-        // result
+        let intervals: Vec<Interval<T>> = gen(g);
+        intervals
+            .iter()
+            .map(IntervalSeq::from)
+            .fold(IntervalSeq::empty(), BitXor::bitxor)
     }
 }
 
+fn sample_test<F>(a: &IntervalSeq<i64>, b: &IntervalSeq<i64>, r: &IntervalSeq<i64>, op: F) -> bool
+where
+    F: Fn(bool, bool) -> bool,
+{
+    let mut support: Vec<i64> = Vec::new();
+    support.extend(a.clone().edges());
+    support.extend(b.clone().edges());
+    support.extend(r.clone().edges());
+    support.dedup();
+    support.iter().all(|x| {
+        (op(a.below(*x), b.below(*x)) == r.below(*x)
+            && op(a.at(*x), b.at(*x)) == r.at(*x)
+            && op(a.above(*x), b.above(*x)) == r.above(*x))
+    })
+}
+
 quickcheck! {
-    fn roundtrip(a: Interval<i64>) -> bool {
+    fn interval_tostring_roundtrip(a: Interval<i64>) -> bool {
         let text = format!("{}", a);
         let b = text.parse::<Interval<i64>>().unwrap();
         a == b
     }
 
-    fn roundtrip2(a: IntervalSeq<i64>) -> bool {
-        if !a.is_valid() {
-            println!("KAPUT {:?}", a);
-        }
-        println!("{:?}", a);
+    fn intervalseq_tostring_roundtrip(a: IntervalSeq<i64>) -> bool {
         let text = format!("{}", a);
-        println!("{}", text);
-        // let b = text.parse::<IntervalSeq<i64>>().unwrap();
-        // a == b
-        true
+        let b = text.parse::<IntervalSeq<i64>>().unwrap();
+        a == b
+    }
+
+    fn intervalseq_and_sample(a: IntervalSeq<i64>, b: IntervalSeq<i64>) -> bool {
+        sample_test(&a.clone(), &b.clone(), &(a & b), |a, b| a & b)
+    }
+
+    fn intervalseq_or_sample(a: IntervalSeq<i64>, b: IntervalSeq<i64>) -> bool {
+        sample_test(&a.clone(), &b.clone(), &(a | b), |a, b| a | b)
+    }
+
+    fn intervalseq_xor_sample(a: IntervalSeq<i64>, b: IntervalSeq<i64>) -> bool {
+        sample_test(&a.clone(), &b.clone(), &(a ^ b), |a, b| a ^ b)
+    }
+
+    fn intervalseq_not_sample(a: IntervalSeq<i64>) -> bool {
+        let r = !a.clone();
+        let mut support: Vec<i64> = Vec::new();
+        support.extend(a.clone().edges());
+        support.extend(r.clone().edges());
+        support.dedup();
+        support.iter().all(|x| {
+            !a.below(*x) == r.below(*x) &&
+            !a.at(*x) == r.at(*x) &&
+            !a.above(*x) == r.above(*x)
+        })
     }
 }

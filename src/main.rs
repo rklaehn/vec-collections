@@ -250,8 +250,7 @@ fn main() {
     let x = " ( Ø ) ".parse::<Interval<i32>>().unwrap();
     let y = "[0,1)".parse::<Interval<i32>>().unwrap();
     let z: IntervalSeq<i64> = IntervalSeq::at_or_above(10) & IntervalSeq::at_or_below(11);
-    let w: IntervalSeq<i64> =
-        IntervalSeq::from_interval(&Interval::range(10, false, 20, false).unwrap());
+    let w: IntervalSeq<i64> = IntervalSeq::from(&Interval::range(10, false, 20, false).unwrap());
     println!("{:?}", z);
     println!("{}", z);
     println!("{:?}", w);

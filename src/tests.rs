@@ -1,24 +1,27 @@
 use super::*;
 
 #[test]
-fn interval_or_test() {
+fn intervalseq_parse_test() {
+    let input =
+        "[-98]; [-89]; [-83, -81); [-70, -48]; [-10, 23); [27, 76]; [80, 89]; [92, 93); (93, ∞)";
+    input.parse::<IntervalSeq<i64>>().unwrap();
+}
+
+#[test]
+fn intervalseq_or_test() {
     // (25, 60) (-90, 25]
-    let a = IntervalSeq::from_interval(&Interval::range(25, false, 60, false).unwrap());
-    let b = IntervalSeq::from_interval(&Interval::range(-90, false, 25, true).unwrap());
+    let a = IntervalSeq::from(&Interval::range(25, false, 60, false).unwrap());
+    let b = IntervalSeq::from(&Interval::range(-90, false, 25, true).unwrap());
     let c = a | b;
-    println!("{}", c);
     assert!(c.is_valid())
 }
 
 #[test]
 fn interval_xor_test() {
     // [-30, 11] [-98, -5)
-    let a = IntervalSeq::from_interval(&Interval::range(-30, true, 11, true).unwrap());
-    let b = IntervalSeq::from_interval(&Interval::range(-98, true, -5, false).unwrap());
+    let a = IntervalSeq::from(&Interval::range(-30, true, 11, true).unwrap());
+    let b = IntervalSeq::from(&Interval::range(-98, true, -5, false).unwrap());
     let c = a.clone() ^ b.clone();
-    println!("a {:?}", a);
-    println!("b {:?}", b);
-    println!("c {:?}", c);
     assert!(c.is_valid())
 }
 

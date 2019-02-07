@@ -1,6 +1,6 @@
 use super::*;
+use std::convert::From;
 use std::fmt;
-use std::fmt::Debug;
 use std::fmt::Display;
 use std::marker::PhantomData;
 use std::ops::BitAnd;
@@ -17,10 +17,10 @@ impl<T: Ord + Eq> IntoIterator for IntervalSeq<T> {
     }
 }
 
-trait IntervalSet<T: Eq> {
+pub trait IntervalSet<T: Eq> {
     fn is_empty(&self) -> bool;
-    // fn is_contiguous(&self) -> bool;
-    // fn hull(&self) -> Interval<T>;
+    fn is_contiguous(&self) -> bool;
+    fn hull(&self) -> Interval<T>;
     fn at(&self, value: T) -> bool;
     fn above(&self, value: T) -> bool;
     fn below(&self, value: T) -> bool;
@@ -91,34 +91,44 @@ impl Kind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct IntervalSeq<T: Ord> {
+pub struct IntervalSeq<T> {
     below_all: bool,
     values: Vec<T>,
     kinds: Vec<Kind>,
 }
 
-impl<T: Ord + Copy> IntervalSeq<T> {
-    fn singleton(below_all: bool, value: T, kind: Kind) -> IntervalSeq<T> {
-        IntervalSeq {
-            below_all,
-            values: vec![value],
-            kinds: vec![kind],
-        }
-    }
-    fn from_to(from: T, fk: Kind, to: T, tk: Kind) -> IntervalSeq<T> {
-        IntervalSeq {
-            below_all: false,
-            values: vec![from, to],
-            kinds: vec![fk, tk],
-        }
-    }
-    pub fn from_bool(value: bool) -> IntervalSeq<T> {
+impl<T> From<bool> for IntervalSeq<T> {
+    fn from(value: bool) -> IntervalSeq<T> {
         if value {
             IntervalSeq::all()
         } else {
             IntervalSeq::empty()
         }
     }
+}
+
+impl<T: Ord + Copy> From<&Interval<T>> for IntervalSeq<T> {
+    fn from(value: &Interval<T>) -> IntervalSeq<T> {
+        match (value.lower_bound(), value.upper_bound()) {
+            (Bound::Closed(a), Bound::Closed(b)) if a == b => IntervalSeq::at(a),
+            (Bound::Unbound, Bound::Open(x)) => IntervalSeq::below(x),
+            (Bound::Unbound, Bound::Closed(x)) => IntervalSeq::at_or_below(x),
+            (Bound::Open(x), Bound::Unbound) => IntervalSeq::above(x),
+            (Bound::Closed(x), Bound::Unbound) => IntervalSeq::at_or_above(x),
+            (Bound::Closed(a), Bound::Closed(b)) => {
+                IntervalSeq::from_to(a, Kind::K11, b, Kind::K10)
+            }
+            (Bound::Closed(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K11, b, Kind::K00),
+            (Bound::Open(a), Bound::Closed(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K10),
+            (Bound::Open(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K00),
+            (Bound::Unbound, Bound::Unbound) => IntervalSeq::all(),
+            (Bound::Empty, Bound::Empty) => IntervalSeq::empty(),
+            _ => IntervalSeq::empty(),
+        }
+    }
+}
+
+impl<T> IntervalSeq<T> {
     pub fn empty() -> IntervalSeq<T> {
         IntervalSeq {
             below_all: false,
@@ -131,6 +141,13 @@ impl<T: Ord + Copy> IntervalSeq<T> {
             below_all: true,
             kinds: Vec::new(),
             values: Vec::new(),
+        }
+    }
+    fn singleton(below_all: bool, value: T, kind: Kind) -> IntervalSeq<T> {
+        IntervalSeq {
+            below_all,
+            values: vec![value],
+            kinds: vec![kind],
         }
     }
     pub fn at(value: T) -> IntervalSeq<T> {
@@ -151,22 +168,14 @@ impl<T: Ord + Copy> IntervalSeq<T> {
     pub fn above(value: T) -> IntervalSeq<T> {
         IntervalSeq::singleton(false, value, Kind::K01)
     }
-    pub fn from_interval(value: &Interval<T>) -> IntervalSeq<T> {
-        match (value.lower_bound(), value.upper_bound()) {
-            (Bound::Closed(a), Bound::Closed(b)) if a == b => IntervalSeq::at(a),
-            (Bound::Unbound, Bound::Open(x)) => IntervalSeq::below(x),
-            (Bound::Unbound, Bound::Closed(x)) => IntervalSeq::at_or_below(x),
-            (Bound::Open(x), Bound::Unbound) => IntervalSeq::above(x),
-            (Bound::Closed(x), Bound::Unbound) => IntervalSeq::at_or_above(x),
-            (Bound::Closed(a), Bound::Closed(b)) => {
-                IntervalSeq::from_to(a, Kind::K11, b, Kind::K10)
-            }
-            (Bound::Closed(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K11, b, Kind::K00),
-            (Bound::Open(a), Bound::Closed(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K10),
-            (Bound::Open(a), Bound::Open(b)) => IntervalSeq::from_to(a, Kind::K01, b, Kind::K00),
-            (Bound::Unbound, Bound::Unbound) => IntervalSeq::all(),
-            (Bound::Empty, Bound::Empty) => IntervalSeq::empty(),
-            _ => IntervalSeq::empty(),
+}
+
+impl<T: Ord + Copy> IntervalSeq<T> {
+    fn from_to(from: T, fk: Kind, to: T, tk: Kind) -> IntervalSeq<T> {
+        IntervalSeq {
+            below_all: false,
+            values: vec![from, to],
+            kinds: vec![fk, tk],
         }
     }
 }
@@ -192,18 +201,14 @@ trait Builder<T: Ord> {
     fn append(&mut self, value: T, kind: Kind) -> ();
 }
 
-impl<T: Ord + Clone+ Debug> Builder<T> for IntervalSeq<T> {
+impl<T: Ord + Clone> Builder<T> for IntervalSeq<T> {
     fn copy_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
         self.values.extend_from_slice(&src.values[i0..i1]);
         self.kinds.extend_from_slice(&src.kinds[i0..i1]);
     }
     fn flip_from(&mut self, src: &IntervalSeq<T>, i0: usize, i1: usize) -> () {
         self.values.extend_from_slice(&src.values[i0..i1]);
-        println!("flipping {} {} {}", i0, i1, self.kinds.len());
         for i in i0..i1 {
-            let k = src.kinds[i];
-            let f = !k;
-            println!("{:?} => {:?}", k, f);
             self.kinds.push(!src.kinds[i])
         }
     }
@@ -241,7 +246,8 @@ impl<T: Ord, R, K> Read<T> for OpState<T, R, K> {
 /**
  * Basic binary operation.
  */
-trait BinaryOperation<T: Ord + Debug>: Read<T> {
+trait BinaryOperation<T: Ord>: Read<T> {
+    fn init(&mut self) -> ();
     fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> ();
     fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> ();
     fn collision(&mut self, ai: usize, bi: usize) -> ();
@@ -280,7 +286,10 @@ trait BinaryOperation<T: Ord + Debug>: Read<T> {
 
 struct AndOperation {}
 
-impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
+impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
+    fn init(&mut self) -> () {
+        self.r.below_all = self.a().below_all & self.b().below_all
+    }
     fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> () {
         if b {
             self.r.copy_from(&self.a, a0, a1)
@@ -298,16 +307,31 @@ impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, An
     }
 }
 
-impl<T: Ord + Copy + Debug> BitAnd for IntervalSeq<T> {
+impl<T: Ord> Not for IntervalSeq<T> {
+    type Output = IntervalSeq<T>;
+    fn not(self: IntervalSeq<T>) -> IntervalSeq<T> {
+        let mut kinds: Vec<Kind> = Vec::new();
+        for x in self.kinds {
+            kinds.push(!x);
+        }
+        IntervalSeq {
+            below_all: !self.below_all,
+            values: self.values,
+            kinds: kinds,
+        }
+    }
+}
+
+impl<T: Ord + Copy> BitAnd for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitand(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
-        let r_below_all = IntervalSeq::from_bool(self.below_all & that.below_all);
         let mut r: OpState<T, IntervalSeq<T>, AndOperation> = OpState {
             a: self,
             b: that,
-            r: r_below_all,
+            r: IntervalSeq::empty(),
             k: PhantomData {},
         };
+        r.init();
         r.merge0(0, r.a.values.len(), 0, r.b.values.len());
         r.r
     }
@@ -315,7 +339,10 @@ impl<T: Ord + Copy + Debug> BitAnd for IntervalSeq<T> {
 
 struct OrOperation {}
 
-impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
+impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
+    fn init(&mut self) -> () {
+        self.r.below_all = self.a().below_all | self.b().below_all
+    }
     fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> () {
         if !b {
             self.r.copy_from(&self.a, a0, a1)
@@ -333,16 +360,16 @@ impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, Or
     }
 }
 
-impl<T: Ord + Copy + Debug> BitOr for IntervalSeq<T> {
+impl<T: Ord + Copy> BitOr for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitor(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
-        let r_below_all = IntervalSeq::from_bool(self.below_all | that.below_all);
         let mut r: OpState<T, IntervalSeq<T>, OrOperation> = OpState {
             a: self,
             b: that,
-            r: r_below_all,
+            r: IntervalSeq::empty(),
             k: PhantomData {},
         };
+        r.init();
         r.merge0(0, r.a.values.len(), 0, r.b.values.len());
         r.r
     }
@@ -350,9 +377,11 @@ impl<T: Ord + Copy + Debug> BitOr for IntervalSeq<T> {
 
 struct XorOperation {}
 
-impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperation> {
+impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperation> {
+    fn init(&mut self) -> () {
+        self.r.below_all = self.a().below_all ^ self.b().below_all
+    }
     fn from_a(&mut self, a0: usize, a1: usize, b: bool) -> () {
-        println!("a={}..{} b={}", a0, a1, b);
         if !b {
             self.r.copy_from(&self.a, a0, a1)
         } else {
@@ -360,7 +389,6 @@ impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, Xo
         }
     }
     fn from_b(&mut self, a: bool, b0: usize, b1: usize) -> () {
-        println!("a={} b={}..{}", a, b0, b1);
         if !a {
             self.r.copy_from(&self.b, b0, b1)
         } else {
@@ -374,30 +402,33 @@ impl<T: Ord + Copy + Debug> BinaryOperation<T> for OpState<T, IntervalSeq<T>, Xo
     }
 }
 
-impl<T: Ord + Copy + Debug> BitXor for IntervalSeq<T> {
+impl<T: Ord + Copy> BitXor for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitxor(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
-        let r_below_all = IntervalSeq::from_bool(self.below_all ^ that.below_all);
         let mut r: OpState<T, IntervalSeq<T>, XorOperation> = OpState {
             a: self,
             b: that,
-            r: r_below_all,
+            r: IntervalSeq::empty(),
             k: PhantomData {},
         };
+        r.init();
         r.merge0(0, r.a.values.len(), 0, r.b.values.len());
         r.r
     }
 }
 
-impl<T: Ord + FromStr + Display + Copy + Debug> FromStr for IntervalSeq<T> {
+impl<T: Ord + FromStr + Display + Copy> FromStr for IntervalSeq<T> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.trim().is_empty() {
+            return Result::Ok(IntervalSeq::empty());
+        }
         let intervals: Result<Vec<Interval<T>>, _> =
             s.split(";").map(|x| x.parse::<Interval<T>>()).collect();
         intervals
             .map(|is| {
                 is.iter()
-                    .map(IntervalSeq::from_interval)
+                    .map(IntervalSeq::from)
                     .fold(IntervalSeq::empty(), BitOr::bitor)
             })
             .map_err(|_| String::from("Parse error"))
@@ -424,7 +455,7 @@ impl<'a, T: Ord + Copy> IntervalIterator<'a, T> {
                     None
                 }
                 (Option::None, _) => {
-                    panic!("{} {} {:?}", self.lower.is_some(), self.i - 1, self.kinds)
+                    panic!();
                 }
 
                 (Option::Some(lower), Kind::K01) => {
@@ -471,12 +502,11 @@ impl<'a, T: Ord + Copy> std::iter::Iterator for IntervalIterator<'a, T> {
     }
 }
 
-impl<T: Ord + Debug> IntervalSeq<T> {
-
+impl<T: Ord> IntervalSeq<T> {
     #[cfg(test)]
     pub fn is_valid(&self) -> bool {
         if self.values.len() != self.kinds.len() {
-            // kinds and values not of the same size            
+            // kinds and values not of the same size
             false
         } else {
             let mut prev = self.below_all;
@@ -488,10 +518,9 @@ impl<T: Ord + Debug> IntervalSeq<T> {
                 let k = self.kinds[i];
                 if (!prev && k == Kind::K00) || (prev && k == Kind::K11) {
                     // redundant element
-                    println!("redundant element {:?} {}", self.kinds, i);
                     return false;
                 }
-                prev = k == Kind::K01 || k == Kind::K11;
+                prev = k.value_above();
             }
             true
         }
@@ -505,7 +534,6 @@ impl<T: Ord + Debug> IntervalSeq<T> {
     }
 
     fn intervals(self: &IntervalSeq<T>) -> IntervalIterator<T> {
-        println!("{:?}", self);
         IntervalIterator {
             i: 0,
             kinds: &self.kinds,
@@ -518,12 +546,31 @@ impl<T: Ord + Debug> IntervalSeq<T> {
         }
     }
 
-    fn edges(self: IntervalSeq<T>) -> Vec<T> {
+    pub fn edges(self: IntervalSeq<T>) -> Vec<T> {
         self.values
     }
 }
 
-impl<T: Ord + Copy + Display + Debug> Display for IntervalSeq<T> {
+impl<T: Ord + Clone> IntervalSeq<T> {
+    fn lower_bound(&self, i: usize) -> Bound<T> {
+        match self.kinds[i] {
+            Kind::K01 => Bound::Open(self.values[i].clone()),
+            Kind::K11 => Bound::Closed(self.values[i].clone()),
+            Kind::K10 => Bound::Closed(self.values[i].clone()),
+            _ => panic!(),
+        }
+    }
+
+    fn upper_bound(&self, i: usize) -> Bound<T> {
+        match self.kinds[i] {
+            Kind::K10 => Bound::Closed(self.values[i].clone()),
+            Kind::K00 => Bound::Open(self.values[i].clone()),
+            _ => panic!(),
+        }
+    }
+}
+
+impl<T: Ord + Copy + Display> Display for IntervalSeq<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text: String = self
             .intervals()
@@ -534,7 +581,46 @@ impl<T: Ord + Copy + Display + Debug> Display for IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + Debug> IntervalSet<T> for IntervalSeq<T> {
+impl<T: Ord + Clone> IntervalSet<T> for IntervalSeq<T> {
+    fn hull(self: &IntervalSeq<T>) -> Interval<T> {
+        if self.is_empty() {
+            Interval::Empty
+        } else if self.below_all() && self.above_all() {
+            Interval::All
+        } else if self.below_all() {
+            Interval::from_bounds(Bound::Unbound, self.upper_bound(self.values.len() - 1))
+        } else if self.above_all() {
+            Interval::from_bounds(self.lower_bound(0), Bound::Unbound)
+        } else {
+            Interval::from_bounds(self.lower_bound(0), self.upper_bound(self.values.len() - 1))
+        }
+    }
+
+    fn is_contiguous(self: &IntervalSeq<T>) -> bool {
+        if self.below_all {
+            if self.is_empty() {
+                true
+            } else {
+                self.kinds.len() == 1 && self.kinds[0] != Kind::K01
+            }
+        } else {
+            if self.is_empty() {
+                true
+            } else if self.kinds.len() == 1 {
+                true
+            } else if self.kinds.len() == 2 {
+                let a = self.kinds[0];
+                let b = self.kinds[1];
+                // a: K01 or K11, K00 redundant, K10 not cont
+                (a == Kind::K01 || a == Kind::K11) &&
+                // b: K10 or K00, K11 redundant, K01 not cont
+                (b == Kind::K10 || b == Kind::K00)
+            } else {
+                false
+            }
+        }
+    }
+
     fn is_empty(self: &IntervalSeq<T>) -> bool {
         !self.below_all && self.values.is_empty()
     }
@@ -569,6 +655,6 @@ impl<T: Ord + Debug> IntervalSet<T> for IntervalSeq<T> {
     fn above_all(self: &IntervalSeq<T>) -> bool {
         self.kinds
             .last()
-            .map_or(self.below_all(), |k| k.value_above())
+            .map_or(self.below_all, |k| k.value_above())
     }
 }
