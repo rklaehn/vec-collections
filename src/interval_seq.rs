@@ -1,4 +1,5 @@
 use super::*;
+use interval::*;
 use std::convert::From;
 use std::fmt;
 use std::fmt::Display;
@@ -107,10 +108,10 @@ impl<T> From<bool> for IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + Copy> From<&Interval<T>> for IntervalSeq<T> {
-    fn from(value: &Interval<T>) -> IntervalSeq<T> {
-        match (value.lower_bound(), value.upper_bound()) {
-            (Bound::Closed(a), Bound::Closed(b)) if a == b => IntervalSeq::at(a),
+impl<T: Ord + Clone> From<Interval<T>> for IntervalSeq<T> {
+    fn from(value: Interval<T>) -> IntervalSeq<T> {
+        match (value.clone().lower_bound(), value.upper_bound()) {
+            (Bound::Closed(ref a), Bound::Closed(ref b)) if a == b => IntervalSeq::at(a.clone()),
             (Bound::Unbound, Bound::Open(x)) => IntervalSeq::below(x),
             (Bound::Unbound, Bound::Closed(x)) => IntervalSeq::at_or_below(x),
             (Bound::Open(x), Bound::Unbound) => IntervalSeq::above(x),
@@ -170,7 +171,7 @@ impl<T> IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + Copy> IntervalSeq<T> {
+impl<T: Ord + Clone> IntervalSeq<T> {
     fn from_to(from: T, fk: Kind, to: T, tk: Kind) -> IntervalSeq<T> {
         IntervalSeq {
             below_all: false,
@@ -286,7 +287,7 @@ trait BinaryOperation<T: Ord>: Read<T> {
 
 struct AndOperation;
 
-impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
+impl<T: Ord + Clone> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperation> {
     fn init(&mut self) -> () {
         self.r.below_all = self.a().below_all & self.b().below_all
     }
@@ -301,7 +302,7 @@ impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, AndOperati
         }
     }
     fn collision(&mut self, ai: usize, bi: usize) -> () {
-        let value = self.a.values[ai];
+        let value = self.a.values[ai].clone();
         let kind = self.a.kinds[ai] & self.b.kinds[bi];
         self.r.append(value, kind)
     }
@@ -322,7 +323,7 @@ impl<T: Ord> Not for IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + Copy> BitAnd for IntervalSeq<T> {
+impl<T: Ord + Clone> BitAnd for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitand(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
         let mut r: OpState<T, IntervalSeq<T>, AndOperation> = OpState {
@@ -339,7 +340,7 @@ impl<T: Ord + Copy> BitAnd for IntervalSeq<T> {
 
 struct OrOperation;
 
-impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
+impl<T: Ord + Clone> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperation> {
     fn init(&mut self) -> () {
         self.r.below_all = self.a().below_all | self.b().below_all
     }
@@ -354,13 +355,13 @@ impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, OrOperatio
         }
     }
     fn collision(&mut self, ai: usize, bi: usize) -> () {
-        let value = self.a.values[ai];
+        let value = self.a.values[ai].clone();
         let kind = self.a.kinds[ai] | self.b.kinds[bi];
         self.r.append(value, kind)
     }
 }
 
-impl<T: Ord + Copy> BitOr for IntervalSeq<T> {
+impl<T: Ord + Clone> BitOr for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitor(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
         let mut r: OpState<T, IntervalSeq<T>, OrOperation> = OpState {
@@ -377,7 +378,7 @@ impl<T: Ord + Copy> BitOr for IntervalSeq<T> {
 
 struct XorOperation;
 
-impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperation> {
+impl<T: Ord + Clone> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperation> {
     fn init(&mut self) -> () {
         self.r.below_all = self.a().below_all ^ self.b().below_all
     }
@@ -396,13 +397,13 @@ impl<T: Ord + Copy> BinaryOperation<T> for OpState<T, IntervalSeq<T>, XorOperati
         }
     }
     fn collision(&mut self, ai: usize, bi: usize) -> () {
-        let value = self.a.values[ai];
+        let value = self.a.values[ai].clone();
         let kind = self.a.kinds[ai] ^ self.b.kinds[bi];
         self.r.append(value, kind)
     }
 }
 
-impl<T: Ord + Copy> BitXor for IntervalSeq<T> {
+impl<T: Ord + Clone> BitXor for IntervalSeq<T> {
     type Output = IntervalSeq<T>;
     fn bitxor(self: IntervalSeq<T>, that: IntervalSeq<T>) -> IntervalSeq<T> {
         let mut r: OpState<T, IntervalSeq<T>, XorOperation> = OpState {
@@ -417,7 +418,7 @@ impl<T: Ord + Copy> BitXor for IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + FromStr + Copy> FromStr for IntervalSeq<T> {
+impl<T: Ord + FromStr + Clone> FromStr for IntervalSeq<T> {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.trim().is_empty() {
@@ -428,20 +429,20 @@ impl<T: Ord + FromStr + Copy> FromStr for IntervalSeq<T> {
         intervals
             .map(|is| {
                 is.iter()
-                    .map(IntervalSeq::from)
+                    .map(|x| IntervalSeq::from(x.clone()))
                     .fold(IntervalSeq::empty(), BitOr::bitor)
             })
             .map_err(|_| String::from("Parse error"))
     }
 }
 
-impl<'a, T: Ord + Copy> Intervals<'a, T> {
+impl<'a, T: Ord + Clone> Intervals<'a, T> {
     fn next_interval(self: &mut Intervals<'a, T>) -> Option<Interval<T>> {
         if self.i < self.values.len() {
-            let value = self.values[self.i];
+            let value = self.values[self.i].clone();
             let kind = self.kinds[self.i];
             self.i += 1;
-            match (self.lower, kind) {
+            match (self.lower.clone(), kind) {
                 (Option::None, Kind::K10) => {
                     self.lower = None;
                     Some(Interval::Point(value))
@@ -460,7 +461,7 @@ impl<'a, T: Ord + Copy> Intervals<'a, T> {
 
                 (Option::Some(lower), Kind::K01) => {
                     let upper = Bound::Open(value);
-                    self.lower = Some(upper);
+                    self.lower = Some(upper.clone());
                     Some(Interval::from_bounds(lower, upper))
                 }
                 (Option::Some(lower), Kind::K00) => {
@@ -478,7 +479,7 @@ impl<'a, T: Ord + Copy> Intervals<'a, T> {
                 }
             }
         } else {
-            match self.lower {
+            match self.lower.clone() {
                 Some(lower) => {
                     self.lower = None;
                     Some(Interval::from_bounds(lower, Bound::Unbound))
@@ -489,7 +490,7 @@ impl<'a, T: Ord + Copy> Intervals<'a, T> {
     }
 }
 
-impl<'a, T: Ord + Copy> std::iter::Iterator for Intervals<'a, T> {
+impl<'a, T: Ord + Clone> std::iter::Iterator for Intervals<'a, T> {
     type Item = Interval<T>;
 
     fn next(self: &mut Intervals<'a, T>) -> Option<Interval<T>> {
@@ -532,7 +533,9 @@ impl<T: Ord> IntervalSeq<T> {
             self.kinds[index - 1].value_above()
         }
     }
+}
 
+impl<T: Ord + Clone> IntervalSeq<T> {
     pub fn intervals(self: &IntervalSeq<T>) -> Intervals<T> {
         Intervals {
             i: 0,
@@ -580,7 +583,7 @@ impl<T: Ord + Clone> IntervalSeq<T> {
     }
 }
 
-impl<T: Ord + Copy + Display> Display for IntervalSeq<T> {
+impl<T: Ord + Clone + Display> Display for IntervalSeq<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let text: String = self
             .intervals()

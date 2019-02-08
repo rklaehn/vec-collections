@@ -1,6 +1,5 @@
 use super::*;
 use quickcheck::*;
-use std::fmt::Debug;
 use std::ops::BitXor;
 
 fn gen<T: Arbitrary, G: Gen>(g: &mut G) -> T {
@@ -32,12 +31,12 @@ impl<T: Arbitrary + Ord + Copy> Arbitrary for Interval<T> {
     }
 }
 
-impl<T: Arbitrary + Ord + Copy + Debug + Display> Arbitrary for IntervalSeq<T> {
+impl<T: Arbitrary + Ord + Copy> Arbitrary for IntervalSeq<T> {
     fn arbitrary<G: Gen>(g: &mut G) -> IntervalSeq<T> {
         let intervals: Vec<Interval<T>> = gen(g);
         intervals
             .iter()
-            .map(IntervalSeq::from)
+            .map(|x| IntervalSeq::from(x.clone()))
             .fold(IntervalSeq::empty(), BitXor::bitxor)
     }
 }
