@@ -29,7 +29,7 @@ where
     res
 }
 
-fn full_traversal_test(n: i32) -> () {
+fn full_traversal_bench(n: i32) -> () {
     println!("Full traversal benchmark (n={})", n);
     let a = make_on_off_profile(n, 0, 2);
     let b = make_on_off_profile(n, 1, 2);
@@ -38,7 +38,7 @@ fn full_traversal_test(n: i32) -> () {
     bench("xor", || a.clone() & b.clone());
 }
 
-fn cutoff_test(n: i32) -> () {
+fn cutoff_bench(n: i32) -> () {
     println!("Cutoff benchmark (n={})", n);
     let a = make_on_off_profile(n, 0, 2);
     let b = make_on_off_profile(n, 1, 1000);
@@ -48,11 +48,11 @@ fn cutoff_test(n: i32) -> () {
 }
 
 #[test]
-fn full_traversal_test_large() {
-    full_traversal_test(100000);
+fn full_traversal_bench_large() {
+    full_traversal_bench(100000);
 }
 
 #[test]
-fn cutoff_test_large() {
-    cutoff_test(100000);
+fn cutoff_bench_large() {
+    cutoff_bench(100000);
 }
