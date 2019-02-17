@@ -2,6 +2,7 @@ use super::*;
 use regex::Regex;
 use std::fmt;
 use std::fmt::Display;
+use std::ops::RangeBounds;
 use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug)]
@@ -10,6 +11,16 @@ pub(crate) enum Bound<T> {
     Unbound,
     Open(T),
     Closed(T),
+}
+
+impl<T: Clone> Bound<T> {
+    fn from_std_bound(bound: std::collections::Bound<&T>) -> Bound<T> {
+        match bound {
+            std::collections::Bound::Included(v) => Bound::Closed(v.clone()),
+            std::collections::Bound::Excluded(v) => Bound::Open(v.clone()),
+            std::collections::Bound::Unbounded => Bound::Unbound,
+        }
+    }
 }
 
 impl<T> Bound<T> {
@@ -30,6 +41,15 @@ pub enum Interval<T> {
     Above(T, bool),
     Below(T, bool),
     Bounded(T, bool, T, bool),
+}
+
+impl<T: RangeBounds<T> + Ord + Clone> From<T> for Interval<T> {
+    fn from(rb: T) -> Self {
+        Interval::from_bounds(
+            Bound::from_std_bound(rb.start_bound()),
+            Bound::from_std_bound(rb.end_bound()),
+        )
+    }
 }
 
 impl<T: Eq + Display> Display for Interval<T> {
@@ -93,10 +113,10 @@ impl<T: Ord> Interval<T> {
     pub(crate) fn from_bounds(lower: Bound<T>, upper: Bound<T>) -> Interval<T> {
         match (lower, upper) {
             (Bound::Empty, Bound::Empty) => Interval::Empty,
-            (Bound::Closed(x), Bound::Closed(y)) => Interval::range(x, true, y, true).unwrap(),
-            (Bound::Closed(x), Bound::Open(y)) => Interval::range(x, true, y, false).unwrap(),
-            (Bound::Open(x), Bound::Closed(y)) => Interval::range(x, false, y, true).unwrap(),
-            (Bound::Open(x), Bound::Open(y)) => Interval::range(x, false, y, false).unwrap(),
+            (Bound::Closed(x), Bound::Closed(y)) => Interval::range(x, true, y, true),
+            (Bound::Closed(x), Bound::Open(y)) => Interval::range(x, true, y, false),
+            (Bound::Open(x), Bound::Closed(y)) => Interval::range(x, false, y, true),
+            (Bound::Open(x), Bound::Open(y)) => Interval::range(x, false, y, false),
             (Bound::Unbound, Bound::Open(y)) => Interval::below(y),
             (Bound::Unbound, Bound::Closed(y)) => Interval::at_or_below(y),
             (Bound::Open(x), Bound::Unbound) => Interval::above(x),
@@ -150,18 +170,13 @@ impl<T: Ord> Interval<T> {
         }
     }
 
-    pub fn range(
-        min: T,
-        min_included: bool,
-        max: T,
-        max_included: bool,
-    ) -> Result<Interval<T>, String> {
+    pub fn range(min: T, min_included: bool, max: T, max_included: bool) -> Interval<T> {
         if min < max {
-            Ok(Interval::Bounded(min, min_included, max, max_included))
+            Interval::Bounded(min, min_included, max, max_included)
         } else if min == max && min_included && max_included {
-            Ok(Interval::Point(min))
+            Interval::Point(min)
         } else {
-            Err(String::from("Error"))
+            Interval::Empty
         }
     }
 }
@@ -199,17 +214,16 @@ impl<T: Ord + FromStr> FromStr for Interval<T> {
                             ("(", min, "∞", ")") => to_value(min).map(Interval::above),
                             ("[", min, "∞", ")") => to_value(min).map(Interval::at_or_above),
                             ("(", min, max, ")") => to_value(min).and_then(|min| {
-                                to_value(max)
-                                    .and_then(|max| Interval::range(min, false, max, false))
+                                to_value(max).map(|max| Interval::range(min, false, max, false))
                             }),
                             ("(", min, max, "]") => to_value(min).and_then(|min| {
-                                to_value(max).and_then(|max| Interval::range(min, false, max, true))
+                                to_value(max).map(|max| Interval::range(min, false, max, true))
                             }),
                             ("[", min, max, ")") => to_value(min).and_then(|min| {
-                                to_value(max).and_then(|max| Interval::range(min, true, max, false))
+                                to_value(max).map(|max| Interval::range(min, true, max, false))
                             }),
                             ("[", min, max, "]") => to_value(min).and_then(|min| {
-                                to_value(max).and_then(|max| Interval::range(min, true, max, true))
+                                to_value(max).map(|max| Interval::range(min, true, max, true))
                             }),
                             _ => Err(String::from("Parse error!")),
                         }

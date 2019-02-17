@@ -14,7 +14,7 @@ impl<T: Arbitrary + Ord + Copy> Arbitrary for Interval<T> {
             let same: bool = a == b;
             let a_i: bool = same || gen(g);
             let b_i: bool = same || gen(g);
-            Interval::range(Ord::min(a, b), a_i, Ord::max(a, b), b_i).unwrap()
+            Interval::range(Ord::min(a, b), a_i, Ord::max(a, b), b_i)
         } else if gen(g) {
             if gen(g) {
                 Interval::Above(gen(g), gen(g))
