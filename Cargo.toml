@@ -1,17 +1,11 @@
 [package]
-name = "intervalset"
+name = "abc"
 version = "0.1.0"
 authors = ["Rüdiger Klaehn <rklaehn@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-regex = "1"
-lazy_static = "1.2.0"
-bencher = "0.1.5"
+alga = "0.8.2"
 
 [dev-dependencies]
 quickcheck = "0.8"
-
-[[bench]]
-name = "intervalseq"
-harness = false
