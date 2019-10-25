@@ -1,71 +1,100 @@
-use crate::binary_merge::*;
+use crate::binary_merge::{MergeState, MergeOperation, InPlaceMergeState};
+use std::fmt::Debug;
 
 struct SetUnionOp();
-
-impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
-        m.a.copy_from_src(n);
-    }
-    fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
-        m.a.copy_from(&m.b[b0..b1], b1 - b0);
-    }
-    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
-        m.a.copy_from_src(1);
-    }
-}
-
-impl<'a, T: Ord + Copy + Default, I: MergeState<T>> Op2<'a, T, I> for SetUnionOp {
-    fn from_a(&self, m: &mut I, n: usize) {
-        println!("move_a {}", n);
-        m.move_a(n);
-    }
-    fn from_b(&self, m: &mut I, n: usize) {
-        println!("move_b {}", n);
-        m.move_b(n);
-    }
-    fn collision(&self, m: &mut I) {
-        println!("move_a 1");
-        println!("skip_b 1");
-        m.move_a(1);
-        m.skip_b(1);
-    }
-}
-
 struct SetIntersectionOp();
-
-impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetIntersectionOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
-        m.a.drop_from_src(n);
-    }
-    fn from_b(&self, _m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {}
-    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
-        m.a.copy_from_src(1);
-    }
-}
-
 struct SetXorOp();
-
-impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetXorOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
-        m.a.copy_from_src(n);
-    }
-    fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
-        m.a.copy_from(&m.b[b0..b1], b1 - b0);
-    }
-    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
-        m.a.drop_from_src(1);
-    }
-}
-
 struct SetExceptOp();
 
-impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetExceptOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
-        m.a.copy_from_src(n);
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetUnionOp {
+    fn from_a(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_a {}", n);
+        m.move_a(n);
+        // println!("{:?}\n", m);
     }
-    fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {}
-    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
-        m.a.drop_from_src(1);
+    fn from_b(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_b {}", n);
+        m.move_b(n);
+        // println!("{:?}\n", m);
+    }
+    fn collision(&self, m: &mut I) {
+        // println!("{:?}", m);
+        // println!("move_a 1");
+        // println!("skip_b 1");
+        m.move_a(1);
+        m.skip_b(1);
+        // println!("{:?}\n", m);
+    }
+}
+
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetIntersectionOp {
+    fn from_a(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_a {}", n);
+        m.skip_a(n);
+        // println!("{:?}\n", m);
+    }
+    fn from_b(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_b {}", n);
+        m.skip_b(n);
+        // println!("{:?}\n", m);
+    }
+    fn collision(&self, m: &mut I) {
+        // println!("{:?}", m);
+        // println!("move_a 1");
+        // println!("skip_b 1");
+        m.move_a(1);
+        m.skip_b(1);
+        // println!("{:?}\n", m);
+    }
+}
+
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetExceptOp {
+    fn from_a(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_a {}", n);
+        m.move_a(n);
+        // println!("{:?}\n", m);
+    }
+    fn from_b(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_b {}", n);
+        m.skip_b(n);
+        // println!("{:?}\n", m);
+    }
+    fn collision(&self, m: &mut I) {
+        // println!("{:?}", m);
+        // println!("move_a 1");
+        // println!("skip_b 1");
+        m.skip_a(1);
+        m.skip_b(1);
+        // println!("{:?}\n", m);
+    }
+}
+
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetXorOp {
+    fn from_a(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_a {}", n);
+        m.move_a(n);
+        // println!("{:?}\n", m);
+    }
+    fn from_b(&self, m: &mut I, n: usize) {
+        // println!("{:?}", m);
+        // println!("move_b {}", n);
+        m.move_b(n);
+        // println!("{:?}\n", m);
+    }
+    fn collision(&self, m: &mut I) {
+        // println!("{:?}", m);
+        // println!("move_a 1");
+        // println!("skip_b 1");
+        m.skip_a(1);
+        m.skip_b(1);
+        // println!("{:?}\n", m);
     }
 }
 
@@ -83,17 +112,17 @@ impl<T> ArraySet<T> {
         &self.0
     }
 }
-impl<T: Ord + Default + Copy> From<Vec<T>> for ArraySet<T> {
+impl<T: Ord + Default + Copy+ Debug> From<Vec<T>> for ArraySet<T> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
-impl<T: Ord + Default + Copy> std::iter::FromIterator<T> for ArraySet<T> {
+impl<T: Ord + Default + Copy+ Debug> std::iter::FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(iter.into_iter().collect())
     }
 }
-impl<T: Ord + Default + Copy> ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     fn from_vec(vec: Vec<T>) -> Self {
         let mut vec = vec;
         vec.sort();
@@ -105,15 +134,15 @@ impl<T: Ord + Default + Copy> ArraySet<T> {
     }
 
     fn intersection_with(&mut self, that: &ArraySet<T>) {
-        SetIntersectionOp().merge(&mut self.0, &that.0)
+        InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
     }
 
     fn xor_with(&mut self, that: &ArraySet<T>) {
-        SetXorOp().merge(&mut self.0, &that.0)
+        InPlaceMergeState::merge(&mut self.0, &that.0, SetXorOp());
     }
 
     fn except(&mut self, that: &ArraySet<T>) {
-        SetExceptOp().merge(&mut self.0, &that.0)
+        InPlaceMergeState::merge(&mut self.0, &that.0, SetExceptOp());
     }
 }
 
@@ -123,11 +152,12 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
-    fn union_1() {
-        let mut a: ArraySet<usize> = vec![1].into();
-        let b: ArraySet<usize> = vec![0,2].into();
-        a.union_with(&b);
-        assert_eq!(a.into_vec(), vec![0,1,2]);
+    fn intersection_1() {
+        let mut a: ArraySet<usize> = vec![0].into();
+        let b: ArraySet<usize> = vec![].into();
+        a.intersection_with(&b);
+        println!("a {:?}", a);
+        assert_eq!(a.into_vec(), vec![]);
     }
 
     quickcheck! {
