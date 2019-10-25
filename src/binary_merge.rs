@@ -29,21 +29,24 @@ impl<T: Copy + Default> FlipBuffer<T> {
     }
 
     pub fn copy_from_src(&mut self, n: usize) {
-        let s0 = self.sb + self.sc;
-        if s0 != self.ti {
-            let s1 = s0 + n;
-            println!("copy_within {} {} {}", s0, s1, self.ti);
-            self.data.as_mut_slice().copy_within(s0..s1, self.ti);
+        if n > 0 {
+            let s0 = self.sb + self.sc;
+            if s0 != self.ti {
+                let s1 = s0 + n;
+                self.data.as_mut_slice().copy_within(s0..s1, self.ti);
+            }
+            self.ti += n;
+            self.sc += n;
         }
-        self.ti += n;
-        self.sc += n;
     }
 
     pub fn copy_from(&mut self, src: &[T], n: usize) {
-        self.ensure_capacity(n);
-        let l = src.len();
-        self.data[self.ti..self.ti + src.len()].copy_from_slice(src);
-        self.ti += l;
+        if n > 0 {
+            self.ensure_capacity(n);
+            let l = src.len();
+            self.data[self.ti..self.ti + src.len()].copy_from_slice(src);
+            self.ti += l;
+        }
     }
 
     pub fn src_at(&self, o: usize) -> &T {
@@ -56,7 +59,6 @@ impl<T: Copy + Default> FlipBuffer<T> {
         let capacity = si - self.ti;
         if capacity < required {
             let missing = required - capacity;
-            println!("move {}", missing);
             self.data
                 .splice(si..si, std::iter::repeat(T::default()).take(missing));
             self.sb += missing;

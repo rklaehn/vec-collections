@@ -4,15 +4,12 @@ struct SetUnionOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
     fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        println!("from_a {} {}", a0, a1);
         m.a.copy_from_src(a1 - a0);
     }
     fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
-        println!("from_b {} {}", b0, b1);
-        m.a.copy_from(&m.b[b0..b1], m.b.len() - b0);
+        m.a.copy_from(&m.b[b0..b1], b1 - b0);
     }
     fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
-        println!("collision {} {}", ai, bi);
         m.a.copy_from_src(1);
     }
 }
@@ -36,7 +33,7 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetXorOp {
         m.a.copy_from_src(a1 - a0);
     }
     fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
-        m.a.copy_from(&m.b[b0..b1], m.b.len() - b0);
+        m.a.copy_from(&m.b[b0..b1], b1 - b0);
     }
     fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
         m.a.drop_from_src(1);
@@ -47,14 +44,10 @@ struct SetExceptOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetExceptOp {
     fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        println!("from_a {} {}", a0, a1);
         m.a.copy_from_src(a1 - a0);
     }
-    fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
-        println!("from_b {} {}", b0, b1);
-    }
+    fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {}
     fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
-        println!("collision {} {}", ai, bi);
         m.a.drop_from_src(1);
     }
 }
@@ -169,22 +162,46 @@ mod tests {
 
     #[test]
     fn union_1() {
-        let mut a: ArraySet<usize> = vec![0, 1, 2].into();
+        let mut a: ArraySet<usize> = vec![].into();
         let b: ArraySet<usize> = vec![0].into();
-        a.union_with(&b);
-        assert_eq!(a.into_vec(), vec![0, 1, 2]);
+        a.xor_with(&b);
+        assert_eq!(a.into_vec(), vec![0]);
     }
 
     quickcheck! {
         fn union(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
             let mut b1: ArraySet<u32> = b.iter().cloned().collect();
-            println!("{:?} {:?}", a1, b1);
             a1.union_with(&b1);
-            println!("{:?}", a1);
             let expected: Vec<u32> = a.union(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
-            println!("{:?}\n{:?}\n{}", expected, actual, expected == actual);
+            expected == actual
+        }
+
+        fn intersection(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let mut b1: ArraySet<u32> = b.iter().cloned().collect();
+            a1.intersection_with(&b1);
+            let expected: Vec<u32> = a.intersection(&b).cloned().collect();
+            let actual: Vec<u32> = a1.into_vec();
+            expected == actual
+        }
+
+        fn except(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let mut b1: ArraySet<u32> = b.iter().cloned().collect();
+            a1.except(&b1);
+            let expected: Vec<u32> = a.difference(&b).cloned().collect();
+            let actual: Vec<u32> = a1.into_vec();
+            expected == actual
+        }
+
+        fn xor(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let mut b1: ArraySet<u32> = b.iter().cloned().collect();
+            a1.xor_with(&b1);
+            let expected: Vec<u32> = a.symmetric_difference(&b).cloned().collect();
+            let actual: Vec<u32> = a1.into_vec();
             expected == actual
         }
     }
