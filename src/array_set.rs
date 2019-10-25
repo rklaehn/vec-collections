@@ -1,15 +1,90 @@
 use crate::binary_merge::*;
 
+trait MergeState<T> {
+    fn a_slice(&self) -> &[T];
+    fn b_slice(&self) -> &[T];
+    fn r_slice(&self) -> &[T];
+    fn move_a(&mut self, n: usize);
+    fn skip_a(&mut self, n: usize);
+    fn move_b(&mut self, n: usize);
+    fn skip_b(&mut self, n: usize);
+}
+
+struct InPlaceMergeState<'a, T> {
+    a: Vec<T>,
+    b: &'a [T],
+    // number of result elements
+    rn: usize,
+    // base of the remaining stuff in a
+    ab: usize,
+}
+
+impl<'a, T: Copy + Default> InPlaceMergeState<'a, T> {
+    fn ensure_capacity(&mut self, required: usize) {
+        let rn = self.rn;
+        let ab = self.ab;
+        let capacity = ab - rn;
+        if capacity < required {
+            let missing = required - capacity;
+            let fill = T::default();
+            self.a.splice(ab..ab, std::iter::repeat(fill).take(missing));
+            self.ab += missing;
+        }
+    }
+}
+
+impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
+    fn a_slice(&self) -> &[T] {
+        let a0 = self.ab;
+        let a1 = self.a.len();
+        &self.a[a0..a1]
+    }
+    fn b_slice(&self) -> &[T] {
+        self.b
+    }
+    fn r_slice(&self) -> &[T] {
+        &self.a[0..self.rn]
+    }
+    fn move_a(&mut self, n: usize) {
+        if n > 0 {
+            if self.ab != self.rn {
+                let a0 = self.ab;
+                let a1 = a0 + n;
+                self.a.as_mut_slice().copy_within(a0..a1, self.rn);
+            }
+            self.ab += n;
+            self.rn += n;
+        }
+    }
+    fn skip_a(&mut self, n: usize) {
+        self.ab += n;
+    }
+    fn move_b(&mut self, n: usize) {
+        if n > 0 {
+            self.ensure_capacity(n);
+            let r0 = self.rn;
+            let r1 = self.rn + n;
+            self.a[r0..r1].copy_from_slice(&self.b[0..n]);
+            self.rn += n;
+        }
+    }
+    fn skip_b(&mut self, n: usize) {
+        let b0 = n;
+        let b1 = self.b.len();
+        self.b = &self.b[b0..b1];
+    }
+}
+
 struct SetUnionOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        m.a.copy_from_src(a1 - a0);
+    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
+        m.a.copy_from_src(n);
     }
     fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
         m.a.copy_from(&m.b[b0..b1], b1 - b0);
     }
-    fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
+    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
         m.a.copy_from_src(1);
     }
 }
@@ -17,11 +92,11 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
 struct SetIntersectionOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetIntersectionOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        m.a.drop_from_src(a1 - a0);
+    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
+        m.a.drop_from_src(n);
     }
     fn from_b(&self, _m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {}
-    fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
+    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
         m.a.copy_from_src(1);
     }
 }
@@ -29,13 +104,13 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetIntersectionOp {
 struct SetXorOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetXorOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        m.a.copy_from_src(a1 - a0);
+    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
+        m.a.copy_from_src(n);
     }
     fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {
         m.a.copy_from(&m.b[b0..b1], b1 - b0);
     }
-    fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
+    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
         m.a.drop_from_src(1);
     }
 }
@@ -43,11 +118,11 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetXorOp {
 struct SetExceptOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetExceptOp {
-    fn from_a(&self, m: &mut BinaryMerge<'a, T>, a0: usize, a1: usize) {
-        m.a.copy_from_src(a1 - a0);
+    fn from_a(&self, m: &mut BinaryMerge<'a, T>, n: usize) {
+        m.a.copy_from_src(n);
     }
     fn from_b(&self, m: &mut BinaryMerge<'a, T>, b0: usize, b1: usize) {}
-    fn collision(&self, m: &mut BinaryMerge<'a, T>, ai: usize, bi: usize) {
+    fn collision(&self, m: &mut BinaryMerge<'a, T>) {
         m.a.drop_from_src(1);
     }
 }
