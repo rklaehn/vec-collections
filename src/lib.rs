@@ -1,12 +1,15 @@
 #[cfg(test)]
+#[macro_use]
 extern crate quickcheck;
 
-mod array_seq;
 mod binary_merge;
+
+mod array_seq;
+mod array_set;
 mod total_array_seq;
 
 pub use array_seq::*;
+pub use array_set::*;
 pub use total_array_seq::*;
-// pub use array_set::*;
 
-pub use binary_merge::*;
+use binary_merge::*;

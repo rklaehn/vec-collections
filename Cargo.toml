@@ -5,7 +5,7 @@ authors = ["Rüdiger Klaehn <rklaehn@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-alga = "0.8.2"
+alga = "0.8"
 
 [dev-dependencies]
 quickcheck = "0.8"
