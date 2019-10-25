@@ -1,80 +1,5 @@
 use crate::binary_merge::*;
 
-trait MergeState<T> {
-    fn a_slice(&self) -> &[T];
-    fn b_slice(&self) -> &[T];
-    fn r_slice(&self) -> &[T];
-    fn move_a(&mut self, n: usize);
-    fn skip_a(&mut self, n: usize);
-    fn move_b(&mut self, n: usize);
-    fn skip_b(&mut self, n: usize);
-}
-
-struct InPlaceMergeState<'a, T> {
-    a: Vec<T>,
-    b: &'a [T],
-    // number of result elements
-    rn: usize,
-    // base of the remaining stuff in a
-    ab: usize,
-}
-
-impl<'a, T: Copy + Default> InPlaceMergeState<'a, T> {
-    fn ensure_capacity(&mut self, required: usize) {
-        let rn = self.rn;
-        let ab = self.ab;
-        let capacity = ab - rn;
-        if capacity < required {
-            let missing = required - capacity;
-            let fill = T::default();
-            self.a.splice(ab..ab, std::iter::repeat(fill).take(missing));
-            self.ab += missing;
-        }
-    }
-}
-
-impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
-    fn a_slice(&self) -> &[T] {
-        let a0 = self.ab;
-        let a1 = self.a.len();
-        &self.a[a0..a1]
-    }
-    fn b_slice(&self) -> &[T] {
-        self.b
-    }
-    fn r_slice(&self) -> &[T] {
-        &self.a[0..self.rn]
-    }
-    fn move_a(&mut self, n: usize) {
-        if n > 0 {
-            if self.ab != self.rn {
-                let a0 = self.ab;
-                let a1 = a0 + n;
-                self.a.as_mut_slice().copy_within(a0..a1, self.rn);
-            }
-            self.ab += n;
-            self.rn += n;
-        }
-    }
-    fn skip_a(&mut self, n: usize) {
-        self.ab += n;
-    }
-    fn move_b(&mut self, n: usize) {
-        if n > 0 {
-            self.ensure_capacity(n);
-            let r0 = self.rn;
-            let r1 = self.rn + n;
-            self.a[r0..r1].copy_from_slice(&self.b[0..n]);
-            self.rn += n;
-        }
-    }
-    fn skip_b(&mut self, n: usize) {
-        let b0 = n;
-        let b1 = self.b.len();
-        self.b = &self.b[b0..b1];
-    }
-}
-
 struct SetUnionOp();
 
 impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
@@ -86,6 +11,23 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetUnionOp {
     }
     fn collision(&self, m: &mut BinaryMerge<'a, T>) {
         m.a.copy_from_src(1);
+    }
+}
+
+impl<'a, T: Ord + Copy + Default, I: MergeState<T>> Op2<'a, T, I> for SetUnionOp {
+    fn from_a(&self, m: &mut I, n: usize) {
+        println!("move_a {}", n);
+        m.move_a(n);
+    }
+    fn from_b(&self, m: &mut I, n: usize) {
+        println!("move_b {}", n);
+        m.move_b(n);
+    }
+    fn collision(&self, m: &mut I) {
+        println!("move_a 1");
+        println!("skip_b 1");
+        m.move_a(1);
+        m.skip_b(1);
     }
 }
 
@@ -159,7 +101,7 @@ impl<T: Ord + Default + Copy> ArraySet<T> {
     }
 
     fn union_with(&mut self, that: &ArraySet<T>) {
-        SetUnionOp().merge(&mut self.0, &that.0)
+        InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
     }
 
     fn intersection_with(&mut self, that: &ArraySet<T>) {
@@ -182,10 +124,10 @@ mod tests {
 
     #[test]
     fn union_1() {
-        let mut a: ArraySet<usize> = vec![].into();
-        let b: ArraySet<usize> = vec![0].into();
-        a.xor_with(&b);
-        assert_eq!(a.into_vec(), vec![0]);
+        let mut a: ArraySet<usize> = vec![1].into();
+        let b: ArraySet<usize> = vec![0,2].into();
+        a.union_with(&b);
+        assert_eq!(a.into_vec(), vec![0,1,2]);
     }
 
     quickcheck! {
