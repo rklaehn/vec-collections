@@ -52,61 +52,6 @@ impl<'a, T: Ord + Copy + Default> Op<'a, T> for SetExceptOp {
     }
 }
 
-impl<'a, T: Ord + Copy + Default> BinaryMerge<'a, T> {
-    fn from_a(&mut self, a0: usize, a1: usize) {
-        self.a.copy_from_src(a1 - a0);
-    }
-    fn from_b(&mut self, b0: usize, b1: usize) {
-        self.a.copy_from(&self.b[b0..b1], self.b.len() - b0);
-    }
-    fn collision(&mut self, _ai: usize, _bi: usize) {
-        self.a.copy_from_src(1);
-    }
-    pub fn merge(&mut self) {
-        self.merge0(0, self.a.data.len(), 0, self.b.len());
-    }
-    fn merge0(&mut self, a0: usize, a1: usize, b0: usize, b1: usize) {
-        if a0 == a1 {
-            self.from_b(b0, b1)
-        } else if b0 == b1 {
-            self.from_a(a0, a1)
-        } else {
-            let am: usize = (a0 + a1) / 2;
-            match self.b[b0..b1].binary_search(&self.a.src_at(am)) {
-                Result::Ok(i) => {
-                    let bm = i + b0;
-                    // same elements. bm is the index corresponding to am
-                    // merge everything below a(am) with everything below the found element
-                    self.merge0(a0, am, b0, bm);
-                    // add the elements a(am) and b(bm)
-                    self.collision(am, bm);
-                    // merge everything above a(am) with everything above the found element
-                    self.merge0(am + 1, a1, bm + 1, b1);
-                }
-                Result::Err(i) => {
-                    let bi = i + b0;
-                    // not found. bi is the insertion point
-                    // merge everything below a(am) with everything below the found insertion point
-                    self.merge0(a0, am, b0, bi);
-                    // add a(am)
-                    self.from_a(am, am + 1);
-                    // everything above a(am) with everything above the found insertion point
-                    self.merge0(am + 1, a1, bi, b1);
-                }
-            }
-        }
-    }
-}
-
-pub fn merge<T: Ord + Default + Copy>(a: Vec<T>, b: &[T]) -> Vec<T> {
-    let mut m = BinaryMerge {
-        a: FlipBuffer::new(a),
-        b,
-    };
-    m.merge();
-    m.a.result()
-}
-
 #[derive(Debug, Clone)]
 struct ArraySet<T>(Vec<T>);
 
