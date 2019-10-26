@@ -1,4 +1,4 @@
-use crate::{MergeState, MergeOperation, InPlaceMergeState};
+use crate::{EarlyOut, InPlaceMergeState, MergeOperation, MergeState};
 use std::fmt::Debug;
 
 struct SetUnionOp();
@@ -6,94 +6,100 @@ struct SetIntersectionOp();
 struct SetXorOp();
 struct SetExceptOp();
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetUnionOp {
-    fn from_a(&self, m: &mut I, n: usize) {
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
+    for SetUnionOp
+{
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
-        m.move_a(n);
+        m.move_a(n)
         // println!("{:?}\n", m);
     }
-    fn from_b(&self, m: &mut I, n: usize) {
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_b {}", n);
-        m.move_b(n);
+        m.move_b(n)
         // println!("{:?}\n", m);
     }
-    fn collision(&self, m: &mut I) {
+    fn collision(&self, m: &mut I) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a 1");
         // println!("skip_b 1");
-        m.move_a(1);
-        m.skip_b(1);
+        m.move_a(1)?;
+        m.skip_b(1)
         // println!("{:?}\n", m);
     }
 }
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetIntersectionOp {
-    fn from_a(&self, m: &mut I, n: usize) {
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
+    for SetIntersectionOp
+{
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
-        m.skip_a(n);
+        m.skip_a(n)
         // println!("{:?}\n", m);
     }
-    fn from_b(&self, m: &mut I, n: usize) {
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_b {}", n);
-        m.skip_b(n);
+        m.skip_b(n)
         // println!("{:?}\n", m);
     }
-    fn collision(&self, m: &mut I) {
+    fn collision(&self, m: &mut I) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a 1");
         // println!("skip_b 1");
-        m.move_a(1);
-        m.skip_b(1);
+        m.move_a(1)?;
+        m.skip_b(1)
         // println!("{:?}\n", m);
     }
 }
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetExceptOp {
-    fn from_a(&self, m: &mut I, n: usize) {
+impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
+    for SetExceptOp
+{
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
-        m.move_a(n);
+        m.move_a(n)
         // println!("{:?}\n", m);
     }
-    fn from_b(&self, m: &mut I, n: usize) {
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_b {}", n);
-        m.skip_b(n);
+        m.skip_b(n)
         // println!("{:?}\n", m);
     }
-    fn collision(&self, m: &mut I) {
+    fn collision(&self, m: &mut I) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a 1");
         // println!("skip_b 1");
-        m.skip_a(1);
-        m.skip_b(1);
+        m.skip_a(1)?;
+        m.skip_b(1)
         // println!("{:?}\n", m);
     }
 }
 
 impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetXorOp {
-    fn from_a(&self, m: &mut I, n: usize) {
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
-        m.move_a(n);
+        m.move_a(n)
         // println!("{:?}\n", m);
     }
-    fn from_b(&self, m: &mut I, n: usize) {
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_b {}", n);
-        m.move_b(n);
+        m.move_b(n)
         // println!("{:?}\n", m);
     }
-    fn collision(&self, m: &mut I) {
+    fn collision(&self, m: &mut I) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a 1");
         // println!("skip_b 1");
-        m.skip_a(1);
-        m.skip_b(1);
+        m.skip_a(1)?;
+        m.skip_b(1)
         // println!("{:?}\n", m);
     }
 }
@@ -112,12 +118,12 @@ impl<T> ArraySet<T> {
         &self.0
     }
 }
-impl<T: Ord + Default + Copy+ Debug> From<Vec<T>> for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> From<Vec<T>> for ArraySet<T> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
-impl<T: Ord + Default + Copy+ Debug> std::iter::FromIterator<T> for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> std::iter::FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(iter.into_iter().collect())
     }
