@@ -1,16 +1,19 @@
 use std::cmp::Ord;
 
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
-pub(crate) type EarlyOut = Result<(), ()>;
+pub(crate) type EarlyOut = Option<()>;
 
-/// The state needed by a binary merge operation
-pub(crate) trait MergeState<T> {
+pub(crate) trait MergeStateRead<T> {
     /// The remaining data in a
     fn a_slice(&self) -> &[T];
     /// The remaining data in b
     fn b_slice(&self) -> &[T];
     /// The current result, can be empty/dummy for some merge ops
     fn r_slice(&self) -> &[T];
+}
+
+/// The state needed by a binary merge operation
+pub(crate) trait MergeState<T>: MergeStateRead<T> {
     /// Move n elements from a to r
     fn move_a(&mut self, n: usize) -> EarlyOut;
     /// Skip n elements in a
@@ -61,7 +64,7 @@ pub(crate) trait MergeOperation<'a, T: Ord, M: MergeState<T>> {
                 }
             }
         }
-        Ok(())
+        Some(())
     }
     fn merge(&self, m: &mut M) {
         let a1 = m.a_slice().len();

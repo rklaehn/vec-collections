@@ -1,8 +1,9 @@
-use crate::{MergeOperation, MergeState, EarlyOut};
+use crate::{MergeOperation, MergeState, MergeStateRead, EarlyOut};
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
 
+/// a merge state where the first argument is modified in place
 pub(crate) struct InPlaceMergeState<'a, T> {
     a: Vec<T>,
     b: &'a [T],
@@ -60,7 +61,7 @@ impl<'a, T: Copy + Default> InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T> for InPlaceMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         &self.a[self.ab..]
     }
@@ -70,6 +71,9 @@ impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
     fn r_slice(&self) -> &[T] {
         &self.a[0..self.rn]
     }
+}
+
+impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             if self.ab != self.rn {
@@ -80,11 +84,11 @@ impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
             self.ab += n;
             self.rn += n;
         }
-        Ok(())
+        Some(())
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
         self.ab += n;
-        Ok(())
+        Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
@@ -93,33 +97,34 @@ impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
             self.skip_b(n)?;
             self.rn += n;
         }
-        Ok(())
+        Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         self.b = &self.b[n..];
-        Ok(())
+        Some(())
     }
 }
 
+/// A merge state where we only track if elements have been produced, and abort as soon as the first element is produced
 pub(crate) struct BoolOpMergeState<'a, T> {
     a: &'a [T],
     b: &'a [T],
     r: bool,
 }
 
-impl<'a, T: Copy + Default + Debug> Debug for BoolOpMergeState<'a, T> {
+impl<'a, T: Debug> Debug for BoolOpMergeState<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "a: {:?}, b: {:?} r: {}", self.a_slice(), self.b_slice(), self.r)
     }
 }
 
-impl<'a, T: Copy + Default> BoolOpMergeState<'a, T> {
+impl<'a, T> BoolOpMergeState<'a, T> {
     pub fn new(a: &'a [T], b: &'a [T]) -> Self {
         Self { a, b, r: false }
     }
 }
 
-impl<'a, T: Copy + Default + Ord> BoolOpMergeState<'a, T> {
+impl<'a, T: Ord> BoolOpMergeState<'a, T> {
     pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> bool {
         let mut state = BoolOpMergeState::new(a, b);
         o.merge(&mut state);
@@ -127,7 +132,7 @@ impl<'a, T: Copy + Default + Ord> BoolOpMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Copy + Default> MergeState<T> for BoolOpMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T> for BoolOpMergeState<'a, T> {
 
     fn a_slice(&self) -> &[T] {
         self.a
@@ -139,28 +144,90 @@ impl<'a, T: Copy + Default> MergeState<T> for BoolOpMergeState<'a, T> {
         // dummy
         &self.a[0..0]
     }
+}
+
+impl<'a, T> MergeState<T> for BoolOpMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             self.r = true;
-            Err(())
+            None
         } else {
-            Ok(())
+            Some(())
         }
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
         self.a = &self.a[n..];
-        Ok(())
+        Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             self.r = true;
-            Err(())
+            None
         } else {
-            Ok(())
+            Some(())
         }
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         self.b = &self.b[n..];
-        Ok(())
+        Some(())
+    }
+}
+
+/// A merge state where we build into a new vector
+pub(crate) struct VecMergeState<'a, T> {
+    a: &'a [T],
+    b: &'a [T],
+    r: Vec<T>,
+}
+
+impl<'a, T: Debug> Debug for VecMergeState<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a: {:?}, b: {:?}, r: {:?}", self.a_slice(), self.b_slice(), self.r)
+    }
+}
+
+impl<'a, T> VecMergeState<'a, T> {
+    pub fn new(a: &'a [T], b: &'a [T], r: Vec<T>) -> Self {
+        Self { a, b, r }
+    }
+
+    pub fn into_vec(self) -> Vec<T> {
+        self.r
+    }
+}
+
+impl<'a, T> MergeStateRead<T> for VecMergeState<'a, T> {
+
+    fn a_slice(&self) -> &[T] {
+        self.a
+    }
+    fn b_slice(&self) -> &[T] {
+        self.b
+    }
+    fn r_slice(&self) -> &[T] {
+        &self.r
+    }
+}
+
+impl<'a, T: Copy> MergeState<T> for VecMergeState<'a, T> {
+    fn move_a(&mut self, n: usize) -> EarlyOut {
+        let (c, r) = self.a.split_at(n);
+        self.r.extend_from_slice(c);
+        self.a = r;
+        Some(())
+    }
+    fn skip_a(&mut self, n: usize) -> EarlyOut {
+        self.a = &self.a[n..];
+        Some(())
+    }
+    fn move_b(&mut self, n: usize) -> EarlyOut {
+        let (c, r) = self.b.split_at(n);
+        self.r.extend_from_slice(c);
+        self.b = r;
+        Some(())
+    }
+    fn skip_b(&mut self, n: usize) -> EarlyOut {
+        self.b = &self.b[n..];
+        Some(())
     }
 }

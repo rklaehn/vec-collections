@@ -104,7 +104,7 @@ impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 struct ArraySet<T>(Vec<T>);
 
 impl<T> ArraySet<T> {
@@ -135,6 +135,10 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
         Self(vec)
     }
 
+    fn contains(&self, value: &T) -> bool {
+        self.0.binary_search(value).is_ok()
+    }
+
     fn union_with(&mut self, that: &ArraySet<T>) {
         InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
     }
@@ -161,6 +165,14 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
 
     fn is_superset(&self, that: &ArraySet<T>) -> bool {
         that.is_subset(self)
+    }
+
+    fn insert(&mut self, that: T) {
+        InPlaceMergeState::merge(&mut self.0, &[that], SetUnionOp());
+    }
+
+    fn remove(&mut self, that: &T) {
+        InPlaceMergeState::merge(&mut self.0, &[*that], SetExceptOp());
     }
 }
 
@@ -233,6 +245,13 @@ mod tests {
             a1.xor_with(&b1);
             let expected: Vec<u32> = a.symmetric_difference(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
+            expected == actual
+        }
+
+        fn contains(a: BTreeSet<u32>, b: u32) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let expected = a.contains(&b);
+            let actual = a1.contains(&b);
             expected == actual
         }
     }
