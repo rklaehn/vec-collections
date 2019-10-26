@@ -1,4 +1,4 @@
-use crate::{EarlyOut, InPlaceMergeState, MergeOperation, MergeState};
+use crate::{EarlyOut, InPlaceMergeState, MergeOperation, MergeState, BoolOpMergeState};
 use std::fmt::Debug;
 
 struct SetUnionOp();
@@ -150,6 +150,18 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     fn except(&mut self, that: &ArraySet<T>) {
         InPlaceMergeState::merge(&mut self.0, &that.0, SetExceptOp());
     }
+
+    fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp())
+    }
+
+    fn is_subset(&self, that: &ArraySet<T>) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetExceptOp())
+    }
+
+    fn is_superset(&self, that: &ArraySet<T>) -> bool {
+        that.is_subset(self)
+    }
 }
 
 // cargo asm abc::array_set::union_u32
@@ -187,6 +199,22 @@ mod tests {
             a1.intersection_with(&b1);
             let expected: Vec<u32> = a.intersection(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
+            expected == actual
+        }
+
+        fn is_disjoint(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let mut b1: ArraySet<u32> = b.iter().cloned().collect();
+            let actual = a1.is_disjoint(&b1);
+            let expected = a.is_disjoint(&b);
+            expected == actual
+        }
+
+        fn is_subset(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
+            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
+            let mut b1: ArraySet<u32> = b.iter().cloned().collect();
+            let actual = a1.is_subset(&b1);
+            let expected = a.is_subset(&b);
             expected == actual
         }
 

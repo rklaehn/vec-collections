@@ -119,6 +119,14 @@ impl<'a, T: Copy + Default> BoolOpMergeState<'a, T> {
     }
 }
 
+impl<'a, T: Copy + Default + Ord> BoolOpMergeState<'a, T> {
+    pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> bool {
+        let mut state = BoolOpMergeState::new(a, b);
+        o.merge(&mut state);
+        state.r
+    }
+}
+
 impl<'a, T: Copy + Default> MergeState<T> for BoolOpMergeState<'a, T> {
 
     fn a_slice(&self) -> &[T] {
@@ -132,21 +140,27 @@ impl<'a, T: Copy + Default> MergeState<T> for BoolOpMergeState<'a, T> {
         &self.a[0..0]
     }
     fn move_a(&mut self, n: usize) -> EarlyOut {
-        self.r = true;
-        Err(())
+        if n > 0 {
+            self.r = true;
+            Err(())
+        } else {
+            Ok(())
+        }
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
         self.a = &self.a[n..];
-        self.r = true;
         Ok(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
-        self.r = true;
-        Err(())
+        if n > 0 {
+            self.r = true;
+            Err(())
+        } else {
+            Ok(())
+        }
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         self.b = &self.b[n..];
-        self.r = true;
         Ok(())
     }
 }

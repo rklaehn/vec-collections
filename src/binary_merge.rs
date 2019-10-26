@@ -66,6 +66,6 @@ pub(crate) trait MergeOperation<'a, T: Ord, M: MergeState<T>> {
     fn merge(&self, m: &mut M) {
         let a1 = m.a_slice().len();
         let b1 = m.b_slice().len();
-        self.merge0(m, a1, b1);
+        let _ = self.merge0(m, a1, b1);
     }
 }
