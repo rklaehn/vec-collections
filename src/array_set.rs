@@ -1,4 +1,4 @@
-use crate::binary_merge::{MergeState, MergeOperation, InPlaceMergeState};
+use crate::{MergeState, MergeOperation, InPlaceMergeState};
 use std::fmt::Debug;
 
 struct SetUnionOp();
@@ -144,6 +144,11 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     fn except(&mut self, that: &ArraySet<T>) {
         InPlaceMergeState::merge(&mut self.0, &that.0, SetExceptOp());
     }
+}
+
+// cargo asm abc::array_set::union_u32
+pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
+    InPlaceMergeState::merge(a, b, SetUnionOp())
 }
 
 #[cfg(test)]
