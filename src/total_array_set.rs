@@ -47,7 +47,7 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
             (false, false) => self.elements.is_subset(&that.elements),
             (false, true) => self.elements.is_disjoint(&that.elements),
             (true, false) => false,
-            (true, true) => self.elements.is_subset(&that.elements),
+            (true, true) => self.elements.is_superset(&that.elements),
         }
     }
 
@@ -166,8 +166,33 @@ mod tests {
         })
     }
 
+    fn binary_property(a: &Test, b: &Test, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
+        let mut samples: BTreeSet<i64> = BTreeSet::new();
+        samples.extend(a.elements.as_slice().iter().cloned());
+        samples.extend(b.elements.as_slice().iter().cloned());
+        samples.insert(std::i64::MIN);
+        if r {
+            samples.iter().all(|e| {
+                let expected = op(a.contains(e), b.contains(e));
+                if !expected {
+                    println!("{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}", expected, e, a, b, r);
+                }
+                expected
+            })
+        } else {
+            samples.iter().any(|e| !op(a.contains(e), b.contains(e)))
+        }
+    }
 
     quickcheck! {
+
+        fn is_disjoint_sample(a: Test, b: Test) -> bool {
+            binary_property(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
+        }
+
+        fn is_subset_sample(a: Test, b: Test) -> bool {
+            binary_property(&a, &b, a.is_subset(&b), |a, b| !a | b)
+        }
 
         fn union_sample(a: Test, b: Test) -> bool {
             binary_op(&a, &b, &(a.clone() | b.clone()), |a, b| a | b)

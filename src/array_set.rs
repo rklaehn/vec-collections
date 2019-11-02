@@ -306,7 +306,33 @@ mod tests {
         samples.iter().all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
     }
 
+    fn binary_property(a: &ArraySet<i64>, b: &ArraySet<i64>, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
+        let mut samples: BTreeSet<i64> = BTreeSet::new();
+        samples.extend(a.as_slice().iter().cloned());
+        samples.extend(b.as_slice().iter().cloned());
+        samples.insert(std::i64::MIN);
+        if r {
+            samples.iter().all(|e| {
+                let expected = op(a.contains(e), b.contains(e));
+                if !expected {
+                    println!("{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}", expected, e, a, b, r);
+                }
+                expected
+            })
+        } else {
+            samples.iter().any(|e| !op(a.contains(e), b.contains(e)))
+        }
+    }
+
     quickcheck! {
+
+        fn is_disjoint_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_property(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
+        }
+
+        fn is_subset_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_property(&a, &b, a.is_subset(&b), |a, b| !a | b)
+        }
 
         fn union_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
             binary_op(&a, &b, &(a.clone() | b.clone()), |a, b| a | b)
