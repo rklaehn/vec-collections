@@ -206,6 +206,7 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     fn from_vec(vec: Vec<T>) -> Self {
         let mut vec = vec;
         vec.sort();
+        vec.dedup();
         Self(vec)
     }
 
@@ -279,6 +280,14 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 mod tests {
     use super::*;
     use std::collections::BTreeSet;
+    use quickcheck::*;
+
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> quickcheck::Arbitrary for ArraySet<T> {
+
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            ArraySet::from_vec(Arbitrary::arbitrary(g))
+        }
+    }
 
     #[test]
     fn intersection_1() {
@@ -289,7 +298,31 @@ mod tests {
         assert_eq!(a.into_vec(), vec![]);
     }
 
+    fn binary_op(a: &ArraySet<i64>, b: &ArraySet<i64>, r: &ArraySet<i64>, op: impl Fn(bool, bool) -> bool) -> bool {
+        let mut samples: BTreeSet<i64> = BTreeSet::new();
+        samples.extend(a.as_slice().iter().cloned());
+        samples.extend(b.as_slice().iter().cloned());
+        samples.insert(std::i64::MIN);
+        samples.iter().all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
+    }
+
     quickcheck! {
+
+        fn union_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_op(&a, &b, &(a.clone() | b.clone()), |a, b| a | b)
+        }
+
+        fn intersection_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_op(&a, &b, &(a.clone() & b.clone()), |a, b| a & b)
+        }
+
+        fn xor_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_op(&a, &b, &(a.clone() ^ b.clone()), |a, b| a ^ b)
+        }
+
+        fn diff_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+            binary_op(&a, &b, &(a.clone() - b.clone()), |a, b| a & !b)
+        }
 
         fn union(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
