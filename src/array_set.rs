@@ -158,10 +158,10 @@ impl<T: Ord + Default + Copy + Debug> JoinSemilattice for ArraySet<T> {
 
 // impl<T: Ord + Default + Copy + Debug> Lattice for ArraySet<T> {}
 
-impl<T: Ord + Default + Copy + Debug> BitAnd for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> BitAnd for &ArraySet<T> {
     type Output = ArraySet<T>;
-    fn bitand(self, rhs: Self) -> Self {
-        self.intersection(&rhs)
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersection(rhs)
     }
 }
 
@@ -171,10 +171,10 @@ impl<T: Ord + Default + Copy + Debug> BitAndAssign for ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitOr for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> BitOr for &ArraySet<T> {
     type Output = ArraySet<T>;
-    fn bitor(self, rhs: Self) -> Self {
-        self.union(&rhs)
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
     }
 }
 
@@ -184,10 +184,10 @@ impl<T: Ord + Default + Copy + Debug> BitOrAssign for ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitXor for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> BitXor for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn bitxor(self, rhs: Self) -> Self::Output {
-        self.xor(&rhs)
+        self.xor(rhs)
     }
 }
 
@@ -197,10 +197,10 @@ impl<T: Ord + Default + Copy + Debug> BitXorAssign for ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> Sub for ArraySet<T> {
+impl<T: Ord + Default + Copy + Debug> Sub for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn sub(self, rhs: Self) -> Self::Output {
-        self.difference(&rhs)
+        self.difference(rhs)
     }
 }
 
@@ -368,25 +368,25 @@ mod tests {
         }
 
         fn union_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
-            binary_op(&a, &b, &(a.clone() | b.clone()), |a, b| a | b)
+            binary_op(&a, &b, &(&a | &b), |a, b| a | b)
         }
 
         fn intersection_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
-            binary_op(&a, &b, &(a.clone() & b.clone()), |a, b| a & b)
+            binary_op(&a, &b, &(&a & &b), |a, b| a & b)
         }
 
         fn xor_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
-            binary_op(&a, &b, &(a.clone() ^ b.clone()), |a, b| a ^ b)
+            binary_op(&a, &b, &(&a ^ &b), |a, b| a ^ b)
         }
 
         fn diff_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
-            binary_op(&a, &b, &(a.clone() - b.clone()), |a, b| a & !b)
+            binary_op(&a, &b, &(&a - &b), |a, b| a & !b)
         }
 
         fn union(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
             let b1: ArraySet<u32> = b.iter().cloned().collect();
-            let r2 = a1.clone() | b1.clone();
+            let r2 = &a1 | &b1;
             a1 |= b1;
             let expected: Vec<u32> = a.union(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
@@ -397,7 +397,7 @@ mod tests {
         fn intersection(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
             let b1: ArraySet<u32> = b.iter().cloned().collect();
-            let r2 = a1.clone() & b1.clone();
+            let r2 = &a1 & &b1;
             a1 &= b1;
             let expected: Vec<u32> = a.intersection(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
@@ -408,7 +408,7 @@ mod tests {
         fn xor(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
             let b1: ArraySet<u32> = b.iter().cloned().collect();
-            let r2 = a1.clone() ^ b1.clone();
+            let r2 = &a1 ^ &b1;
             a1 ^= b1;
             let expected: Vec<u32> = a.symmetric_difference(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
@@ -419,7 +419,7 @@ mod tests {
         fn difference(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
             let mut a1: ArraySet<u32> = a.iter().cloned().collect();
             let b1: ArraySet<u32> = b.iter().cloned().collect();
-            let r2 = a1.clone() - b1.clone();
+            let r2 = &a1 - &b1;
             a1 -= b1;
             let expected: Vec<u32> = a.difference(&b).cloned().collect();
             let actual: Vec<u32> = a1.into_vec();
