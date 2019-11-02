@@ -1,4 +1,4 @@
-use crate::{MergeOperation, MergeState, MergeStateRead, EarlyOut};
+use crate::{EarlyOut, MergeOperation, MergeState, MergeStateRead};
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
@@ -13,19 +13,25 @@ pub(crate) struct InPlaceMergeState<'a, T> {
     ab: usize,
 }
 
-impl<'a, T: Copy + Default + Debug> Debug for InPlaceMergeState<'a, T> {
+impl<'a, T: Debug> Debug for InPlaceMergeState<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "a: {:?}, b: {:?}, r: {:?}",
             self.a_slice(),
             self.b_slice(),
-            self.r_slice()
+            self.r_slice(),
         )
     }
 }
 
-impl<'a, T: Copy + Default + Ord> InPlaceMergeState<'a, T> {
+impl<'a, T> InPlaceMergeState<'a, T> {
+    fn r_slice(&self) -> &[T] {
+        &self.a[..self.rn]
+    }
+}
+
+impl<'a, T: Clone + Default + Ord> InPlaceMergeState<'a, T> {
     pub fn merge<O: MergeOperation<'a, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
         let mut t: Vec<T> = Default::default();
         std::mem::swap(a, &mut t);
@@ -35,7 +41,7 @@ impl<'a, T: Copy + Default + Ord> InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Copy + Default> InPlaceMergeState<'a, T> {
+impl<'a, T: Clone + Default> InPlaceMergeState<'a, T> {
     pub fn new(a: Vec<T>, b: &'a [T]) -> Self {
         Self { a, b, rn: 0, ab: 0 }
     }
@@ -68,18 +74,17 @@ impl<'a, T> MergeStateRead<T> for InPlaceMergeState<'a, T> {
     fn b_slice(&self) -> &[T] {
         self.b
     }
-    fn r_slice(&self) -> &[T] {
-        &self.a[0..self.rn]
-    }
 }
 
-impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
+impl<'a, T: Clone + Default> MergeState<T> for InPlaceMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             if self.ab != self.rn {
-                let a0 = self.ab;
-                let a1 = a0 + n;
-                self.a.as_mut_slice().copy_within(a0..a1, self.rn);
+                let s = self.ab;
+                let t = self.rn;
+                for i in 0..n {
+                    self.a[t + i] = self.a[s + i].clone();
+                }
             }
             self.ab += n;
             self.rn += n;
@@ -93,7 +98,10 @@ impl<'a, T: Copy + Default> MergeState<T> for InPlaceMergeState<'a, T> {
     fn move_b(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             self.ensure_capacity(n);
-            self.a[self.rn..self.rn + n].copy_from_slice(&self.b[..n]);
+            let t = self.rn;
+            for i in 0..n {
+                self.a[t + i] = self.b[i].clone();
+            }
             self.skip_b(n)?;
             self.rn += n;
         }
@@ -114,7 +122,13 @@ pub(crate) struct BoolOpMergeState<'a, T> {
 
 impl<'a, T: Debug> Debug for BoolOpMergeState<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "a: {:?}, b: {:?} r: {}", self.a_slice(), self.b_slice(), self.r)
+        write!(
+            f,
+            "a: {:?}, b: {:?} r: {}",
+            self.a_slice(),
+            self.b_slice(),
+            self.r
+        )
     }
 }
 
@@ -133,16 +147,11 @@ impl<'a, T: Ord> BoolOpMergeState<'a, T> {
 }
 
 impl<'a, T> MergeStateRead<T> for BoolOpMergeState<'a, T> {
-
     fn a_slice(&self) -> &[T] {
         self.a
     }
     fn b_slice(&self) -> &[T] {
         self.b
-    }
-    fn r_slice(&self) -> &[T] {
-        // dummy
-        &self.a[0..0]
     }
 }
 
@@ -182,11 +191,17 @@ pub(crate) struct VecMergeState<'a, T> {
 
 impl<'a, T: Debug> Debug for VecMergeState<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "a: {:?}, b: {:?}, r: {:?}", self.a_slice(), self.b_slice(), self.r)
+        write!(
+            f,
+            "a: {:?}, b: {:?}, r: {:?}",
+            self.a_slice(),
+            self.b_slice(),
+            self.r
+        )
     }
 }
 
-impl<'a, T> VecMergeState<'a, T> {
+impl<'a, T: Ord + Default + Copy> VecMergeState<'a, T> {
     pub fn new(a: &'a [T], b: &'a [T], r: Vec<T>) -> Self {
         Self { a, b, r }
     }
@@ -194,18 +209,21 @@ impl<'a, T> VecMergeState<'a, T> {
     pub fn into_vec(self) -> Vec<T> {
         self.r
     }
+
+    pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> Vec<T> {
+        let mut t: Vec<T> = Vec::new();
+        let mut state = VecMergeState::new(a, b, t);
+        o.merge(&mut state);
+        state.into_vec()
+    }
 }
 
 impl<'a, T> MergeStateRead<T> for VecMergeState<'a, T> {
-
     fn a_slice(&self) -> &[T] {
         self.a
     }
     fn b_slice(&self) -> &[T] {
         self.b
-    }
-    fn r_slice(&self) -> &[T] {
-        &self.r
     }
 }
 

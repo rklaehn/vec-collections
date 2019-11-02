@@ -8,8 +8,6 @@ pub(crate) trait MergeStateRead<T> {
     fn a_slice(&self) -> &[T];
     /// The remaining data in b
     fn b_slice(&self) -> &[T];
-    /// The current result, can be empty/dummy for some merge ops
-    fn r_slice(&self) -> &[T];
 }
 
 /// The state needed by a binary merge operation
@@ -27,9 +25,9 @@ pub(crate) trait MergeState<T>: MergeStateRead<T> {
 ///
 /// A minimum comparison merge operation. Not 100% sure if this is actually minimum comparison,
 /// since proving this is beyond my ability. But it is optimal for many common cases.
-/// 
+///
 pub(crate) trait MergeOperation<'a, T: Ord, M: MergeState<T>> {
-    // we have found n elements fro 
+    // we have found n elements fro
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;
