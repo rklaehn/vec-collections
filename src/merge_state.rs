@@ -32,7 +32,7 @@ impl<'a, T> InPlaceMergeState<'a, T> {
 }
 
 impl<'a, T: Clone + Default + Ord> InPlaceMergeState<'a, T> {
-    pub fn merge<O: MergeOperation<'a, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
+    pub fn merge<O: MergeOperation<'a, T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
         let mut t: Vec<T> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = InPlaceMergeState::new(t, b);
@@ -67,7 +67,7 @@ impl<'a, T: Clone + Default> InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeStateRead<T> for InPlaceMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for InPlaceMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         &self.a[self.ab..]
     }
@@ -76,7 +76,7 @@ impl<'a, T> MergeStateRead<T> for InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Clone + Default> MergeState<T> for InPlaceMergeState<'a, T> {
+impl<'a, T: Clone + Default> MergeState<T, T> for InPlaceMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             if self.ab != self.rn {
@@ -138,15 +138,15 @@ impl<'a, T> BoolOpMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Ord> BoolOpMergeState<'a, T> {
-    pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> bool {
+impl<'a, T> BoolOpMergeState<'a, T> {
+    pub fn merge<O: MergeOperation<'a, T, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> bool {
         let mut state = BoolOpMergeState::new(a, b);
         o.merge(&mut state);
         state.r
     }
 }
 
-impl<'a, T> MergeStateRead<T> for BoolOpMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for BoolOpMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         self.a
     }
@@ -155,7 +155,7 @@ impl<'a, T> MergeStateRead<T> for BoolOpMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeState<T> for BoolOpMergeState<'a, T> {
+impl<'a, T> MergeState<T, T> for BoolOpMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             self.r = true;
@@ -210,7 +210,7 @@ impl<'a, T: Ord + Default + Copy> VecMergeState<'a, T> {
         self.r
     }
 
-    pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> Vec<T> {
+    pub fn merge<O: MergeOperation<'a, T, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> Vec<T> {
         let t: Vec<T> = Vec::new();
         let mut state = VecMergeState::new(a, b, t);
         o.merge(&mut state);
@@ -218,7 +218,7 @@ impl<'a, T: Ord + Default + Copy> VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeStateRead<T> for VecMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for VecMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         self.a
     }
@@ -227,7 +227,7 @@ impl<'a, T> MergeStateRead<T> for VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Copy> MergeState<T> for VecMergeState<'a, T> {
+impl<'a, T: Copy> MergeState<T, T> for VecMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         let (c, r) = self.a.split_at(n);
         self.r.extend_from_slice(c);

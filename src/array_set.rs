@@ -13,7 +13,10 @@ struct SetDiffOpt();
 #[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
 
-impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetUnionOp {
+impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetUnionOp {
+    fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
+        a.cmp(b)
+    }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -36,7 +39,10 @@ impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetUnionOp {
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetIntersectionOp {
+impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetIntersectionOp {
+    fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
+        a.cmp(b)
+    }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -59,7 +65,10 @@ impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetIntersectionO
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetDiffOpt {
+impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetDiffOpt {
+    fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
+        a.cmp(b)
+    }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -82,7 +91,10 @@ impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetDiffOpt {
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetXorOp {
+impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetXorOp {
+    fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
+        a.cmp(b)
+    }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);

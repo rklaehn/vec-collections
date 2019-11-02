@@ -1,17 +1,17 @@
-use std::cmp::Ord;
+use std::cmp::{Ord, Ordering};
 
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
 pub(crate) type EarlyOut = Option<()>;
 
-pub(crate) trait MergeStateRead<T> {
+pub(crate) trait MergeStateRead<A, B> {
     /// The remaining data in a
-    fn a_slice(&self) -> &[T];
+    fn a_slice(&self) -> &[A];
     /// The remaining data in b
-    fn b_slice(&self) -> &[T];
+    fn b_slice(&self) -> &[B];
 }
 
 /// The state needed by a binary merge operation
-pub(crate) trait MergeState<T>: MergeStateRead<T> {
+pub(crate) trait MergeState<A, B>: MergeStateRead<A, B> {
     /// Move n elements from a to r
     fn move_a(&mut self, n: usize) -> EarlyOut;
     /// Skip n elements in a
@@ -26,11 +26,12 @@ pub(crate) trait MergeState<T>: MergeStateRead<T> {
 /// A minimum comparison merge operation. Not 100% sure if this is actually minimum comparison,
 /// since proving this is beyond my ability. But it is optimal for many common cases.
 ///
-pub(crate) trait MergeOperation<'a, T: Ord, M: MergeState<T>> {
+pub(crate) trait MergeOperation<'a, A, B, M: MergeState<A, B>> {
     // we have found n elements fro
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;
+    fn cmp(&self, a: &A, b: &B) -> Ordering;
     /// merge `an` elements from a and `bn` elements from b into the result
     fn merge0(&self, m: &mut M, an: usize, bn: usize) -> EarlyOut {
         if an == 0 {
@@ -41,7 +42,8 @@ pub(crate) trait MergeOperation<'a, T: Ord, M: MergeState<T>> {
             // neither a nor b are 0
             let am: usize = an / 2;
             // pick the center element of a and find the corresponding one in b using binary search
-            match m.b_slice()[0..bn].binary_search(&m.a_slice()[am]) {
+            let a = &m.a_slice()[am];
+            match m.b_slice()[0..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
                 Result::Ok(bm) => {
                     // same elements. bm is the index corresponding to am
                     // merge everything below am with everything below the found element bm
