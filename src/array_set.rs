@@ -3,6 +3,7 @@ use crate::{
 };
 use std::fmt::Debug;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
+use alga::general::{Lattice, MeetSemilattice, JoinSemilattice};
 
 struct SetUnionOp();
 struct SetIntersectionOp();
@@ -119,6 +120,18 @@ impl<T> ArraySet<T> {
     }
     pub fn as_slice(&self) -> &[T] {
         &self.0
+    }
+}
+
+impl<T: Ord + Default + Copy + Debug> MeetSemilattice for ArraySet<T> {
+    fn meet(&self, other: &Self) -> Self {
+        self.intersection(other)
+    }
+}
+
+impl<T: Ord + Default + Copy + Debug> JoinSemilattice for ArraySet<T> {
+    fn join(&self, other: &Self) -> Self {
+        self.union(other)
     }
 }
 

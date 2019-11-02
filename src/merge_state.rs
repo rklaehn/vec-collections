@@ -211,7 +211,7 @@ impl<'a, T: Ord + Default + Copy> VecMergeState<'a, T> {
     }
 
     pub fn merge<O: MergeOperation<'a, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> Vec<T> {
-        let mut t: Vec<T> = Vec::new();
+        let t: Vec<T> = Vec::new();
         let mut state = VecMergeState::new(a, b, t);
         o.merge(&mut state);
         state.into_vec()
