@@ -1,9 +1,9 @@
 use crate::{
     BoolOpMergeState, EarlyOut, InPlaceMergeState, MergeOperation, MergeState, VecMergeState,
 };
+use alga::general::{JoinSemilattice, MeetSemilattice};
 use std::fmt::Debug;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
-use alga::general::{Lattice, MeetSemilattice, JoinSemilattice};
 
 struct SetUnionOp();
 struct SetIntersectionOp();
@@ -121,6 +121,9 @@ impl<T> ArraySet<T> {
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 impl<T: Ord + Default + Copy + Debug> MeetSemilattice for ArraySet<T> {
@@ -134,6 +137,8 @@ impl<T: Ord + Default + Copy + Debug> JoinSemilattice for ArraySet<T> {
         self.union(other)
     }
 }
+
+// impl<T: Ord + Default + Copy + Debug> Lattice for ArraySet<T> {}
 
 impl<T: Ord + Default + Copy + Debug> BitAnd for ArraySet<T> {
     type Output = ArraySet<T>;
@@ -260,7 +265,7 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
         InPlaceMergeState::merge(&mut self.0, &[that], SetUnionOp());
     }
 
-    fn remove(&mut self, that: &T) {
+    pub fn remove(&mut self, that: &T) {
         InPlaceMergeState::merge(&mut self.0, &[*that], SetDiffOpt());
     }
 }
