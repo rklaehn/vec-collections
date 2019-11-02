@@ -10,12 +10,10 @@ struct SetIntersectionOp();
 struct SetXorOp();
 struct SetDiffOpt();
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
-    for SetUnionOp
-{
+impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetUnionOp {
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -38,9 +36,7 @@ impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T
     }
 }
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
-    for SetIntersectionOp
-{
+impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetIntersectionOp {
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -63,9 +59,7 @@ impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T
     }
 }
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I>
-    for SetDiffOpt
-{
+impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetDiffOpt {
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -88,7 +82,7 @@ impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T
     }
 }
 
-impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T, I> for SetXorOp {
+impl<'a, T: Ord, I: MergeState<T>> MergeOperation<'a, T, I> for SetXorOp {
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         // println!("{:?}", m);
         // println!("move_a {}", n);
@@ -111,6 +105,18 @@ impl<'a, T: Ord + Copy + Default, I: MergeState<T> + Debug> MergeOperation<'a, T
     }
 }
 
+impl<T: Debug> Debug for ArraySet<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text = self
+            .0
+            .iter()
+            .map(|x| format!("{:?}", x))
+            .collect::<Vec<String>>()
+            .join(", ");
+        write!(f, "{{{}}}", text)
+    }
+}
+
 impl<T> ArraySet<T> {
     pub fn single(value: T) -> Self {
         Self(vec![value])
@@ -121,8 +127,20 @@ impl<T> ArraySet<T> {
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        &mut self.0
+    }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+    pub fn empty() -> Self {
+        Self(Vec::new())
+    }
+}
+
+impl<T> Default for ArraySet<T> {
+    fn default() -> Self {
+        ArraySet::empty()
     }
 }
 
@@ -202,20 +220,33 @@ impl<T: Ord + Default + Copy + Debug> std::iter::FromIterator<T> for ArraySet<T>
         Self::from_vec(iter.into_iter().collect())
     }
 }
+impl<T> ArraySet<T> {
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit()
+    }
+}
+impl<T: Ord> ArraySet<T> {
+    pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp())
+    }
+
+    pub fn is_subset(&self, that: &ArraySet<T>) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt())
+    }
+
+    pub fn is_superset(&self, that: &ArraySet<T>) -> bool {
+        that.is_subset(self)
+    }
+    pub fn contains(&self, value: &T) -> bool {
+        self.0.binary_search(value).is_ok()
+    }
+}
 impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     fn from_vec(vec: Vec<T>) -> Self {
         let mut vec = vec;
         vec.sort();
         vec.dedup();
         Self(vec)
-    }
-
-    pub fn shrink_to_fit(&mut self) {
-        self.0.shrink_to_fit()
-    }
-
-    pub fn contains(&self, value: &T) -> bool {
-        self.0.binary_search(value).is_ok()
     }
 
     pub fn union_with(&mut self, that: &ArraySet<T>) {
@@ -250,18 +281,6 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
         ArraySet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt()))
     }
 
-    pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp())
-    }
-
-    pub fn is_subset(&self, that: &ArraySet<T>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt())
-    }
-
-    pub fn is_superset(&self, that: &ArraySet<T>) -> bool {
-        that.is_subset(self)
-    }
-
     pub fn insert(&mut self, that: T) {
         InPlaceMergeState::merge(&mut self.0, &[that], SetUnionOp());
     }
@@ -279,11 +298,10 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeSet;
     use quickcheck::*;
+    use std::collections::BTreeSet;
 
     impl<T: Arbitrary + Ord + Copy + Default + Debug> quickcheck::Arbitrary for ArraySet<T> {
-
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             ArraySet::from_vec(Arbitrary::arbitrary(g))
         }
@@ -298,15 +316,27 @@ mod tests {
         assert_eq!(a.into_vec(), vec![]);
     }
 
-    fn binary_op(a: &ArraySet<i64>, b: &ArraySet<i64>, r: &ArraySet<i64>, op: impl Fn(bool, bool) -> bool) -> bool {
+    fn binary_op(
+        a: &ArraySet<i64>,
+        b: &ArraySet<i64>,
+        r: &ArraySet<i64>,
+        op: impl Fn(bool, bool) -> bool,
+    ) -> bool {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
         samples.insert(std::i64::MIN);
-        samples.iter().all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
+        samples
+            .iter()
+            .all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
     }
 
-    fn binary_property(a: &ArraySet<i64>, b: &ArraySet<i64>, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
+    fn binary_property(
+        a: &ArraySet<i64>,
+        b: &ArraySet<i64>,
+        r: bool,
+        op: impl Fn(bool, bool) -> bool,
+    ) -> bool {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
@@ -315,7 +345,10 @@ mod tests {
             samples.iter().all(|e| {
                 let expected = op(a.contains(e), b.contains(e));
                 if !expected {
-                    println!("{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}", expected, e, a, b, r);
+                    println!(
+                        "{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}",
+                        expected, e, a, b, r
+                    );
                 }
                 expected
             })

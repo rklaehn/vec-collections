@@ -9,7 +9,7 @@ use std::fmt;
 use std::fmt::Display;
 use std::ops::{Add, AddAssign};
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub struct ArraySeq<T>(Vec<T>);
 
 impl<T: Eq> ArraySeq<T> {

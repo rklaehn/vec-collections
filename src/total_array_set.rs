@@ -1,6 +1,6 @@
 use crate::ArraySet;
 use std::fmt::Debug;
-use std::ops::{BitAnd, BitOr, BitXor, Sub};
+use std::ops::{BitAnd, BitOr, BitXor, Neg, Sub};
 
 #[derive(Clone, Debug)]
 pub struct TotalArraySet<T> {
@@ -9,27 +9,34 @@ pub struct TotalArraySet<T> {
 }
 
 impl<T> TotalArraySet<T> {
-
     fn new(elements: ArraySet<T>, negated: bool) -> Self {
-        Self {
-            elements, negated,
-        }
+        Self { elements, negated }
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         !self.negated && self.elements.is_empty()
     }
 
     fn negate(self) -> Self {
-        TotalArraySet {
-            elements: self.elements,
-            negated: !self.negated,
-        }
+        Self::new(self.elements, !self.negated)
+    }
+
+    pub fn empty() -> Self {
+        Self::new(ArraySet::empty(), false)
+    }
+
+    pub fn all() -> Self {
+        Self::new(ArraySet::empty(), true)
+    }
+}
+
+impl<T> From<ArraySet<T>> for TotalArraySet<T> {
+    fn from(value: ArraySet<T>) -> Self {
+        Self::new(value, false)
     }
 }
 
 impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
-
     pub fn shrink_to_fit(&mut self) {
         self.elements.shrink_to_fit()
     }
@@ -61,10 +68,7 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
     }
 
     pub fn xor(self, that: Self) -> Self {
-        Self::new(
-            self.elements ^ that.elements,
-            self.negated ^ that.negated,
-        )
+        Self::new(self.elements ^ that.elements, self.negated ^ that.negated)
     }
 
     pub fn union(self, that: Self) -> Self {
@@ -107,7 +111,6 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
     }
 }
 
-
 impl<T: Ord + Default + Copy + Debug> BitAnd for TotalArraySet<T> {
     type Output = TotalArraySet<T>;
     fn bitand(self, rhs: Self) -> Self {
@@ -136,16 +139,22 @@ impl<T: Ord + Default + Copy + Debug> Sub for TotalArraySet<T> {
     }
 }
 
+impl<T: Ord + Default + Copy + Debug> Neg for TotalArraySet<T> {
+    type Output = TotalArraySet<T>;
+    fn neg(self) -> Self::Output {
+        self.negate()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeSet;
     use quickcheck::*;
+    use std::collections::BTreeSet;
 
     type Test = TotalArraySet<i64>;
 
     impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalArraySet<T> {
-
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             TotalArraySet::new(Arbitrary::arbitrary(g), Arbitrary::arbitrary(g))
         }
@@ -160,7 +169,10 @@ mod tests {
             let expected = op(a.contains(e), b.contains(e));
             let actual = r.contains(e);
             if expected != actual {
-                println!("{:?}!={:?} at {:?} {:?} {:?} {:?}", expected, actual, e, a, b, r);
+                println!(
+                    "{:?}!={:?} at {:?} {:?} {:?} {:?}",
+                    expected, actual, e, a, b, r
+                );
             }
             expected == actual
         })
@@ -175,7 +187,10 @@ mod tests {
             samples.iter().all(|e| {
                 let expected = op(a.contains(e), b.contains(e));
                 if !expected {
-                    println!("{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}", expected, e, a, b, r);
+                    println!(
+                        "{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}",
+                        expected, e, a, b, r
+                    );
                 }
                 expected
             })
