@@ -201,7 +201,7 @@ impl<'a, T: Debug> Debug for VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Ord + Default + Copy> VecMergeState<'a, T> {
+impl<'a, T: Clone> VecMergeState<'a, T> {
     pub fn new(a: &'a [T], b: &'a [T], r: Vec<T>) -> Self {
         Self { a, b, r }
     }
@@ -227,7 +227,7 @@ impl<'a, T> MergeStateRead<T, T> for VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Copy> MergeState<T, T> for VecMergeState<'a, T> {
+impl<'a, T: Clone> MergeState<T, T> for VecMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         let (c, r) = self.a.split_at(n);
         self.r.extend_from_slice(c);
