@@ -154,7 +154,7 @@ mod tests {
     use super::*;
     use testdrop::{Item, TestDrop};
 
-    fn test_drop_invariant<'a, F>(td: &'a TestDrop, n: usize, f: F)
+    fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
         F: Fn(Vec<Item<'a>>, Vec<Item<'a>>) -> FlipBuffer<Item<'a>>,
     {
@@ -179,15 +179,15 @@ mod tests {
     }
 
     #[test]
-    fn test_drop_source() {
-        test_drop_invariant(&TestDrop::new(), 10, |a, _| a.into())
+    fn drop_just_source() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| a.into())
     }
 
     #[test]
-    fn test_drop_target() {
-        test_drop_invariant(&TestDrop::new(), 10, |a, b| {
+    fn target_push_gap() {
+        everything_dropped(&TestDrop::new(), 10, |a, b| {
             let mut res: FlipBuffer<Item> = a.into();
-            for x in b {
+            for x in b.into_iter() {
                 res.target_push(x, 100);
             }
             res
@@ -195,10 +195,48 @@ mod tests {
     }
 
     #[test]
-    fn test_move_some() {
-        test_drop_invariant(&TestDrop::new(), 10, |a, _| {
+    fn source_move_some() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
             res.source_move(3);
+            res
+        })
+    }
+
+    #[test]
+    fn source_move_all() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| {
+            let mut res: FlipBuffer<Item> = a.into();
+            res.source_move(10);
+            res
+        })
+    }
+
+    #[test]
+    fn source_drop_some() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| {
+            let mut res: FlipBuffer<Item> = a.into();
+            res.source_drop(3);
+            res
+        })
+    }
+
+    #[test]
+    fn source_drop_all() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| {
+            let mut res: FlipBuffer<Item> = a.into();
+            res.source_drop(10);
+            res
+        })
+    }
+
+    #[test]
+    fn source_pop_some() {
+        everything_dropped(&TestDrop::new(), 10, |a, _| {
+            let mut res: FlipBuffer<Item> = a.into();
+            res.source_pop_front();
+            res.source_pop_front();
+            res.source_pop_front();
             res
         })
     }
