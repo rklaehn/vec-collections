@@ -1,3 +1,4 @@
+use crate::binary_merge::MergeOperation1;
 use crate::binary_merge::MergeStateRead;
 use crate::{EarlyOut, MergeOperation, MergeState};
 use std::borrow::Borrow;
@@ -81,19 +82,10 @@ enum OuterJoinArg<A, B> {
     Both(A, B),
 }
 
-struct MapOuterJoinOp<A, B, R, F: Fn(OuterJoinArg<A, B>) -> R> {
-    f: F,
-    x: std::marker::PhantomData<(A, B, R)>,
-}
-
-impl<A, B, R, F: Fn(OuterJoinArg<A, B>) -> R> MapOuterJoinOp<A, B, R, F> {
-    fn new(f: F) -> Self {
-        Self {
-            f,
-            x: std::marker::PhantomData,
-        }
-    }
-}
+struct OuterJoinOp<F>(F);
+struct LeftJoinOp<F>(F);
+struct RightJoinOp<F>(F);
+struct InnerJoinOp<F>(F);
 
 struct VecMergeState<'a, K, A, B, R> {
     a: SliceIterator<'a, (K, A)>,
@@ -124,7 +116,7 @@ impl<'a, K, A, B, R> VecMergeState<'a, K, A, B, R> {
         }
     }
 
-    pub fn merge<O: MergeOperation<'a, (K, A), (K, B), Self>>(
+    pub fn merge<O: MergeOperation1<'a, (K, A), (K, B), Self>>(
         a: &'a [(K, A)],
         b: &'a [(K, B)],
         o: O,
@@ -146,41 +138,117 @@ impl<'a, K, A, B, R> MergeStateRead<(K, A), (K, B)> for VecMergeState<'a, K, A, 
 }
 
 impl<'a, K: Ord + Clone, A: Clone, B: Clone, R, F: Fn(OuterJoinArg<A, B>) -> R>
-    MergeOperation<'a, (K, A), (K, B), VecMergeState<'a, K, A, B, R>>
-    for MapOuterJoinOp<A, B, R, F>
+    MergeOperation1<'a, (K, A), (K, B), VecMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
                 let arg: OuterJoinArg<A, B> = OuterJoinArg::Left(a.clone());
-                let res = (self.f)(arg);
+                let res = (self.0)(arg);
                 m.r.push((k.clone(), res));
             }
         }
-        Some(())
     }
-    fn from_b(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 let arg: OuterJoinArg<A, B> = OuterJoinArg::Right(b.clone());
-                let res = (self.f)(arg);
+                let res = (self.0)(arg);
                 m.r.push((k.clone(), res));
             }
         }
-        Some(())
     }
-    fn collision(&self, m: &mut VecMergeState<'a, K, A, B, R>) -> EarlyOut {
+    fn collision(&self, m: &mut VecMergeState<'a, K, A, B, R>) {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 let arg: OuterJoinArg<A, B> = OuterJoinArg::Both(a.clone(), b.clone());
-                let res = (self.f)(arg);
+                let res = (self.0)(arg);
                 m.r.push((k.clone(), res));
             }
         }
-        Some(())
+    }
+}
+
+impl<'a, K: Ord + Clone, A: Clone, B: Clone, R, F: Fn(LeftJoinArg<A, B>) -> R>
+    MergeOperation1<'a, (K, A), (K, B), VecMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
+{
+    fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
+        a.0.cmp(&b.0)
+    }
+    fn from_a(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        for _ in 0..n {
+            if let Some((k, a)) = m.a.next() {
+                let arg = LeftJoinArg::Left(a.clone());
+                let res = (self.0)(arg);
+                m.r.push((k.clone(), res));
+            }
+        }
+    }
+    fn from_b(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        m.b.drop(n);
+    }
+    fn collision(&self, m: &mut VecMergeState<'a, K, A, B, R>) {
+        if let Some((k, a)) = m.a.next() {
+            if let Some((_, b)) = m.b.next() {
+                let arg = LeftJoinArg::Both(a.clone(), b.clone());
+                let res = (self.0)(arg);
+                m.r.push((k.clone(), res));
+            }
+        }
+    }
+}
+
+impl<'a, K: Ord + Clone, A: Clone, B: Clone, R, F: Fn(RightJoinArg<A, B>) -> R>
+    MergeOperation1<'a, (K, A), (K, B), VecMergeState<'a, K, A, B, R>> for RightJoinOp<F>
+{
+    fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
+        a.0.cmp(&b.0)
+    }
+    fn from_a(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        m.a.drop(n);
+    }
+    fn from_b(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        for _ in 0..n {
+            if let Some((k, b)) = m.b.next() {
+                let arg = RightJoinArg::Right(b.clone());
+                let res = (self.0)(arg);
+                m.r.push((k.clone(), res));
+            }
+        }
+    }
+    fn collision(&self, m: &mut VecMergeState<'a, K, A, B, R>) {
+        if let Some((k, a)) = m.a.next() {
+            if let Some((_, b)) = m.b.next() {
+                let arg = RightJoinArg::Both(a.clone(), b.clone());
+                let res = (self.0)(arg);
+                m.r.push((k.clone(), res));
+            }
+        }
+    }
+}
+
+impl<'a, K: Ord + Clone, A: Clone, B: Clone, R, F: Fn(A, B) -> R>
+    MergeOperation1<'a, (K, A), (K, B), VecMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
+{
+    fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
+        a.0.cmp(&b.0)
+    }
+    fn from_a(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        m.a.drop(n);
+    }
+    fn from_b(&self, m: &mut VecMergeState<'a, K, A, B, R>, n: usize) {
+        m.b.drop(n);
+    }
+    fn collision(&self, m: &mut VecMergeState<'a, K, A, B, R>) {
+        if let Some((k, a)) = m.a.next() {
+            if let Some((_, b)) = m.b.next() {
+                let res = (self.0)(a.clone(), b.clone());
+                m.r.push((k.clone(), res));
+            }
+        }
     }
 }
 
@@ -231,7 +299,43 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
         ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
-            MapOuterJoinOp::new(f),
+            OuterJoinOp(f),
+        ))
+    }
+
+    pub fn left_join<W: Clone, R, F: Fn(LeftJoinArg<V, W>) -> R>(
+        &self,
+        that: &ArrayMap<K, W>,
+        f: F,
+    ) -> ArrayMap<K, R> {
+        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+            self.0.as_slice(),
+            that.0.as_slice(),
+            LeftJoinOp(f),
+        ))
+    }
+
+    pub fn right_join<W: Clone, R, F: Fn(RightJoinArg<V, W>) -> R>(
+        &self,
+        that: &ArrayMap<K, W>,
+        f: F,
+    ) -> ArrayMap<K, R> {
+        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+            self.0.as_slice(),
+            that.0.as_slice(),
+            RightJoinOp(f),
+        ))
+    }
+
+    pub fn inner_join<W: Clone, R, F: Fn(V, W) -> R>(
+        &self,
+        that: &ArrayMap<K, W>,
+        f: F,
+    ) -> ArrayMap<K, R> {
+        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+            self.0.as_slice(),
+            that.0.as_slice(),
+            InnerJoinOp(f),
         ))
     }
 
@@ -264,7 +368,51 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
 mod tests {
     use super::*;
     use maplit::btreemap;
+    use std::collections::BTreeMap;
     use OuterJoinArg::*;
+
+    type Test = ArrayMap<i32, i32>;
+    type Ref = BTreeMap<i32, i32>;
+
+    fn outer_join_reference(a: &Ref, b: &Ref) -> Ref {
+        let mut r = a.clone();
+        for (k, v) in b.clone().into_iter() {
+            r.insert(k, v);
+        }
+        r
+    }
+
+    fn inner_join_reference(a: &Ref, b: &Ref) -> Ref {
+        let mut r: Ref = BTreeMap::new();
+        for (k, v) in a.clone().into_iter() {
+            if b.contains_key(&k) {
+                r.insert(k, v);
+            }
+        }
+        r
+    }
+
+    quickcheck! {
+        fn outer_join(a: Ref, b: Ref) -> bool {
+            let expected: Test = outer_join_reference(&a, &b).into();
+            let a: Test = a.into();
+            let b: Test = b.into();
+            let actual = a.outer_join(&b, |arg| match arg {
+                Left(a) => a,
+                Right(b) => b,
+                Both(_, b) => b,
+            });
+            expected == actual
+        }
+
+        fn inner_join(a: Ref, b: Ref) -> bool {
+            let expected: Test = inner_join_reference(&a, &b).into();
+            let a: Test = a.into();
+            let b: Test = b.into();
+            let actual = a.inner_join(&b, |a,b| a);
+            expected == actual
+        }
+    }
 
     #[test]
     fn smoke_test() {
@@ -276,13 +424,10 @@ mod tests {
             1 => 2,
             3 => 4,
         };
-        let mut r = a.clone();
-        for (k, v) in b.clone().into_iter() {
-            r.insert(k, v);
-        }
-        let a: ArrayMap<i32, i32> = a.into();
-        let b: ArrayMap<i32, i32> = b.into();
-        let expected: ArrayMap<i32, i32> = r.into();
+        let r = outer_join_reference(&a, &b);
+        let a: Test = a.into();
+        let b: Test = b.into();
+        let expected: Test = r.into();
         let actual = a.outer_join(&b, |arg| match arg {
             Left(a) => a,
             Right(b) => b,
