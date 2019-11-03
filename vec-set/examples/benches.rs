@@ -1,7 +1,7 @@
-extern crate abc;
+extern crate vec_set;
 
-use abc::ArraySet;
 use std::collections::{BTreeSet, HashSet};
+use vec_set::ArraySet;
 
 type Element = i32;
 

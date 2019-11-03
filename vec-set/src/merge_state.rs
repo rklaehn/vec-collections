@@ -1,11 +1,11 @@
 use crate::{EarlyOut, MergeOperation, MergeState, MergeStateRead};
+use flip_buffer::FlipBuffer;
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
-use crate::flip_buffer::UnsafeFlipBuffer;
 
 pub(crate) struct UnsafeInPlaceMergeState<T> {
-    a: UnsafeFlipBuffer<T>,
+    a: FlipBuffer<T>,
     b: std::vec::IntoIter<T>,
 }
 
@@ -42,11 +42,11 @@ impl<'a, T> MergeStateRead<T, T> for UnsafeInPlaceMergeState<T> {
 
 impl<'a, T> MergeState<T, T> for UnsafeInPlaceMergeState<T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
-        self.a.move_front(n);
+        self.a.source_move(n);
         Some(())
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
-        self.a.drop_front(n);
+        self.a.source_drop(n);
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {

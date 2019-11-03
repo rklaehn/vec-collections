@@ -1,5 +1,6 @@
 use crate::{
-    BoolOpMergeState, EarlyOut, InPlaceMergeState, UnsafeInPlaceMergeState, MergeOperation, MergeState, VecMergeState,
+    BoolOpMergeState, EarlyOut, InPlaceMergeState, MergeOperation, MergeState,
+    UnsafeInPlaceMergeState, VecMergeState,
 };
 use alga::general::{JoinSemilattice, MeetSemilattice};
 use std::fmt::Debug;
@@ -79,13 +80,7 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetXorOp {
 
 impl<T: Debug> Debug for ArraySet<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text = self
-            .0
-            .iter()
-            .map(|x| format!("{:?}", x))
-            .collect::<Vec<String>>()
-            .join(", ");
-        write!(f, "{{{}}}", text)
+        f.debug_set().entries(self.0.iter()).finish()
     }
 }
 

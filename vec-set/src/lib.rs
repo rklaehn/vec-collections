@@ -2,6 +2,8 @@
 #[macro_use]
 extern crate quickcheck;
 
+extern crate flip_buffer;
+
 mod binary_merge;
 mod merge_state;
 
@@ -12,8 +14,6 @@ mod array_set;
 mod total_array_set;
 
 mod array_map;
-
-mod flip_buffer;
 
 pub use array_seq::*;
 pub use array_set::*;
