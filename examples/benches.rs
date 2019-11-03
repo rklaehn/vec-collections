@@ -3,14 +3,16 @@ extern crate abc;
 use abc::ArraySet;
 use std::collections::{BTreeSet, HashSet};
 
+type Element = i32;
+
 struct TestData {
     params: String,
-    a: Vec<i32>,
-    b: Vec<i32>,
+    a: Vec<Element>,
+    b: Vec<Element>,
 }
 
 impl TestData {
-    fn interleaved(n: i32) -> TestData {
+    fn interleaved(n: Element) -> TestData {
         TestData {
             params: format!("interleaved {}", n),
             a: (0..n).map(|x| 2 * x).collect(),
@@ -18,18 +20,18 @@ impl TestData {
         }
     }
 
-    fn non_overlapping(n: i32) -> TestData {
+    fn non_overlapping(n: Element) -> TestData {
         TestData {
             params: format!("non_overlapping {}", n),
             a: (0..n).map(|x| 2 * x).collect(),
-            b: (0..n).map(|x| 2 * x + n).collect(),
+            b: (0..n).map(|x| 2 * x + 2 * n).collect(),
         }
     }
 }
 
 fn union_arrayset(data: &TestData) {
-    let a: ArraySet<i32> = data.a.clone().into();
-    let b: ArraySet<i32> = data.b.clone().into();
+    let a: ArraySet<Element> = data.a.clone().into();
+    let b: ArraySet<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a | &b;
     let dt = std::time::Instant::now() - t0;
@@ -37,8 +39,8 @@ fn union_arrayset(data: &TestData) {
 }
 
 fn union_btreeset(data: &TestData) {
-    let a: BTreeSet<i32> = data.a.iter().cloned().collect();
-    let b: BTreeSet<i32> = data.b.iter().cloned().collect();
+    let a: BTreeSet<Element> = data.a.iter().cloned().collect();
+    let b: BTreeSet<Element> = data.b.iter().cloned().collect();
     let t0 = std::time::Instant::now();
     let _r = &a | &b;
     let dt = std::time::Instant::now() - t0;
@@ -46,8 +48,8 @@ fn union_btreeset(data: &TestData) {
 }
 
 fn union_hashset(data: &TestData) {
-    let a: HashSet<i32> = data.a.iter().cloned().collect();
-    let b: HashSet<i32> = data.b.iter().cloned().collect();
+    let a: HashSet<Element> = data.a.iter().cloned().collect();
+    let b: HashSet<Element> = data.b.iter().cloned().collect();
     let t0 = std::time::Instant::now();
     let _r = &a | &b;
     let dt = std::time::Instant::now() - t0;
@@ -55,8 +57,8 @@ fn union_hashset(data: &TestData) {
 }
 
 fn intersection_arrayset(data: &TestData) {
-    let a: ArraySet<i32> = data.a.clone().into();
-    let b: ArraySet<i32> = data.b.clone().into();
+    let a: ArraySet<Element> = data.a.clone().into();
+    let b: ArraySet<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a & &b;
     let dt = std::time::Instant::now() - t0;
@@ -64,8 +66,8 @@ fn intersection_arrayset(data: &TestData) {
 }
 
 fn intersection_btreeset(data: &TestData) {
-    let a: BTreeSet<i32> = data.a.iter().cloned().collect();
-    let b: BTreeSet<i32> = data.b.iter().cloned().collect();
+    let a: BTreeSet<Element> = data.a.iter().cloned().collect();
+    let b: BTreeSet<Element> = data.b.iter().cloned().collect();
     let t0 = std::time::Instant::now();
     let _r = &a & &b;
     let dt = std::time::Instant::now() - t0;
@@ -73,12 +75,39 @@ fn intersection_btreeset(data: &TestData) {
 }
 
 fn intersection_hashset(data: &TestData) {
-    let a: HashSet<i32> = data.a.iter().cloned().collect();
-    let b: HashSet<i32> = data.b.iter().cloned().collect();
+    let a: HashSet<Element> = data.a.iter().cloned().collect();
+    let b: HashSet<Element> = data.b.iter().cloned().collect();
     let t0 = std::time::Instant::now();
     let _r = &a & &b;
     let dt = std::time::Instant::now() - t0;
     println!("intersection hashset {} {:?}", data.params, dt);
+}
+
+fn is_disjoint_arrayset(data: &TestData) {
+    let a: ArraySet<Element> = data.a.clone().into();
+    let b: ArraySet<Element> = data.b.clone().into();
+    let t0 = std::time::Instant::now();
+    let _r = a.is_disjoint(&b);
+    let dt = std::time::Instant::now() - t0;
+    println!("is_disjoint arrayset {} {} {:?}", _r, data.params, dt);
+}
+
+fn is_disjoint_btreeset(data: &TestData) {
+    let a: BTreeSet<Element> = data.a.iter().cloned().collect();
+    let b: BTreeSet<Element> = data.b.iter().cloned().collect();
+    let t0 = std::time::Instant::now();
+    let _r = a.is_disjoint(&b);
+    let dt = std::time::Instant::now() - t0;
+    println!("is_disjoint btreeset {} {} {:?}", _r, data.params, dt);
+}
+
+fn is_disjoint_hashset(data: &TestData) {
+    let a: HashSet<Element> = data.a.iter().cloned().collect();
+    let b: HashSet<Element> = data.b.iter().cloned().collect();
+    let t0 = std::time::Instant::now();
+    let _r = a.is_disjoint(&b);
+    let dt = std::time::Instant::now() - t0;
+    println!("is_disjoint hashset {} {} {:?}", _r, data.params, dt);
 }
 fn main() {
     let interleaved = TestData::interleaved(10000);
@@ -96,9 +125,16 @@ fn main() {
     intersection_arrayset(&interleaved);
     intersection_btreeset(&interleaved);
     intersection_hashset(&interleaved);
-    
+
     intersection_arrayset(&non_overlapping);
     intersection_btreeset(&non_overlapping);
     intersection_hashset(&non_overlapping);
-    
+
+    is_disjoint_arrayset(&interleaved);
+    is_disjoint_btreeset(&interleaved);
+    is_disjoint_hashset(&interleaved);
+
+    is_disjoint_arrayset(&non_overlapping);
+    is_disjoint_btreeset(&non_overlapping);
+    is_disjoint_hashset(&non_overlapping);
 }

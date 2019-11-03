@@ -1,4 +1,4 @@
-use std::cmp::{Ord, Ordering};
+use std::cmp::Ordering;
 
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
 pub(crate) type EarlyOut = Option<()>;
@@ -26,8 +26,7 @@ pub(crate) trait MergeState<A, B>: MergeStateRead<A, B> {
 /// A minimum comparison merge operation. Not 100% sure if this is actually minimum comparison,
 /// since proving this is beyond my ability. But it is optimal for many common cases.
 ///
-pub(crate) trait MergeOperation<'a, A, B, M: MergeState<A, B>> {
-    // we have found n elements fro
+pub(crate) trait MergeOperation<'a, A, B, M: MergeStateRead<A, B>> {
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;

@@ -1,14 +1,14 @@
 use crate::{
-    BoolOpMergeState, EarlyOut, InPlaceMergeState, MergeOperation, MergeState, VecMergeState,
+    BoolOpMergeState, EarlyOut, InPlaceMergeState, UnsafeInPlaceMergeState, MergeOperation, MergeState, VecMergeState,
 };
 use alga::general::{JoinSemilattice, MeetSemilattice};
 use std::fmt::Debug;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 
-struct SetUnionOp();
-struct SetIntersectionOp();
-struct SetXorOp();
-struct SetDiffOpt();
+pub(crate) struct SetUnionOp();
+pub(crate) struct SetIntersectionOp();
+pub(crate) struct SetXorOp();
+pub(crate) struct SetDiffOpt();
 
 #[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
@@ -18,24 +18,14 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetUnionOp
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a {}", n);
         m.move_a(n)
-        // println!("{:?}\n", m);
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_b {}", n);
         m.move_b(n)
-        // println!("{:?}\n", m);
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a 1");
-        // println!("skip_b 1");
         m.move_a(1)?;
         m.skip_b(1)
-        // println!("{:?}\n", m);
     }
 }
 
@@ -44,24 +34,14 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetInterse
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a {}", n);
         m.skip_a(n)
-        // println!("{:?}\n", m);
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_b {}", n);
         m.skip_b(n)
-        // println!("{:?}\n", m);
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a 1");
-        // println!("skip_b 1");
         m.move_a(1)?;
         m.skip_b(1)
-        // println!("{:?}\n", m);
     }
 }
 
@@ -70,24 +50,14 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetDiffOpt
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a {}", n);
         m.move_a(n)
-        // println!("{:?}\n", m);
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_b {}", n);
         m.skip_b(n)
-        // println!("{:?}\n", m);
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a 1");
-        // println!("skip_b 1");
         m.skip_a(1)?;
         m.skip_b(1)
-        // println!("{:?}\n", m);
     }
 }
 
@@ -96,24 +66,14 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetXorOp {
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a {}", n);
         m.move_a(n)
-        // println!("{:?}\n", m);
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_b {}", n);
         m.move_b(n)
-        // println!("{:?}\n", m);
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        // println!("{:?}", m);
-        // println!("move_a 1");
-        // println!("skip_b 1");
         m.skip_a(1)?;
         m.skip_b(1)
-        // println!("{:?}\n", m);
     }
 }
 
@@ -177,9 +137,27 @@ impl<T: Ord + Default + Copy + Debug> BitAnd for &ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitAndAssign for ArraySet<T> {
-    fn bitand_assign(&mut self, rhs: Self) {
-        self.intersection_with(&rhs)
+impl<T: Ord> BitAndAssign for ArraySet<T> {
+    fn bitand_assign(&mut self, that: Self) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp());
+    }
+}
+
+impl<T: Ord> BitOrAssign for ArraySet<T> {
+    fn bitor_assign(&mut self, that: Self) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp());
+    }
+}
+
+impl<T: Ord> BitXorAssign for ArraySet<T> {
+    fn bitxor_assign(&mut self, that: Self) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetXorOp());
+    }
+}
+
+impl<T: Ord> SubAssign for ArraySet<T> {
+    fn sub_assign(&mut self, that: Self) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt());
     }
 }
 
@@ -190,12 +168,6 @@ impl<T: Ord + Default + Copy + Debug> BitOr for &ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitOrAssign for ArraySet<T> {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.union_with(&rhs)
-    }
-}
-
 impl<T: Ord + Default + Copy + Debug> BitXor for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn bitxor(self, rhs: Self) -> Self::Output {
@@ -203,22 +175,10 @@ impl<T: Ord + Default + Copy + Debug> BitXor for &ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitXorAssign for ArraySet<T> {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        self.xor_with(&rhs)
-    }
-}
-
 impl<T: Ord + Default + Copy + Debug> Sub for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn sub(self, rhs: Self) -> Self::Output {
         self.difference(rhs)
-    }
-}
-
-impl<T: Ord + Default + Copy + Debug> SubAssign for ArraySet<T> {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.difference_with(&rhs)
     }
 }
 
@@ -252,15 +212,19 @@ impl<T: Ord> ArraySet<T> {
     pub fn contains(&self, value: &T) -> bool {
         self.0.binary_search(value).is_ok()
     }
-}
-impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
+
+    pub fn retain<F: FnMut(&T) -> bool>(&mut self, f: F) {
+        self.0.retain(f)
+    }
+
     fn from_vec(vec: Vec<T>) -> Self {
         let mut vec = vec;
         vec.sort();
         vec.dedup();
         Self(vec)
     }
-
+}
+impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     pub fn union_with(&mut self, that: &ArraySet<T>) {
         InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
     }
@@ -278,7 +242,7 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     }
 
     pub fn xor_with(&mut self, that: &ArraySet<T>) {
-        InPlaceMergeState::merge(&mut self.0, &that.0, SetXorOp());
+        InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
     }
 
     pub fn xor(&self, that: &ArraySet<T>) -> ArraySet<T> {

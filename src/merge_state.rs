@@ -2,6 +2,69 @@ use crate::{EarlyOut, MergeOperation, MergeState, MergeStateRead};
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
+use crate::flip_buffer::UnsafeFlipBuffer;
+
+pub(crate) struct UnsafeInPlaceMergeState<T> {
+    a: UnsafeFlipBuffer<T>,
+    b: std::vec::IntoIter<T>,
+}
+
+impl<T> UnsafeInPlaceMergeState<T> {
+    fn new(a: Vec<T>, b: Vec<T>) -> Self {
+        Self {
+            a: a.into(),
+            b: b.into_iter(),
+        }
+    }
+    fn result(self) -> Vec<T> {
+        self.a.into()
+    }
+}
+
+impl<'a, T> UnsafeInPlaceMergeState<T> {
+    pub fn merge<O: MergeOperation<'a, T, T, Self>>(a: &mut Vec<T>, b: Vec<T>, o: O) {
+        let mut t: Vec<T> = Default::default();
+        std::mem::swap(a, &mut t);
+        let mut state = Self::new(t, b);
+        o.merge(&mut state);
+        *a = state.result();
+    }
+}
+
+impl<'a, T> MergeStateRead<T, T> for UnsafeInPlaceMergeState<T> {
+    fn a_slice(&self) -> &[T] {
+        &self.a.source_slice()
+    }
+    fn b_slice(&self) -> &[T] {
+        self.b.as_slice()
+    }
+}
+
+impl<'a, T> MergeState<T, T> for UnsafeInPlaceMergeState<T> {
+    fn move_a(&mut self, n: usize) -> EarlyOut {
+        self.a.move_front(n);
+        Some(())
+    }
+    fn skip_a(&mut self, n: usize) -> EarlyOut {
+        self.a.drop_front(n);
+        Some(())
+    }
+    fn move_b(&mut self, n: usize) -> EarlyOut {
+        let capacity = self.b_slice().len();
+        for _ in 0..n {
+            if let Some(elem) = self.b.next() {
+                self.a.target_push(elem, capacity);
+            }
+        }
+        Some(())
+    }
+    fn skip_b(&mut self, n: usize) -> EarlyOut {
+        for _ in 0..n {
+            let _ = self.b.next();
+        }
+        Some(())
+    }
+}
 
 /// a merge state where the first argument is modified in place
 pub(crate) struct InPlaceMergeState<'a, T> {
@@ -114,13 +177,13 @@ impl<'a, T: Clone + Default> MergeState<T, T> for InPlaceMergeState<'a, T> {
 }
 
 /// A merge state where we only track if elements have been produced, and abort as soon as the first element is produced
-pub(crate) struct BoolOpMergeState<'a, T> {
-    a: &'a [T],
-    b: &'a [T],
+pub(crate) struct BoolOpMergeState<'a, A, B> {
+    a: &'a [A],
+    b: &'a [B],
     r: bool,
 }
 
-impl<'a, T: Debug> Debug for BoolOpMergeState<'a, T> {
+impl<'a, A: Debug, B: Debug> Debug for BoolOpMergeState<'a, A, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -132,30 +195,30 @@ impl<'a, T: Debug> Debug for BoolOpMergeState<'a, T> {
     }
 }
 
-impl<'a, T> BoolOpMergeState<'a, T> {
-    pub fn new(a: &'a [T], b: &'a [T]) -> Self {
+impl<'a, A, B> BoolOpMergeState<'a, A, B> {
+    pub fn new(a: &'a [A], b: &'a [B]) -> Self {
         Self { a, b, r: false }
     }
 }
 
-impl<'a, T> BoolOpMergeState<'a, T> {
-    pub fn merge<O: MergeOperation<'a, T, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> bool {
-        let mut state = BoolOpMergeState::new(a, b);
+impl<'a, A, B> BoolOpMergeState<'a, A, B> {
+    pub fn merge<O: MergeOperation<'a, A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> bool {
+        let mut state = Self::new(a, b);
         o.merge(&mut state);
         state.r
     }
 }
 
-impl<'a, T> MergeStateRead<T, T> for BoolOpMergeState<'a, T> {
-    fn a_slice(&self) -> &[T] {
+impl<'a, A, B> MergeStateRead<A, B> for BoolOpMergeState<'a, A, B> {
+    fn a_slice(&self) -> &[A] {
         self.a
     }
-    fn b_slice(&self) -> &[T] {
+    fn b_slice(&self) -> &[B] {
         self.b
     }
 }
 
-impl<'a, T> MergeState<T, T> for BoolOpMergeState<'a, T> {
+impl<'a, A, B> MergeState<A, B> for BoolOpMergeState<'a, A, B> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         if n > 0 {
             self.r = true;
