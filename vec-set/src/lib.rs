@@ -2,6 +2,10 @@
 #[macro_use]
 extern crate quickcheck;
 
+#[cfg(test)]
+#[macro_use]
+extern crate maplit;
+
 extern crate flip_buffer;
 
 mod binary_merge;

@@ -2,7 +2,6 @@ use crate::{
     BoolOpMergeState, EarlyOut, InPlaceMergeState, MergeOperation, MergeState,
     UnsafeInPlaceMergeState, VecMergeState,
 };
-use alga::general::{JoinSemilattice, MeetSemilattice};
 use std::fmt::Debug;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 
@@ -111,20 +110,6 @@ impl<T> Default for ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> MeetSemilattice for ArraySet<T> {
-    fn meet(&self, other: &Self) -> Self {
-        self.intersection(other)
-    }
-}
-
-impl<T: Ord + Default + Copy + Debug> JoinSemilattice for ArraySet<T> {
-    fn join(&self, other: &Self) -> Self {
-        self.union(other)
-    }
-}
-
-// impl<T: Ord + Default + Copy + Debug> Lattice for ArraySet<T> {}
-
 impl<T: Ord + Default + Copy + Debug> BitAnd for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn bitand(self, rhs: Self) -> Self::Output {
@@ -177,12 +162,12 @@ impl<T: Ord + Default + Copy + Debug> Sub for &ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> From<Vec<T>> for ArraySet<T> {
+impl<T: Ord> From<Vec<T>> for ArraySet<T> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
-impl<T: Ord + Default + Copy + Debug> std::iter::FromIterator<T> for ArraySet<T> {
+impl<T: Ord> std::iter::FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(iter.into_iter().collect())
     }
@@ -219,33 +204,18 @@ impl<T: Ord> ArraySet<T> {
         Self(vec)
     }
 }
-impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
-    pub fn union_with(&mut self, that: &ArraySet<T>) {
-        InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
-    }
 
+impl<T: Ord + Clone> ArraySet<T> {
     pub fn union(&self, that: &ArraySet<T>) -> ArraySet<T> {
         ArraySet(VecMergeState::merge(&self.0, &that.0, SetUnionOp()))
-    }
-
-    pub fn intersection_with(&mut self, that: &ArraySet<T>) {
-        InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
     }
 
     pub fn intersection(&self, that: &ArraySet<T>) -> ArraySet<T> {
         ArraySet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp()))
     }
 
-    pub fn xor_with(&mut self, that: &ArraySet<T>) {
-        InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
-    }
-
     pub fn xor(&self, that: &ArraySet<T>) -> ArraySet<T> {
         ArraySet(VecMergeState::merge(&self.0, &that.0, SetXorOp()))
-    }
-
-    pub fn difference_with(&mut self, that: &ArraySet<T>) {
-        InPlaceMergeState::merge(&mut self.0, &that.0, SetDiffOpt());
     }
 
     pub fn difference(&self, that: &ArraySet<T>) -> ArraySet<T> {
@@ -253,15 +223,41 @@ impl<T: Ord + Default + Copy + Debug> ArraySet<T> {
     }
 
     pub fn insert(&mut self, that: T) {
-        InPlaceMergeState::merge(&mut self.0, &[that], SetUnionOp());
+        match self.0.binary_search(&that) {
+            Ok(index) => self.0[index] = that,
+            Err(index) => self.0.insert(index, that),
+        }
     }
 
     pub fn remove(&mut self, that: &T) {
-        InPlaceMergeState::merge(&mut self.0, &[*that], SetDiffOpt());
+        match self.0.binary_search(&that) {
+            Ok(index) => {
+                self.0.remove(index);
+            }
+            _ => {}
+        };
     }
 }
 
-// cargo asm abc::array_set::union_u32
+// impl<T: Ord + Default + Copy> ArraySet<T> {
+//     pub fn union_with(&mut self, that: &ArraySet<T>) {
+//         InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
+//     }
+
+//     pub fn intersection_with(&mut self, that: &ArraySet<T>) {
+//         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
+//     }
+
+//     pub fn xor_with(&mut self, that: &ArraySet<T>) {
+//         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
+//     }
+
+//     pub fn difference_with(&mut self, that: &ArraySet<T>) {
+//         InPlaceMergeState::merge(&mut self.0, &that.0, SetDiffOpt());
+//     }
+// }
+
+// cargo asm vec_set::array_set::union_u32
 pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
     InPlaceMergeState::merge(a, b, SetUnionOp())
 }
@@ -276,15 +272,6 @@ mod tests {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             ArraySet::from_vec(Arbitrary::arbitrary(g))
         }
-    }
-
-    #[test]
-    fn intersection_1() {
-        let mut a: ArraySet<usize> = vec![0].into();
-        let b: ArraySet<usize> = vec![].into();
-        a.intersection_with(&b);
-        println!("a {:?}", a);
-        assert_eq!(a.into_vec(), vec![]);
     }
 
     fn binary_op(
