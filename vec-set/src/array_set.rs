@@ -1,19 +1,20 @@
-use crate::{
-    BoolOpMergeState, EarlyOut, InPlaceMergeState, MergeOperation, MergeState,
-    UnsafeInPlaceMergeState, VecMergeState,
+use crate::binary_merge::{EarlyOut, MergeStateMod, ShortcutMergeOperation};
+use crate::merge_state::{
+    BoolOpMergeState, InPlaceMergeState, UnsafeInPlaceMergeState, VecMergeState,
 };
 use std::fmt::Debug;
+use std::iter::FromIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 
-pub(crate) struct SetUnionOp();
-pub(crate) struct SetIntersectionOp();
-pub(crate) struct SetXorOp();
-pub(crate) struct SetDiffOpt();
+struct SetUnionOp;
+struct SetIntersectionOp;
+struct SetXorOp;
+struct SetDiffOpt;
 
 #[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
 
-impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetUnionOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -29,7 +30,7 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetUnionOp
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetIntersectionOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetIntersectionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -45,7 +46,7 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetInterse
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetDiffOpt {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -61,7 +62,7 @@ impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetDiffOpt
     }
 }
 
-impl<'a, T: Ord, I: MergeState<T, T>> MergeOperation<'a, T, T, I> for SetXorOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -119,25 +120,25 @@ impl<T: Ord + Default + Copy + Debug> BitAnd for &ArraySet<T> {
 
 impl<T: Ord> BitAndAssign for ArraySet<T> {
     fn bitand_assign(&mut self, that: Self) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp());
+        UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetIntersectionOp);
     }
 }
 
 impl<T: Ord> BitOrAssign for ArraySet<T> {
     fn bitor_assign(&mut self, that: Self) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp());
+        UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetUnionOp);
     }
 }
 
 impl<T: Ord> BitXorAssign for ArraySet<T> {
     fn bitxor_assign(&mut self, that: Self) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetXorOp());
+        UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetXorOp);
     }
 }
 
 impl<T: Ord> SubAssign for ArraySet<T> {
     fn sub_assign(&mut self, that: Self) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt());
+        UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetDiffOpt);
     }
 }
 
@@ -167,9 +168,19 @@ impl<T: Ord> From<Vec<T>> for ArraySet<T> {
         Self::from_vec(vec)
     }
 }
-impl<T: Ord> std::iter::FromIterator<T> for ArraySet<T> {
+impl<T: Ord> FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(iter.into_iter().collect())
+    }
+}
+impl<T: Ord> Extend<T> for ArraySet<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        *self &= Self::from_iter(iter);
+    }
+}
+impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for ArraySet<T> {
+    fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().cloned())
     }
 }
 impl<T> ArraySet<T> {
@@ -179,11 +190,11 @@ impl<T> ArraySet<T> {
 }
 impl<T: Ord> ArraySet<T> {
     pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp())
+        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
     }
 
     pub fn is_subset(&self, that: &ArraySet<T>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt())
+        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt)
     }
 
     pub fn is_superset(&self, that: &ArraySet<T>) -> bool {
@@ -207,19 +218,19 @@ impl<T: Ord> ArraySet<T> {
 
 impl<T: Ord + Clone> ArraySet<T> {
     pub fn union(&self, that: &ArraySet<T>) -> ArraySet<T> {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetUnionOp()))
+        ArraySet(VecMergeState::merge(&self.0, &that.0, SetUnionOp))
     }
 
     pub fn intersection(&self, that: &ArraySet<T>) -> ArraySet<T> {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp()))
+        ArraySet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp))
     }
 
     pub fn xor(&self, that: &ArraySet<T>) -> ArraySet<T> {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetXorOp()))
+        ArraySet(VecMergeState::merge(&self.0, &that.0, SetXorOp))
     }
 
     pub fn difference(&self, that: &ArraySet<T>) -> ArraySet<T> {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt()))
+        ArraySet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt))
     }
 
     pub fn insert(&mut self, that: T) {
@@ -259,7 +270,7 @@ impl<T: Ord + Clone> ArraySet<T> {
 
 // cargo asm vec_set::array_set::union_u32
 pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
-    InPlaceMergeState::merge(a, b, SetUnionOp())
+    InPlaceMergeState::merge(a, b, SetUnionOp)
 }
 
 #[cfg(test)]

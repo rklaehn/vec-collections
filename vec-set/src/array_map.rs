@@ -1,9 +1,15 @@
-use crate::binary_merge::MergeOperation1;
-use crate::binary_merge::MergeStateRead;
-use crate::{EarlyOut, MergeOperation, MergeState};
+use crate::binary_merge::EarlyOut;
+use crate::binary_merge::MergeOperation;
+use crate::binary_merge::MergeState;
+use crate::binary_merge::MergeStateMod;
+use crate::binary_merge::ShortcutMergeOperation;
+use crate::merge_state::UnsafeInPlaceMergeState;
+use flip_buffer::FlipBuffer;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::iter::FromIterator;
 
 #[derive(Hash, Clone, Eq, PartialEq)]
 struct ArrayMap<K, V>(Vec<(K, V)>);
@@ -16,27 +22,27 @@ impl<K: Debug, V: Debug> Debug for ArrayMap<K, V> {
     }
 }
 
-struct MapLeftUnionOp();
+struct RightBiasedUnionOp;
 
-impl<'a, K: Ord, V, I: MergeState<(K, V), (K, V)>> MergeOperation<'a, (K, V), (K, V), I>
-    for MapLeftUnionOp
+impl<'a, K: Ord, V, I: MergeStateMod<(K, V), (K, V)>> MergeOperation<'a, (K, V), (K, V), I>
+    for RightBiasedUnionOp
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_a(n)
+    fn from_a(&self, m: &mut I, n: usize) {
+        m.move_a(n);
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_b(n)
+    fn from_b(&self, m: &mut I, n: usize) {
+        m.move_b(n);
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.move_a(1)?;
-        m.skip_b(1)
+    fn collision(&self, m: &mut I) {
+        m.move_a(1);
+        m.skip_b(1);
     }
 }
 
-struct SliceIterator<'a, T>(&'a [T]);
+pub(crate) struct SliceIterator<'a, T>(pub &'a [T]);
 
 impl<'a, T> Iterator for SliceIterator<'a, T> {
     type Item = &'a T;
@@ -53,16 +59,18 @@ impl<'a, T> Iterator for SliceIterator<'a, T> {
 }
 
 impl<'a, T> SliceIterator<'a, T> {
-    fn new(slice: &'a [T]) -> Self {
-        Self(slice)
-    }
-
-    fn as_slice(&self) -> &[T] {
+    pub fn as_slice(&self) -> &[T] {
         self.0
     }
 
-    fn drop(&mut self, n: usize) {
+    pub fn drop_front(&mut self, n: usize) {
         self.0 = &self.0[n..];
+    }
+
+    pub fn take_front(&mut self, n: usize) -> &'a [T] {
+        let res = &self.0[..n];
+        self.0 = &self.0[n..];
+        res
     }
 }
 
@@ -94,41 +102,18 @@ struct VecMergeState<'a, A, B, R> {
 }
 
 impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
-    fn take_a(&mut self, n: usize) -> EarlyOut {
-        self.a.drop(n);
-        Some(())
-    }
-
-    fn take_b(&mut self, n: usize) -> EarlyOut {
-        self.b.drop(n);
-        Some(())
-    }
-
-    pub fn into_vec(self) -> Vec<R> {
-        self.r
-    }
-
-    pub fn new(a: &'a [A], b: &'a [B], r: Vec<R>) -> Self {
-        Self {
-            a: SliceIterator::new(a),
-            b: SliceIterator::new(b),
-            r,
-        }
-    }
-
-    pub fn merge<O: MergeOperation1<'a, A, B, Self>>(
-        a: &'a [A],
-        b: &'a [B],
-        o: O,
-    ) -> Vec<R> {
-        let t: Vec<R> = Vec::new();
-        let mut state = VecMergeState::new(a, b, t);
+    pub fn merge<O: MergeOperation<'a, A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
+        let mut state = Self {
+            a: SliceIterator(a),
+            b: SliceIterator(b),
+            r: Vec::new(),
+        };
         o.merge(&mut state);
-        state.into_vec()
+        state.r
     }
 }
 
-impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
+impl<'a, A, B, R> MergeState<A, B> for VecMergeState<'a, A, B, R> {
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }
@@ -139,8 +124,31 @@ impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
 
 type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
 
+type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
+
+impl<K: Ord, V> FromIterator<(K, V)> for ArrayMap<K, V> {
+    fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
+        // TODO: make better from_iter
+        let temp: BTreeMap<K, V> = iter.into_iter().collect();
+        temp.into()
+    }
+}
+
+impl<K, V> From<BTreeMap<K, V>> for ArrayMap<K, V> {
+    fn from(value: BTreeMap<K, V>) -> Self {
+        let elements: Vec<(K, V)> = value.into_iter().collect();
+        Self::from_sorted_vec(elements)
+    }
+}
+
+impl<K: Ord, V> Extend<(K, V)> for ArrayMap<K, V> {
+    fn extend<I: IntoIterator<Item=(K, V)>>(&mut self, iter: I) {
+        self.merge_with(iter.into_iter().collect());
+    }
+}
+
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
-    MergeOperation1<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
+    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -175,7 +183,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
-    MergeOperation1<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
+    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -190,7 +198,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
         }
     }
     fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
-        m.b.drop(n);
+        m.b.drop_front(n);
     }
     fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
         if let Some((k, a)) = m.a.next() {
@@ -204,13 +212,13 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
-    MergeOperation1<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
+    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
     fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
-        m.a.drop(n);
+        m.a.drop_front(n);
     }
     fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
         for _ in 0..n {
@@ -233,16 +241,16 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
-    MergeOperation1<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
+    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
     fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
-        m.a.drop(n);
+        m.a.drop_front(n);
     }
     fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
-        m.b.drop(n);
+        m.b.drop_front(n);
     }
     fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
         if let Some((k, a)) = m.a.next() {
@@ -281,15 +289,13 @@ impl<K, V> ArrayMap<K, V> {
     }
 }
 
-impl<K, V> From<std::collections::BTreeMap<K, V>> for ArrayMap<K, V> {
-    fn from(value: std::collections::BTreeMap<K, V>) -> Self {
-        let elements: Vec<(K, V)> = value.into_iter().collect();
-        Self::from_sorted_vec(elements)
+impl<K: Ord, V> ArrayMap<K, V> {
+    fn merge_with(&mut self, rhs: ArrayMap<K, V>) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
 }
 
 impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
-
     pub fn single(k: K, v: V) -> Self {
         Self::from_sorted_vec(vec![(k, v)])
     }
