@@ -16,7 +16,7 @@ struct SetDiffOpt;
 #[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetUnionOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -32,7 +32,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetIntersectionOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetIntersectionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -48,7 +48,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetDiffOpt {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -64,7 +64,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<'a, T, T, I> for SetXorOp {
+impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }

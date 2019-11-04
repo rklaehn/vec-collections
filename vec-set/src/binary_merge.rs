@@ -26,7 +26,7 @@ pub(crate) trait MergeStateMod<A, B>: MergeState<A, B> {
 /// A minimum comparison merge operation. Not 100% sure if this is actually minimum comparison,
 /// since proving this is beyond my ability. But it is optimal for many common cases.
 ///
-pub(crate) trait ShortcutMergeOperation<'a, A, B, M: MergeState<A, B>> {
+pub(crate) trait ShortcutMergeOperation<A, B, M: MergeState<A, B>> {
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;

@@ -24,7 +24,7 @@ impl<A, B> UnsafeInPlaceMergeState<A, B> {
 }
 
 impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<'a, A, B, Self>>(
+    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
         a: &mut Vec<A>,
         b: Vec<B>,
         o: O,
@@ -109,7 +109,7 @@ impl<'a, T> InPlaceMergeState<'a, T> {
 }
 
 impl<'a, T: Clone + Default + Ord> InPlaceMergeState<'a, T> {
-    pub fn merge<O: ShortcutMergeOperation<'a, T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
+    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
         let mut t: Vec<T> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = InPlaceMergeState::new(t, b);
@@ -220,7 +220,7 @@ impl<'a, A, B> BoolOpMergeState<'a, A, B> {
 }
 
 impl<'a, A, B> BoolOpMergeState<'a, A, B> {
-    pub fn merge<O: ShortcutMergeOperation<'a, A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> bool {
+    pub fn merge<O: ShortcutMergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> bool {
         let mut state = Self::new(a, b);
         o.merge(&mut state);
         state.r
@@ -295,7 +295,7 @@ impl<'a, T: Clone> VecMergeState<'a, T> {
         self.r
     }
 
-    pub fn merge<O: ShortcutMergeOperation<'a, T, T, Self>>(
+    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(
         a: &'a [T],
         b: &'a [T],
         o: O,
@@ -344,8 +344,8 @@ pub(crate) struct UnsafeSliceMergeState<'a, T> {
     r1: usize,
 }
 
-impl<'a, T> UnsafeSliceMergeState<'a, T> {
-    fn merge0<O: ShortcutMergeOperation<'a, T, T, Self>> (
+impl<'a, T: 'a> UnsafeSliceMergeState<'a, T> {
+    fn merge0<O: ShortcutMergeOperation<T, T, Self>> (
         a: &'a [T],
         b: &'a [T],
         r: *mut T,
@@ -358,14 +358,14 @@ impl<'a, T> UnsafeSliceMergeState<'a, T> {
         state.r0
     }
 
-    fn merge<O: ShortcutMergeOperation<'a, T, T, Self>>(a: &'a mut Vec<T>, b: &'a mut Vec<T>, r: &'a mut Vec<T>, o: O) {
+    fn merge<O: ShortcutMergeOperation<T, T, Self>>(a: &'a mut Vec<T>, b: &'a mut Vec<T>, r: &'a mut Vec<T>, o: O) {
         let required = a.len() + b.len();
         let base = r.len();
         r.reserve(required);
         let cap = unsafe {
-            // we copy the values into nomansland after the end of r
-            let sa = a.as_slice();
-            let sb = b.as_slice();
+            // we copy the values into nomansland after the end of r without caring in any way about dropping etc.
+            let sa = std::slice::from_raw_parts(a.as_ptr(), a.len());
+            let sb = std::slice::from_raw_parts(b.as_ptr(), b.len());
             let cap = UnsafeSliceMergeState::merge0(sa, sb, r.as_mut_ptr().add(base), o);
             // truncate a without dropping
             a.set_len(0);
