@@ -1,10 +1,7 @@
-use crate::binary_merge::EarlyOut;
 use crate::binary_merge::MergeOperation;
 use crate::binary_merge::MergeState;
 use crate::binary_merge::MergeStateMod;
-use crate::binary_merge::ShortcutMergeOperation;
 use crate::merge_state::UnsafeInPlaceMergeState;
-use flip_buffer::FlipBuffer;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -12,7 +9,13 @@ use std::fmt::Debug;
 use std::iter::FromIterator;
 
 #[derive(Hash, Clone, Eq, PartialEq)]
-struct ArrayMap<K, V>(Vec<(K, V)>);
+pub struct ArrayMap<K, V>(Vec<(K, V)>);
+
+impl<K, V> Default for ArrayMap<K, V> {
+    fn default() -> Self {
+        Self(Vec::default())
+    }
+}
 
 impl<K: Debug, V: Debug> Debug for ArrayMap<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -42,7 +45,7 @@ impl<'a, K: Ord, V, I: MergeStateMod<(K, V), (K, V)>> MergeOperation<'a, (K, V),
     }
 }
 
-pub(crate) struct SliceIterator<'a, T>(pub &'a [T]);
+pub struct SliceIterator<'a, T>(pub &'a [T]);
 
 impl<'a, T> Iterator for SliceIterator<'a, T> {
     type Item = &'a T;
@@ -63,28 +66,28 @@ impl<'a, T> SliceIterator<'a, T> {
         self.0
     }
 
-    pub fn drop_front(&mut self, n: usize) {
+    pub(crate) fn drop_front(&mut self, n: usize) {
         self.0 = &self.0[n..];
     }
 
-    pub fn take_front(&mut self, n: usize) -> &'a [T] {
+    pub(crate) fn take_front(&mut self, n: usize) -> &'a [T] {
         let res = &self.0[..n];
         self.0 = &self.0[n..];
         res
     }
 }
 
-enum LeftJoinArg<A, B> {
+pub enum LeftJoinArg<A, B> {
     Left(A),
     Both(A, B),
 }
 
-enum RightJoinArg<A, B> {
+pub enum RightJoinArg<A, B> {
     Both(A, B),
     Right(B),
 }
 
-enum OuterJoinArg<A, B> {
+pub enum OuterJoinArg<A, B> {
     Left(A),
     Right(B),
     Both(A, B),
@@ -95,10 +98,10 @@ struct LeftJoinOp<F>(F);
 struct RightJoinOp<F>(F);
 struct InnerJoinOp<F>(F);
 
-struct VecMergeState<'a, A, B, R> {
-    a: SliceIterator<'a, A>,
-    b: SliceIterator<'a, B>,
-    r: Vec<R>,
+pub(crate) struct VecMergeState<'a, A, B, R> {
+    pub(crate) a: SliceIterator<'a, A>,
+    pub(crate) b: SliceIterator<'a, B>,
+    pub(crate) r: Vec<R>,
 }
 
 impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
@@ -271,8 +274,16 @@ impl<K, V> ArrayMap<K, V> {
         self.0.len()
     }
 
+    pub fn as_slice(&self) -> &[(K, V)] {
+        self.0.as_slice()
+    }
+
     pub fn retain<F: FnMut((&K, &V)) -> bool>(&mut self, mut f: F) {
         self.0.retain(|entry| f((&entry.0, &entry.1)))
+    }
+
+    pub fn iter(&self) -> SliceIterator<(K, V)> {
+        SliceIterator(self.0.as_slice())
     }
 
     pub fn map_values<R, F: FnMut(V) -> R>(self, mut f: F) -> ArrayMap<K, R> {
@@ -284,14 +295,41 @@ impl<K, V> ArrayMap<K, V> {
         )
     }
 
-    fn from_sorted_vec(v: Vec<(K, V)>) -> Self {
+    pub(crate) fn from_sorted_vec(v: Vec<(K, V)>) -> Self {
         Self(v)
+    }
+
+    pub(crate) fn into_sorted_vec(self) -> Vec<(K, V)> {
+        self.0
     }
 }
 
 impl<K: Ord, V> ArrayMap<K, V> {
     fn merge_with(&mut self, rhs: ArrayMap<K, V>) {
         UnsafeInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
+    }
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        let elements = self.0.as_slice();
+        match elements.binary_search_by(|p| p.0.borrow().cmp(key)) {
+            Ok(index) => Some(&elements[index].1),
+            Err(_) => None,
+        }
+    }
+
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        let elements = self.0.as_mut_slice();
+        match elements.binary_search_by(|p| p.0.borrow().cmp(key)) {
+            Ok(index) => Some(&mut elements[index].1),
+            Err(_) => None,
+        }
     }
 }
 
@@ -347,41 +385,25 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
             InnerJoinOp(f),
         ))
     }
-
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        let elements = self.0.as_slice();
-        match elements.binary_search_by(|p| p.0.borrow().cmp(key)) {
-            Ok(index) => Some(&elements[index].1),
-            Err(_) => None,
-        }
-    }
-
-    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Ord + ?Sized,
-    {
-        let elements = self.0.as_mut_slice();
-        match elements.binary_search_by(|p| p.0.borrow().cmp(key)) {
-            Ok(index) => Some(&mut elements[index].1),
-            Err(_) => None,
-        }
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use maplit::btreemap;
+    use quickcheck::*;
     use std::collections::BTreeMap;
     use OuterJoinArg::*;
 
     type Test = ArrayMap<i32, i32>;
     type Ref = BTreeMap<i32, i32>;
+
+    impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for ArrayMap<K, V> {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let t: BTreeMap<K, V> = Arbitrary::arbitrary(g);
+            t.into()
+        }
+    }
 
     fn outer_join_reference(a: &Ref, b: &Ref) -> Ref {
         let mut r = a.clone();

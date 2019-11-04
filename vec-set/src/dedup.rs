@@ -1,5 +1,8 @@
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
+///
+/// there is an unstable library feature called slice.partition_dedup which is
+/// identical: https://github.com/rust-lang/rust/issues/54279
 pub fn dedup<T: Eq>(d: &mut [T]) -> usize {
     if !d.is_empty() {
         let mut j = 0;
@@ -27,6 +30,7 @@ pub(crate) struct SortAndDedup<T> {
     count: usize,
 }
 
+/// size of a chunk for dedup and sort. After we have a full chunk we will sort it in.
 const CHUNK_BITS: u32 = 3;
 
 impl<T: Ord> SortAndDedup<T> {

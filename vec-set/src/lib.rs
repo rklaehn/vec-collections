@@ -18,6 +18,8 @@ mod array_set;
 mod total_array_set;
 
 mod array_map;
+mod total_array_map;
+
 mod sonic_reducer;
 
 mod dedup;

@@ -295,7 +295,7 @@ mod tests {
     use quickcheck::*;
     use std::collections::BTreeSet;
 
-    impl<T: Arbitrary + Ord + Copy + Default + Debug> quickcheck::Arbitrary for ArraySet<T> {
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for ArraySet<T> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             ArraySet::from_vec(Arbitrary::arbitrary(g))
         }
