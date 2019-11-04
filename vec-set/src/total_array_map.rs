@@ -300,7 +300,7 @@ mod tests {
         }
 
         fn infimum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| std::cmp::max(a, b)));
+            let expected = from_ref(combine_reference(&a, &b, |a, b| std::cmp::min(a, b)));
             let a1 = from_ref(a.clone());
             let b1 = from_ref(b.clone());
             let actual = a1.infimum(&b1);
