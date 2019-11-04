@@ -20,6 +20,8 @@ mod total_array_set;
 mod array_map;
 mod total_array_map;
 
+mod countable_interval_set;
+
 mod sonic_reducer;
 
 mod dedup;

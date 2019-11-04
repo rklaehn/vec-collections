@@ -1,5 +1,6 @@
+use crate::array_map::SliceIterator;
 use crate::binary_merge::{EarlyOut, MergeStateMod, ShortcutMergeOperation};
-use crate::dedup::{dedup, SortAndDedup};
+use crate::dedup::SortAndDedup;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, UnsafeInPlaceMergeState, VecMergeState,
 };
@@ -16,7 +17,7 @@ struct SetDiffOpt;
 #[derive(Clone, Hash)]
 pub struct ArraySet<T>(Vec<T>);
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetUnionOp {
+impl<T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -32,7 +33,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for Set
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetIntersectionOp {
+impl<T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetIntersectionOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -48,7 +49,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for Set
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetDiffOpt {
+impl<T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -64,7 +65,7 @@ impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for Set
     }
 }
 
-impl<'a, T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetXorOp {
+impl<T: Ord, I: MergeStateMod<T, T>> ShortcutMergeOperation<T, T, I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> std::cmp::Ordering {
         a.cmp(b)
     }
@@ -96,8 +97,11 @@ impl<T> ArraySet<T> {
     pub fn as_slice(&self) -> &[T] {
         &self.0
     }
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        &mut self.0
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit()
     }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
@@ -105,18 +109,14 @@ impl<T> ArraySet<T> {
     pub fn empty() -> Self {
         Self(Vec::new())
     }
+    pub fn iter(&self) -> SliceIterator<T> {
+        SliceIterator(self.as_slice())
+    }
 }
 
 impl<T> Default for ArraySet<T> {
     fn default() -> Self {
         ArraySet::empty()
-    }
-}
-
-impl<T: Ord + Default + Copy + Debug> BitAnd for &ArraySet<T> {
-    type Output = ArraySet<T>;
-    fn bitand(self, rhs: Self) -> Self::Output {
-        self.intersection(rhs)
     }
 }
 
@@ -144,24 +144,63 @@ impl<T: Ord> SubAssign for ArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitOr for &ArraySet<T> {
+impl<T: Ord + Clone> BitAnd for &ArraySet<T> {
+    type Output = ArraySet<T>;
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self.intersection(rhs)
+    }
+}
+
+impl<T: Ord> BitAnd for ArraySet<T> {
+    type Output = ArraySet<T>;
+    fn bitand(mut self, that: Self) -> Self::Output {
+        self &= that;
+        self
+    }
+}
+
+impl<T: Ord + Clone> BitOr for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn bitor(self, rhs: Self) -> Self::Output {
         self.union(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitXor for &ArraySet<T> {
+impl<T: Ord> BitOr for ArraySet<T> {
+    type Output = ArraySet<T>;
+    fn bitor(mut self, that: Self) -> Self::Output {
+        self |= that;
+        self
+    }
+}
+
+impl<T: Ord + Clone> BitXor for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn bitxor(self, rhs: Self) -> Self::Output {
         self.xor(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> Sub for &ArraySet<T> {
+impl<T: Ord> BitXor for ArraySet<T> {
+    type Output = ArraySet<T>;
+    fn bitxor(mut self, that: Self) -> Self::Output {
+        self ^= that;
+        self
+    }
+}
+
+impl<T: Ord + Clone> Sub for &ArraySet<T> {
     type Output = ArraySet<T>;
     fn sub(self, rhs: Self) -> Self::Output {
         self.difference(rhs)
+    }
+}
+
+impl<T: Ord> Sub for ArraySet<T> {
+    type Output = ArraySet<T>;
+    fn sub(mut self, that: Self) -> Self::Output {
+        self -= that;
+        self
     }
 }
 
@@ -176,6 +215,7 @@ impl<T: Ord> From<BTreeSet<T>> for ArraySet<T> {
         Self(value.into_iter().collect())
     }
 }
+
 impl<T: Ord> FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut iter = iter.into_iter();
@@ -186,24 +226,19 @@ impl<T: Ord> FromIterator<T> for ArraySet<T> {
         Self::from_vec(agg.result())
     }
 }
+
 impl<T: Ord> Extend<T> for ArraySet<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         *self &= Self::from_iter(iter);
     }
 }
+
 impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for ArraySet<T> {
     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
         self.extend(iter.into_iter().cloned())
     }
 }
-impl<T> ArraySet<T> {
-    pub fn shrink_to_fit(&mut self) {
-        self.0.shrink_to_fit()
-    }
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-}
+
 impl<T: Ord> ArraySet<T> {
     pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)

@@ -27,7 +27,7 @@ impl<K: Debug, V: Debug> Debug for ArrayMap<K, V> {
 
 struct RightBiasedUnionOp;
 
-impl<'a, K: Ord, V, I: MergeStateMod<(K, V), (K, V)>> MergeOperation<'a, (K, V), (K, V), I>
+impl<'a, K: Ord, V, I: MergeStateMod<(K, V), (K, V)>> MergeOperation<(K, V), (K, V), I>
     for RightBiasedUnionOp
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
@@ -98,6 +98,8 @@ struct LeftJoinOp<F>(F);
 struct RightJoinOp<F>(F);
 struct InnerJoinOp<F>(F);
 
+struct OuterJoinWithOp<F>(F);
+
 pub(crate) struct VecMergeState<'a, A, B, R> {
     pub(crate) a: SliceIterator<'a, A>,
     pub(crate) b: SliceIterator<'a, B>,
@@ -105,7 +107,7 @@ pub(crate) struct VecMergeState<'a, A, B, R> {
 }
 
 impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
-    pub fn merge<O: MergeOperation<'a, A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
+    pub fn merge<O: MergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
         let mut state = Self {
             a: SliceIterator(a),
             b: SliceIterator(b),
@@ -151,7 +153,7 @@ impl<K: Ord, V> Extend<(K, V)> for ArrayMap<K, V> {
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
-    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
+    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -186,7 +188,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
-    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
+    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -215,7 +217,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
-    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
+    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -244,7 +246,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
-    MergeOperation<'a, (K, A), (K, B), PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
+    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -314,10 +316,10 @@ impl<K: Ord, V> ArrayMap<K, V> {
         Q: Ord + ?Sized,
     {
         let elements = self.0.as_slice();
-        match elements.binary_search_by(|p| p.0.borrow().cmp(key)) {
-            Ok(index) => Some(&elements[index].1),
-            Err(_) => None,
-        }
+        elements
+            .binary_search_by(|p| p.0.borrow().cmp(key))
+            .map(|index| &elements[index].1)
+            .ok()
     }
 
     pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
@@ -337,6 +339,18 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
     pub fn single(k: K, v: V) -> Self {
         Self::from_sorted_vec(vec![(k, v)])
     }
+
+    // pub fn outer_join_with<W: Clone, R, F: Fn(OuterJoinArg<&V, W>)>(
+    //     &self,
+    //     that: &ArrayMap<K, W>,
+    //     f: F,
+    // ) -> ArrayMap<K, R> {
+    //     ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    //         self.0.as_slice(),
+    //         that.0.as_slice(),
+    //         OuterJoinWithOp(f),
+    //     ))
+    // }
 
     pub fn outer_join<W: Clone, R, F: Fn(OuterJoinArg<&V, &W>) -> R>(
         &self,

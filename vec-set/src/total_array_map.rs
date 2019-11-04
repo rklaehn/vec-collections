@@ -43,7 +43,7 @@ struct FastCombineOp<'a, F, V> {
 type PairMergeState<'a, K, V> = VecMergeState<'a, (K, V), (K, V), (K, V)>;
 
 impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
-    MergeOperation<'a, (K, V), (K, V), PairMergeState<'a, K, V>> for CombineOp<'a, F, V>
+    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for CombineOp<'a, F, V>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
@@ -81,7 +81,7 @@ impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
 }
 
 impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V>
-    MergeOperation<'a, (K, V), (K, V), PairMergeState<'a, K, V>> for FastCombineOp<'a, F, V>
+    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for FastCombineOp<'a, F, V>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)

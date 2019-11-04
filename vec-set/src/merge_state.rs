@@ -24,11 +24,7 @@ impl<A, B> UnsafeInPlaceMergeState<A, B> {
 }
 
 impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
-        a: &mut Vec<A>,
-        b: Vec<B>,
-        o: O,
-    ) {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
         let mut t: Vec<A> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);
@@ -36,7 +32,7 @@ impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
         *a = state.result();
     }
 
-    pub fn merge<O: MergeOperation<'a, A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
+    pub fn merge<O: MergeOperation<A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
         let mut t: Vec<A> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);
@@ -282,7 +278,7 @@ impl<'a, T: Debug> Debug for VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Clone> VecMergeState<'a, T> {
+impl<'a, T> VecMergeState<'a, T> {
     pub fn new(a: &'a [T], b: &'a [T], r: Vec<T>) -> Self {
         Self {
             a: SliceIterator(a),
@@ -295,11 +291,7 @@ impl<'a, T: Clone> VecMergeState<'a, T> {
         self.r
     }
 
-    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(
-        a: &'a [T],
-        b: &'a [T],
-        o: O,
-    ) -> Vec<T> {
+    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(a: &'a [T], b: &'a [T], o: O) -> Vec<T> {
         let t: Vec<T> = Vec::new();
         let mut state = VecMergeState::new(a, b, t);
         o.merge(&mut state);
@@ -344,21 +336,32 @@ pub(crate) struct UnsafeSliceMergeState<'a, T> {
     r1: usize,
 }
 
-impl<'a, T: 'a> UnsafeSliceMergeState<'a, T> {
-    fn merge0<O: ShortcutMergeOperation<T, T, Self>> (
+impl<'a, T> UnsafeSliceMergeState<'a, T> {
+    fn merge0<O: ShortcutMergeOperation<T, T, Self>>(
         a: &'a [T],
         b: &'a [T],
         r: *mut T,
         o: O,
     ) -> usize {
         let required = a.len() + b.len();
-        let mut state: UnsafeSliceMergeState<'a, T> = UnsafeSliceMergeState { a, b, r, r0: 0, r1: required };
+        let mut state: UnsafeSliceMergeState<'a, T> = UnsafeSliceMergeState {
+            a,
+            b,
+            r,
+            r0: 0,
+            r1: required,
+        };
         o.merge(&mut state);
         debug_assert!(state.r0 == state.r1);
         state.r0
     }
 
-    fn merge<O: ShortcutMergeOperation<T, T, Self>>(a: &'a mut Vec<T>, b: &'a mut Vec<T>, r: &'a mut Vec<T>, o: O) {
+    fn merge<O: ShortcutMergeOperation<T, T, Self>>(
+        mut a: Vec<T>,
+        mut b: Vec<T>,
+        r: &'a mut Vec<T>,
+        o: O,
+    ) {
         let required = a.len() + b.len();
         let base = r.len();
         r.reserve(required);

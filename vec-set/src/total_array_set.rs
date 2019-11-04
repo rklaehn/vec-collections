@@ -1,5 +1,9 @@
 use crate::ArraySet;
 use std::fmt::Debug;
+use std::ops::BitAndAssign;
+use std::ops::BitOrAssign;
+use std::ops::BitXorAssign;
+use std::ops::SubAssign;
 use std::ops::{BitAnd, BitOr, BitXor, Neg, Sub};
 
 #[derive(Clone, Debug)]
@@ -17,10 +21,6 @@ impl<T> TotalArraySet<T> {
         !self.negated && self.elements.is_empty()
     }
 
-    fn negate(self) -> Self {
-        Self::new(self.elements, !self.negated)
-    }
-
     pub fn empty() -> Self {
         Self::new(ArraySet::empty(), false)
     }
@@ -36,11 +36,12 @@ impl<T> From<ArraySet<T>> for TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
+impl<T> TotalArraySet<T> {
     pub fn shrink_to_fit(&mut self) {
         self.elements.shrink_to_fit()
     }
-
+}
+impl<T: Ord> TotalArraySet<T> {
     pub fn contains(&self, value: &T) -> bool {
         self.negated ^ self.elements.contains(value)
     }
@@ -67,11 +68,105 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
         }
     }
 
-    pub fn xor(self, that: Self) -> Self {
+    pub fn union_with(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // union of elements
+            (false, false) => {
+                self.elements |= that.elements;
+                self.negated = false;
+            }
+            // remove holes from that
+            (false, true) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = true;
+            }
+            // remove holes from self
+            (true, false) => {
+                self.elements -= that.elements;
+                self.negated = true;
+            }
+            // intersection of holes
+            (true, true) => {
+                self.elements &= that.elements;
+                self.negated = true;
+            }
+        };
+    }
+
+    pub fn intersection_with(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => {
+                self.elements &= that.elements;
+                self.negated = false;
+            }
+            // remove elements from self
+            (false, true) => {
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+            // remove elements from that
+            (true, false) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = true;
+            }
+            // union of elements
+            (true, true) => {
+                self.elements |= that.elements;
+                self.negated = true;
+            }
+        };
+    }
+
+    pub fn difference_with(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => {
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+            // keep only holes of that
+            (false, true) => {
+                self.elements &= that.elements;
+                self.negated = false;
+            }
+            // add holes from that
+            (true, false) => {
+                self.elements |= that.elements;
+                self.negated = true;
+            }
+            // union of elements
+            (true, true) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+        }
+    }
+
+    pub fn xor_with(&mut self, that: Self) {
+        self.elements ^= that.elements;
+        self.negated ^= that.negated;
+    }
+}
+
+impl<T: Clone> TotalArraySet<T> {
+    fn negate(&self) -> Self {
+        Self::new(self.elements.clone(), !self.negated)
+    }
+}
+
+impl<T: Ord + Clone> TotalArraySet<T> {
+    pub fn xor(&self, that: &Self) -> Self {
         Self::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
     }
 
-    pub fn union(self, that: Self) -> Self {
+    pub fn union(&self, that: &Self) -> Self {
         match (self.negated, that.negated) {
             // union of elements
             (false, false) => Self::new(&self.elements | &that.elements, false),
@@ -84,7 +179,7 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
         }
     }
 
-    pub fn intersection(self, that: Self) -> Self {
+    pub fn intersection(&self, that: &Self) -> Self {
         match (self.negated, that.negated) {
             // intersection of elements
             (false, false) => Self::new(&self.elements & &that.elements, false),
@@ -97,7 +192,7 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
         }
     }
 
-    pub fn difference(self, that: Self) -> Self {
+    pub fn difference(&self, that: &Self) -> Self {
         match (self.negated, that.negated) {
             // intersection of elements
             (false, false) => Self::new(&self.elements - &that.elements, false),
@@ -111,35 +206,59 @@ impl<T: Ord + Default + Copy + Debug> TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitAnd for TotalArraySet<T> {
+impl<T: Ord + Clone> BitAnd for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn bitand(self, rhs: Self) -> Self {
+    fn bitand(self, rhs: Self) -> Self::Output {
         self.intersection(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitOr for TotalArraySet<T> {
+impl<T: Ord> BitAndAssign for TotalArraySet<T> {
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.intersection_with(rhs)
+    }
+}
+
+impl<T: Ord + Clone> BitOr for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn bitor(self, rhs: Self) -> Self {
+    fn bitor(self, rhs: Self) -> Self::Output {
         self.union(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> BitXor for TotalArraySet<T> {
+impl<T: Ord> BitOrAssign for TotalArraySet<T> {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.union_with(rhs)
+    }
+}
+
+impl<T: Ord + Clone> BitXor for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
     fn bitxor(self, rhs: Self) -> Self::Output {
         self.xor(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> Sub for TotalArraySet<T> {
+impl<T: Ord> BitXorAssign for TotalArraySet<T> {
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.xor_with(rhs)
+    }
+}
+
+impl<T: Ord + Clone> Sub for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
     fn sub(self, rhs: Self) -> Self::Output {
         self.difference(rhs)
     }
 }
 
-impl<T: Ord + Default + Copy + Debug> Neg for TotalArraySet<T> {
+impl<T: Ord> SubAssign for TotalArraySet<T> {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.difference_with(rhs)
+    }
+}
+
+impl<T: Ord + Clone> Neg for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
     fn neg(self) -> Self::Output {
         self.negate()
@@ -210,19 +329,19 @@ mod tests {
         }
 
         fn union_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(a.clone() | b.clone()), |a, b| a | b)
+            binary_op(&a, &b, &(&a | &b), |a, b| a | b)
         }
 
         fn intersection_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(a.clone() & b.clone()), |a, b| a & b)
+            binary_op(&a, &b, &(&a & &b), |a, b| a & b)
         }
 
         fn xor_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(a.clone() ^ b.clone()), |a, b| a ^ b)
+            binary_op(&a, &b, &(&a ^ &b), |a, b| a ^ b)
         }
 
         fn diff_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(a.clone() - b.clone()), |a, b| a & !b)
+            binary_op(&a, &b, &(&a - &b), |a, b| a & !b)
         }
     }
 }

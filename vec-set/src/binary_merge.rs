@@ -72,7 +72,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeState<A, B>> {
     }
 }
 
-pub(crate) trait MergeOperation<'a, A, B, M: MergeState<A, B>> {
+pub(crate) trait MergeOperation<A, B, M: MergeState<A, B>> {
     fn from_a(&self, m: &mut M, n: usize);
     fn from_b(&self, m: &mut M, n: usize);
     fn collision(&self, m: &mut M);
