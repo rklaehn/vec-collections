@@ -142,7 +142,7 @@ impl<K, V> From<BTreeMap<K, V>> for ArrayMap<K, V> {
 }
 
 impl<K: Ord, V> Extend<(K, V)> for ArrayMap<K, V> {
-    fn extend<I: IntoIterator<Item=(K, V)>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.merge_with(iter.into_iter().collect());
     }
 }

@@ -24,7 +24,11 @@ impl<A, B> UnsafeInPlaceMergeState<A, B> {
 }
 
 impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<'a, A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<'a, A, B, Self>>(
+        a: &mut Vec<A>,
+        b: Vec<B>,
+        o: O,
+    ) {
         let mut t: Vec<A> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);

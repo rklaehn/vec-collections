@@ -18,6 +18,9 @@ mod array_set;
 mod total_array_set;
 
 mod array_map;
+mod sonic_reducer;
+
+mod dedup;
 
 pub use array_seq::*;
 pub use array_set::*;

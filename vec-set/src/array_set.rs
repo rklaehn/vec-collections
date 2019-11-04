@@ -1,7 +1,9 @@
 use crate::binary_merge::{EarlyOut, MergeStateMod, ShortcutMergeOperation};
+use crate::dedup::{dedup, SortAndDedup};
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, UnsafeInPlaceMergeState, VecMergeState,
 };
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::iter::FromIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
@@ -168,9 +170,20 @@ impl<T: Ord> From<Vec<T>> for ArraySet<T> {
         Self::from_vec(vec)
     }
 }
+
+impl<T: Ord> From<BTreeSet<T>> for ArraySet<T> {
+    fn from(value: BTreeSet<T>) -> Self {
+        Self(value.into_iter().collect())
+    }
+}
 impl<T: Ord> FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self::from_vec(iter.into_iter().collect())
+        let mut iter = iter.into_iter();
+        let mut agg = SortAndDedup::<T>::new();
+        while let Some(x) = iter.next() {
+            agg.push(x);
+        }
+        Self::from_vec(agg.result())
     }
 }
 impl<T: Ord> Extend<T> for ArraySet<T> {
@@ -186,6 +199,9 @@ impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for ArraySet<T> {
 impl<T> ArraySet<T> {
     pub fn shrink_to_fit(&mut self) {
         self.0.shrink_to_fit()
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 impl<T: Ord> ArraySet<T> {
