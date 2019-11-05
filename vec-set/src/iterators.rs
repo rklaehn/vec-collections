@@ -1,5 +1,6 @@
 // an iterator for a slice that allows random access read as well as dropping or taking multiple elements from the front
 use std::cmp::Ordering::*;
+use std::cmp::{max, min};
 use std::fmt::Debug;
 use std::iter::Peekable;
 use std::marker::PhantomData;
@@ -36,25 +37,70 @@ impl<'a, T> SliceIterator<'a, T> {
     }
 }
 
-trait SortedPairIterator<K, V>: Iterator<Item = (K, V)> {
+pub trait SortedPairIterator<K, V>: Iterator<Item = (K, V)> {
     fn peek(&mut self) -> Option<&(K, V)>;
 }
 
-impl<K, V, I: Iterator<Item = (K, V)>> SortedPairIterator<K, V> for SPI<Peekable<I>> {
+impl<K, V, I: Iterator<Item = (K, V)>> SortedPairIterator<K, V> for SortedPairIter<I> {
     fn peek(&mut self) -> Option<&I::Item> {
-        self.inner.peek()
+        self.0.peek()
     }
 }
 
-pub(crate) struct SPI<I> {
-    inner: I,
+pub trait SortedIterator<K>: Iterator<Item = K> {
+    fn peek(&mut self) -> Option<&K>;
 }
 
-impl<K, V, I: Iterator<Item = (K, V)>> SPI<Peekable<I>> {
+pub struct SortedIter<I: Iterator>(Peekable<I>);
+
+impl<K, I: Iterator<Item = K>> SortedIterator<K> for SortedIter<I> {
+    fn peek(&mut self) -> Option<&I::Item> {
+        self.0.peek()
+    }
+}
+
+impl<K, I: Iterator<Item = K>> Iterator for SortedIter<I> {
+    type Item = K;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl<K, I: Iterator<Item = K>> SortedIter<I> {
     fn new(iter: I) -> Self {
-        Self {
-            inner: iter.peekable(),
-        }
+        Self(iter.peekable())
+    }
+}
+
+impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
+    pub fn take(self, n: usize) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.take(n))
+    }
+    pub fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.take_while(predicate))
+    }
+    pub fn skip(self, n: usize) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.skip(n))
+    }
+    pub fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.skip_while(predicate))
+    }
+    pub fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.filter(predicate))
+    }
+    pub fn step_by(self, step: usize) -> impl SortedIterator<K> {
+        SortedIter::new(self.0.step_by(step))
+    }
+}
+
+pub struct SortedPairIter<I: Iterator>(Peekable<I>);
+
+impl<K, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
+    fn new(iter: I) -> Self {
+        Self(iter.peekable())
     }
 }
 
@@ -116,6 +162,14 @@ where
         }
         None
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (amin, amax) = self.a.size_hint();
+        let (bmin, bmax) = self.b.size_hint();
+        let rmin = min(amin, bmin);
+        let rmax = amax.and_then(|amax| bmax.map(|bmax| min(amax, bmax)));
+        (rmin, rmax)
+    }
 }
 
 impl<K, A, B, R, I, J, F> Iterator for LeftJoin<K, A, B, R, I, J, F>
@@ -139,6 +193,10 @@ where
         let (ak, av) = self.a.next()?;
         let r = (self.f)(av, self.b.next().map(|(_, bv)| bv));
         Some((ak, r))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.a.size_hint()
     }
 }
 
@@ -164,6 +222,10 @@ where
         let r = (self.f)(self.a.next().map(|(_, av)| av), bv);
         Some((bk, r))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.b.size_hint()
+    }
 }
 
 impl<K, A, B, R, I, J, F> OuterJoin<K, A, B, R, I, J, F>
@@ -176,8 +238,17 @@ where
     fn from_a(&mut self) -> Option<(K, R)> {
         self.a.next().map(|(ak, av)| (ak, (self.f)(Some(av), None)))
     }
+
     fn from_b(&mut self) -> Option<(K, R)> {
         self.b.next().map(|(bk, bv)| (bk, (self.f)(None, Some(bv))))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (amin, amax) = self.a.size_hint();
+        let (bmin, bmax) = self.b.size_hint();
+        let rmin = max(amin, bmin);
+        let rmax = amax.and_then(|amax| bmax.map(|bmax| max(amax, bmax)));
+        (rmin, rmax)
     }
 }
 
@@ -207,76 +278,76 @@ where
     }
 }
 
-impl<K: Ord + Debug, V: Debug, I: Iterator<Item = (K, V)>> SPI<Peekable<I>> {
-    fn take(self, n: usize) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.take(n))
+impl<K: Ord, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
+    pub fn take(self, n: usize) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.take(n))
     }
-    fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.take_while(predicate))
+    pub fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.take_while(predicate))
     }
-    fn skip(self, n: usize) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.skip(n))
+    pub fn skip(self, n: usize) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.skip(n))
     }
-    fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.skip_while(predicate))
+    pub fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.skip_while(predicate))
     }
-    fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.filter(predicate))
+    pub fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.filter(predicate))
     }
-    fn step_by(self, step: usize) -> impl SortedPairIterator<K, V> {
-        SPI::new(self.inner.step_by(step))
+    pub fn step_by(self, step: usize) -> impl SortedPairIterator<K, V> {
+        SortedPairIter::new(self.0.step_by(step))
     }
-    fn map_values<W, F: (FnMut(V) -> W)>(self, mut f: F) -> impl SortedPairIterator<K, W> {
-        SPI::new(self.inner.map(move |(k, v)| (k, f(v))))
+    pub fn map_values<W, F: (FnMut(V) -> W)>(self, mut f: F) -> impl SortedPairIterator<K, W> {
+        SortedPairIter::new(self.0.map(move |(k, v)| (k, f(v))))
     }
-    fn filter_map_values<W, F: (FnMut(V) -> Option<W>)>(
+    pub fn filter_map_values<W, F: (FnMut(V) -> Option<W>)>(
         self,
         mut f: F,
     ) -> impl SortedPairIterator<K, W> {
-        SPI::new(self.inner.filter_map(move |(k, v)| f(v).map(|w| (k, w))))
+        SortedPairIter::new(self.0.filter_map(move |(k, v)| f(v).map(|w| (k, w))))
     }
-    fn inner_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(V, W) -> R>(
+    pub fn inner_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(V, W) -> R>(
         self,
         rhs: J,
         f: F,
     ) -> impl SortedPairIterator<K, R> {
-        SPI::new(InnerJoin {
+        SortedPairIter::new(InnerJoin {
             a: self,
             b: rhs,
             f,
             x: PhantomData,
         })
     }
-    fn left_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(V, Option<W>) -> R>(
+    pub fn left_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(V, Option<W>) -> R>(
         self,
         rhs: J,
         f: F,
     ) -> impl SortedPairIterator<K, R> {
-        SPI::new(LeftJoin {
+        SortedPairIter::new(LeftJoin {
             a: self,
             b: rhs,
             f,
             x: PhantomData,
         })
     }
-    fn right_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(Option<V>, W) -> R>(
+    pub fn right_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(Option<V>, W) -> R>(
         self,
         rhs: J,
         f: F,
     ) -> impl SortedPairIterator<K, R> {
-        SPI::new(RightJoin {
+        SortedPairIter::new(RightJoin {
             a: self,
             b: rhs,
             f,
             x: PhantomData,
         })
     }
-    fn outer_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(Option<V>, Option<W>) -> R>(
+    pub fn outer_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(Option<V>, Option<W>) -> R>(
         self,
         rhs: J,
         f: F,
     ) -> impl SortedPairIterator<K, R> {
-        SPI::new(OuterJoin {
+        SortedPairIter::new(OuterJoin {
             a: self,
             b: rhs,
             f,
@@ -285,19 +356,19 @@ impl<K: Ord + Debug, V: Debug, I: Iterator<Item = (K, V)>> SPI<Peekable<I>> {
     }
 }
 
-impl<K, V, I: Iterator<Item = (K, V)>> Iterator for SPI<I> {
+impl<K, V, I: Iterator<Item = (K, V)>> Iterator for SortedPairIter<I> {
     type Item = (K, V);
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        self.0.next()
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        self.0.size_hint()
     }
 }
 
 pub fn test_join<'a>(a: Vec<(i32, i32)>, b: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
-    let a = SPI::new(a.into_iter());
-    let b = SPI::new(b.into_iter());
+    let a = SortedPairIter::new(a.into_iter());
+    let b = SortedPairIter::new(b.into_iter());
     a.inner_join(b, |a, b| a + b).collect()
 }
 
@@ -307,8 +378,8 @@ mod tests {
 
     #[test]
     fn test_sorted_iter() {
-        let a = SPI::new((0..10).step_by(2).map(|k| (k, k)));
-        let b = SPI::new((0..5).map(|k| (k, k)));
+        let a = SortedPairIter::new((0..10).step_by(2).map(|k| (k, k)));
+        let b = SortedPairIter::new((0..5).map(|k| (k, k)));
         // let z = b.take_while(|x| x.0 < 10);
         // let w = a.take(10).take(5);
         let r: Vec<_> = a.outer_join(b, |a, b| (a, b)).collect();
