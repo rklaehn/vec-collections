@@ -1,6 +1,7 @@
+use crate::binary_merge::{
+    EarlyOut, MergeOperation, MergeStateMut, MergeStateRead, ShortcutMergeOperation,
+};
 use crate::iterators::SliceIterator;
-use crate::binary_merge::MergeOperation;
-use crate::binary_merge::{EarlyOut, MergeStateMut, MergeStateRead, ShortcutMergeOperation};
 use flip_buffer::FlipBuffer;
 use std::cmp::Ord;
 use std::default::Default;

@@ -74,7 +74,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
     fn merge(&self, m: &mut M) {
         let a1 = m.a_slice().len();
         let b1 = m.b_slice().len();
-        let _ = self.merge0(m, a1, b1);
+        self.merge0(m, a1, b1);
     }
 }
 
@@ -123,6 +123,6 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
     fn merge(&self, m: &mut M) {
         let a1 = m.a_slice().len();
         let b1 = m.b_slice().len();
-        let _ = self.merge0(m, a1, b1);
+        self.merge0(m, a1, b1);
     }
 }

@@ -91,7 +91,6 @@ impl<T: Ord> TotalArraySet<T> {
 }
 
 impl<T: Ord + Clone> TotalArraySet<T> {
-
     pub fn remove(&mut self, that: &T) {
         if self.negated {
             self.elements.insert(that.clone())
@@ -205,6 +204,7 @@ impl<T: Ord> BitXorAssign for TotalArraySet<T> {
     }
 }
 
+#[allow(clippy::suspicious_arithmetic_impl)]
 impl<T: Ord + Clone> Sub for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
     fn sub(self, that: Self) -> Self::Output {

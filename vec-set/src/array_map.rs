@@ -1,7 +1,7 @@
-use crate::iterators::SliceIterator;
 use crate::binary_merge::MergeOperation;
 use crate::binary_merge::MergeStateMut;
 use crate::binary_merge::MergeStateRead;
+use crate::iterators::SliceIterator;
 use crate::merge_state::UnsafeInPlaceMergeState;
 use std::borrow::Borrow;
 use std::cmp::Ordering;

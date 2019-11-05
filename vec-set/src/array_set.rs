@@ -1,6 +1,6 @@
-use crate::iterators::SliceIterator;
 use crate::binary_merge::{EarlyOut, MergeStateMut, ShortcutMergeOperation};
 use crate::dedup::SortAndDedup;
+use crate::iterators::SliceIterator;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, UnsafeInPlaceMergeState, VecMergeState,
 };
@@ -227,7 +227,7 @@ impl<T: Ord> FromIterator<T> for ArraySet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut iter = iter.into_iter();
         let mut agg = SortAndDedup::<T>::new();
-        while let Some(x) = iter.next() {
+        for x in iter {
             agg.push(x);
         }
         Self::from_vec(agg.result())
@@ -255,11 +255,8 @@ impl<T: Ord> ArraySet<T> {
     }
 
     pub fn remove(&mut self, that: &T) {
-        match self.0.binary_search(&that) {
-            Ok(index) => {
-                self.0.remove(index);
-            }
-            _ => {}
+        if let Ok(index) = self.0.binary_search(&that) {
+            self.0.remove(index);
         };
     }
 
@@ -322,12 +319,7 @@ mod Test {
         }
     }
 
-    fn binary_op(
-        a: &Test,
-        b: &Test,
-        r: &Test,
-        op: impl Fn(bool, bool) -> bool,
-    ) -> bool {
+    fn binary_op(a: &Test, b: &Test, r: &Test, op: impl Fn(bool, bool) -> bool) -> bool {
         let mut samples: Reference = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
@@ -337,12 +329,7 @@ mod Test {
             .all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
     }
 
-    fn binary_property(
-        a: &Test,
-        b: &Test,
-        r: bool,
-        op: impl Fn(bool, bool) -> bool,
-    ) -> bool {
+    fn binary_property(a: &Test, b: &Test, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
         let mut samples: Reference = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
