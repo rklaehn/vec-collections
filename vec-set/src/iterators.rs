@@ -1,7 +1,6 @@
 // an iterator for a slice that allows random access read as well as dropping or taking multiple elements from the front
 use std::cmp::Ordering::*;
 use std::cmp::{max, min};
-use std::fmt::Debug;
 use std::iter::Peekable;
 use std::marker::PhantomData;
 
@@ -75,6 +74,59 @@ impl<K, I: Iterator<Item = K>> SortedIter<I> {
     }
 }
 
+struct Intersection<K, I, J> {
+    a: I,
+    b: J,
+    x: PhantomData<K>,
+}
+
+impl<K: Ord, I: SortedIterator<K>, J: SortedIterator<K>> Iterator for Intersection<K, I, J> {
+    type Item = K;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let (Some(a), Some(b)) = (self.a.peek(), self.b.peek()) {
+            match a.cmp(&b) {
+                Less => {
+                    self.a.next();
+                }
+                Greater => {
+                    self.b.next();
+                }
+                Equal => {
+                    self.b.next();
+                    return self.a.next();
+                }
+            }
+        }
+        None
+    }
+}
+
+struct Union<K, I, J> {
+    a: I,
+    b: J,
+    x: PhantomData<K>,
+}
+
+impl<K: Ord, I: SortedIterator<K>, J: SortedIterator<K>> Iterator for Union<K, I, J> {
+    type Item = K;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let (Some(ak), Some(bk)) = (self.a.peek(), self.b.peek()) {
+            match ak.cmp(&bk) {
+                Less => self.a.next(),
+                Greater => self.b.next(),
+                Equal => {
+                    self.b.next();
+                    self.a.next()
+                }
+            }
+        } else {
+            self.a.next().or_else(|| self.b.next())
+        }
+    }
+}
+
 impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
     pub fn take(self, n: usize) -> impl SortedIterator<K> {
         SortedIter::new(self.0.take(n))
@@ -93,6 +145,20 @@ impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
     }
     pub fn step_by(self, step: usize) -> impl SortedIterator<K> {
         SortedIter::new(self.0.step_by(step))
+    }
+    pub fn intersection<J: SortedIterator<K>>(self, that: J) -> impl SortedIterator<K> {
+        SortedIter::new(Intersection {
+            a: self,
+            b: that,
+            x: PhantomData,
+        })
+    }
+    pub fn union<J: SortedIterator<K>>(self, that: J) -> impl SortedIterator<K> {
+        SortedIter::new(Union {
+            a: self,
+            b: that,
+            x: PhantomData,
+        })
     }
 }
 
@@ -282,13 +348,19 @@ impl<K: Ord, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
     pub fn take(self, n: usize) -> impl SortedPairIterator<K, V> {
         SortedPairIter::new(self.0.take(n))
     }
-    pub fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+    pub fn take_while<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> impl SortedPairIterator<K, V> {
         SortedPairIter::new(self.0.take_while(predicate))
     }
     pub fn skip(self, n: usize) -> impl SortedPairIterator<K, V> {
         SortedPairIter::new(self.0.skip(n))
     }
-    pub fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+    pub fn skip_while<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> impl SortedPairIterator<K, V> {
         SortedPairIter::new(self.0.skip_while(predicate))
     }
     pub fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
@@ -377,12 +449,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_sorted_iter() {
+    fn test_sorted_pair_iter() {
         let a = SortedPairIter::new((0..10).step_by(2).map(|k| (k, k)));
         let b = SortedPairIter::new((0..5).map(|k| (k, k)));
         // let z = b.take_while(|x| x.0 < 10);
         // let w = a.take(10).take(5);
         let r: Vec<_> = a.outer_join(b, |a, b| (a, b)).collect();
+        println!("{:?}", r);
+    }
+
+    #[test]
+    fn test_sorted_iter() {
+        let a = SortedIter::new((1..20).step_by(2));
+        let b = SortedIter::new(0..15);
+        // let z = b.take_while(|x| x.0 < 10);
+        // let w = a.take(10).take(5);
+        let r: Vec<_> = a.union(b).collect();
         println!("{:?}", r);
     }
 }
