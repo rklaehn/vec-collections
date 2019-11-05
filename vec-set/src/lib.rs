@@ -38,5 +38,6 @@ mod iterators;
 
 pub use array_seq::*;
 pub use array_set::*;
+pub use iterators::*;
 pub use total_array_seq::*;
 pub use total_array_set::*;

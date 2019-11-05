@@ -1,9 +1,6 @@
 // an iterator for a slice that allows random access read as well as dropping or taking multiple elements from the front
-use core::iter::Take;
-use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 use std::fmt::Debug;
-use std::iter::Filter;
 use std::iter::Peekable;
 use std::marker::PhantomData;
 
@@ -41,8 +38,6 @@ impl<'a, T> SliceIterator<'a, T> {
 
 trait SortedPairIterator<K, V>: Iterator<Item = (K, V)> {
     fn peek(&mut self) -> Option<&(K, V)>;
-    // fn next() -> Option<(K, V)>;
-    // fn size_hint() -> (usize, Option<usize>);
 }
 
 impl<K, V, I: Iterator<Item = (K, V)>> SortedPairIterator<K, V> for SPI<Peekable<I>> {
@@ -216,11 +211,29 @@ impl<K: Ord + Debug, V: Debug, I: Iterator<Item = (K, V)>> SPI<Peekable<I>> {
     fn take(self, n: usize) -> impl SortedPairIterator<K, V> {
         SPI::new(self.inner.take(n))
     }
+    fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+        SPI::new(self.inner.take_while(predicate))
+    }
+    fn skip(self, n: usize) -> impl SortedPairIterator<K, V> {
+        SPI::new(self.inner.skip(n))
+    }
+    fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
+        SPI::new(self.inner.skip_while(predicate))
+    }
     fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> impl SortedPairIterator<K, V> {
         SPI::new(self.inner.filter(predicate))
     }
+    fn step_by(self, step: usize) -> impl SortedPairIterator<K, V> {
+        SPI::new(self.inner.step_by(step))
+    }
     fn map_values<W, F: (FnMut(V) -> W)>(self, mut f: F) -> impl SortedPairIterator<K, W> {
         SPI::new(self.inner.map(move |(k, v)| (k, f(v))))
+    }
+    fn filter_map_values<W, F: (FnMut(V) -> Option<W>)>(
+        self,
+        mut f: F,
+    ) -> impl SortedPairIterator<K, W> {
+        SPI::new(self.inner.filter_map(move |(k, v)| f(v).map(|w| (k, w))))
     }
     fn inner_join<W, R, J: SortedPairIterator<K, W>, F: FnMut(V, W) -> R>(
         self,
@@ -280,6 +293,12 @@ impl<K, V, I: Iterator<Item = (K, V)>> Iterator for SPI<I> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
+}
+
+pub fn test_join<'a>(a: Vec<(i32, i32)>, b: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+    let a = SPI::new(a.into_iter());
+    let b = SPI::new(b.into_iter());
+    a.inner_join(b, |a, b| a + b).collect()
 }
 
 #[cfg(test)]
