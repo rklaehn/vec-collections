@@ -1,6 +1,6 @@
 use crate::array_map::SliceIterator;
 use crate::binary_merge::MergeOperation;
-use crate::binary_merge::{EarlyOut, MergeState, MergeStateMod, ShortcutMergeOperation};
+use crate::binary_merge::{EarlyOut, MergeStateMut, MergeStateRead, ShortcutMergeOperation};
 use flip_buffer::FlipBuffer;
 use std::cmp::Ord;
 use std::default::Default;
@@ -41,7 +41,7 @@ impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
     }
 }
 
-impl<'a, A, B> MergeState<A, B> for UnsafeInPlaceMergeState<A, B> {
+impl<'a, A, B> MergeStateRead<A, B> for UnsafeInPlaceMergeState<A, B> {
     fn a_slice(&self) -> &[A] {
         &self.a.source_slice()
     }
@@ -50,7 +50,7 @@ impl<'a, A, B> MergeState<A, B> for UnsafeInPlaceMergeState<A, B> {
     }
 }
 
-impl<'a, T> MergeStateMod<T, T> for UnsafeInPlaceMergeState<T, T> {
+impl<'a, T> MergeStateMut<T, T> for UnsafeInPlaceMergeState<T, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         self.a.source_move(n);
         Some(())
@@ -61,11 +61,12 @@ impl<'a, T> MergeStateMod<T, T> for UnsafeInPlaceMergeState<T, T> {
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
         let capacity = self.b_slice().len();
-        for _ in 0..n {
-            if let Some(elem) = self.b.next() {
-                self.a.target_push(elem, capacity);
-            }
-        }
+        self.a.target_extend_from_iter(&mut self.b, n, capacity);
+        // for _ in 0..n {
+        //     if let Some(elem) = self.b.next() {
+        //         self.a.target_push(elem, capacity);
+        //     }
+        // }
         Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
@@ -140,7 +141,7 @@ impl<'a, T: Clone + Default> InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeState<T, T> for InPlaceMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for InPlaceMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         &self.a[self.ab..]
     }
@@ -149,19 +150,17 @@ impl<'a, T> MergeState<T, T> for InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Clone + Default> MergeStateMod<T, T> for InPlaceMergeState<'a, T> {
+impl<'a, T: Clone + Default> MergeStateMut<T, T> for InPlaceMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
-        if n > 0 {
-            if self.ab != self.rn {
-                let s = self.ab;
-                let t = self.rn;
-                for i in 0..n {
-                    self.a[t + i] = self.a[s + i].clone();
-                }
+        if self.ab != self.rn {
+            let s = self.ab;
+            let t = self.rn;
+            for i in 0..n {
+                self.a[t + i] = self.a[s + i].clone();
             }
-            self.ab += n;
-            self.rn += n;
         }
+        self.ab += n;
+        self.rn += n;
         Some(())
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
@@ -169,15 +168,13 @@ impl<'a, T: Clone + Default> MergeStateMod<T, T> for InPlaceMergeState<'a, T> {
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
-        if n > 0 {
-            self.ensure_capacity(n);
-            let t = self.rn;
-            for i in 0..n {
-                self.a[t + i] = self.b[i].clone();
-            }
-            self.skip_b(n)?;
-            self.rn += n;
+        self.ensure_capacity(n);
+        let t = self.rn;
+        for i in 0..n {
+            self.a[t + i] = self.b[i].clone();
         }
+        self.skip_b(n)?;
+        self.rn += n;
         Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
@@ -223,7 +220,7 @@ impl<'a, A, B> BoolOpMergeState<'a, A, B> {
     }
 }
 
-impl<'a, A, B> MergeState<A, B> for BoolOpMergeState<'a, A, B> {
+impl<'a, A, B> MergeStateRead<A, B> for BoolOpMergeState<'a, A, B> {
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }
@@ -232,26 +229,18 @@ impl<'a, A, B> MergeState<A, B> for BoolOpMergeState<'a, A, B> {
     }
 }
 
-impl<'a, A, B> MergeStateMod<A, B> for BoolOpMergeState<'a, A, B> {
+impl<'a, A, B> MergeStateMut<A, B> for BoolOpMergeState<'a, A, B> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
-        if n > 0 {
-            self.r = true;
-            None
-        } else {
-            Some(())
-        }
+        self.r = true;
+        None
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
         self.a.drop_front(n);
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
-        if n > 0 {
-            self.r = true;
-            None
-        } else {
-            Some(())
-        }
+        self.r = true;
+        None
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         self.b.drop_front(n);
@@ -299,7 +288,7 @@ impl<'a, T> VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeState<T, T> for VecMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for VecMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         self.a.as_slice()
     }
@@ -308,7 +297,7 @@ impl<'a, T> MergeState<T, T> for VecMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Clone> MergeStateMod<T, T> for VecMergeState<'a, T> {
+impl<'a, T: Clone> MergeStateMut<T, T> for VecMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         self.r.extend_from_slice(self.a.take_front(n));
         Some(())
@@ -384,7 +373,7 @@ impl<'a, T> UnsafeSliceMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeState<T, T> for UnsafeSliceMergeState<'a, T> {
+impl<'a, T> MergeStateRead<T, T> for UnsafeSliceMergeState<'a, T> {
     fn a_slice(&self) -> &[T] {
         self.a
     }
@@ -393,7 +382,7 @@ impl<'a, T> MergeState<T, T> for UnsafeSliceMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeStateMod<T, T> for UnsafeSliceMergeState<'a, T> {
+impl<'a, T> MergeStateMut<T, T> for UnsafeSliceMergeState<'a, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         unsafe {
             std::ptr::copy_nonoverlapping(self.a.as_ptr(), self.r.add(self.r0), n);

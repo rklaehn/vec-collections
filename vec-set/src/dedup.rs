@@ -82,30 +82,29 @@ impl<T: Ord> SortAndDedup<T> {
 mod tests {
     use super::*;
 
-    quickcheck! {
-
-        fn sort_and_dedup_check(elems: Vec<i32>) -> bool {
-            let mut expected = elems.clone();
-            expected.sort();
-            expected.dedup();
-            let mut agg = SortAndDedup::<i32>::new();
-            for elem in elems {
-                agg.push(elem);
-            }
-            let actual = agg.result();
-            expected == actual
+    #[quickcheck]
+    fn sort_and_dedup_check(elems: Vec<i32>) -> bool {
+        let mut expected = elems.clone();
+        expected.sort();
+        expected.dedup();
+        let mut agg = SortAndDedup::<i32>::new();
+        for elem in elems {
+            agg.push(elem);
         }
+        let actual = agg.result();
+        expected == actual
+    }
 
-        fn dedup_check(x: Vec<i32>) -> bool {
-            let mut y = x;
-            y.sort();
-            let mut expected = y.clone();
-            expected.dedup();
-            let expected = expected.as_slice();
-            let actual = y.as_mut_slice();
-            let n = dedup(actual);
-            let actual = &actual[0..n];
-            expected == actual
-        }
+    #[quickcheck]
+    fn dedup_check(x: Vec<i32>) -> bool {
+        let mut y = x;
+        y.sort();
+        let mut expected = y.clone();
+        expected.dedup();
+        let expected = expected.as_slice();
+        let actual = y.as_mut_slice();
+        let n = dedup(actual);
+        let actual = &actual[0..n];
+        expected == actual
     }
 }

@@ -43,17 +43,39 @@ impl<T> FlipBuffer<T> {
     pub fn source_slice(&self) -> &[T] {
         &self.v[self.s0..]
     }
-    /// Push a value to the target. This will make room for `capacity` elements if there is no space
-    pub fn target_push(&mut self, value: T, capacity: usize) {
+    /// ensure that we have at least `n` space. If we have less than n, we will make `capacity` space
+    fn ensure_capacity(&mut self, n: usize, capacity: usize) {
         // ensure we have space!
-        if self.t1 == self.s0 {
-            let capacity = std::cmp::max(capacity, 1);
+        if self.t1 + n > self.s0 {
+            let capacity = std::cmp::max(capacity, n);
             // insert missing uninitialized dummy elements before s0
             self.v
                 .splice(self.s0..self.s0, Spacer::<T>::sized(capacity));
             // move s0
             self.s0 += capacity;
         }
+    }
+    /// Take at most n elements from `iter` to the target. This will make room for `capacity` elements if there is no space
+    pub fn target_extend_from_iter<I: Iterator<Item = T>>(
+        &mut self,
+        iter: &mut I,
+        n: usize,
+        capacity: usize,
+    ) {
+        if n > 0 {
+            self.ensure_capacity(n, capacity);
+            for _ in 0..n {
+                if let Some(value) = iter.next() {
+                    self.set(self.t1, value);
+                    self.t1 += 1;
+                }
+            }
+        }
+    }
+    /// Push a value to the target. This will make room for `capacity` elements if there is no space
+    pub fn target_push(&mut self, value: T, capacity: usize) {
+        // ensure we have space!
+        self.ensure_capacity(1, capacity);
         self.set(self.t1, value);
         self.t1 += 1;
     }
@@ -122,6 +144,26 @@ impl<T> FlipBuffer<T> {
         t
     }
 }
+
+// impl<T: Clone> FlipBuffer<T> {
+//     /// extend from the given slice
+//     pub fn target_extend_from_slice(&mut self, slice: &[T], capacity: usize) {
+//         let needed = slice.len();
+//         // ensure we have space!
+//         if self.t1 + needed < self.s0 {
+//             let capacity = std::cmp::max(capacity, needed);
+//             // insert missing uninitialized dummy elements before s0
+//             self.v
+//                 .splice(self.s0..self.s0, Spacer::<T>::sized(capacity));
+//             // move s0
+//             self.s0 += capacity;
+//         }
+//         for elem in slice {
+//             self.set(self.t1, elem.clone());
+//             self.t1 += 1;
+//         }
+//     }
+// }
 
 impl<T> Drop for FlipBuffer<T> {
     fn drop(&mut self) {

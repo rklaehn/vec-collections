@@ -68,21 +68,21 @@ impl<T, F: Fn(&mut T, T)> SonicReducer<T, F> {
 mod tests {
     use super::*;
 
-    quickcheck! {
-        fn sum(elems: Vec<i32>) -> bool {
-            let expected: i32 = elems.iter().sum();
-            let actual = reduce(elems, |a, b| *a += b).unwrap_or(0);
-            expected == actual
-        }
+    #[quickcheck]
+    fn sum(elems: Vec<i32>) -> bool {
+        let expected: i32 = elems.iter().sum();
+        let actual = reduce(elems, |a, b| *a += b).unwrap_or(0);
+        expected == actual
+    }
 
-        fn concat(elems: Vec<Vec<u8>>) -> bool {
-            let mut expected: Vec<u8> = Vec::new();
-            for elem in elems.clone() {
-                expected.extend(elem);
-            }
-            let actual = reduce(elems, |a, b| a.extend(&b)).unwrap_or(Vec::new());
-            expected == actual
+    #[quickcheck]
+    fn concat(elems: Vec<Vec<u8>>) -> bool {
+        let mut expected: Vec<u8> = Vec::new();
+        for elem in elems.clone() {
+            expected.extend(elem);
         }
+        let actual = reduce(elems, |a, b| a.extend(&b)).unwrap_or(Vec::new());
+        expected == actual
     }
 
     #[test]

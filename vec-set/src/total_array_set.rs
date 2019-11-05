@@ -1,15 +1,25 @@
 use crate::ArraySet;
 use std::fmt::Debug;
+use std::fmt::Write;
 use std::ops::BitAndAssign;
 use std::ops::BitOrAssign;
 use std::ops::BitXorAssign;
 use std::ops::SubAssign;
-use std::ops::{BitAnd, BitOr, BitXor, Neg, Sub};
+use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TotalArraySet<T> {
     elements: ArraySet<T>,
     negated: bool,
+}
+
+impl<T: Debug> Debug for TotalArraySet<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.negated {
+            f.write_char('!')?;
+        }
+        f.debug_set().entries(self.elements.iter()).finish()
+    }
 }
 
 impl<T> TotalArraySet<T> {
@@ -21,12 +31,20 @@ impl<T> TotalArraySet<T> {
         !self.negated && self.elements.is_empty()
     }
 
+    pub fn is_all(&self) -> bool {
+        self.negated && self.elements.is_empty()
+    }
+
     pub fn empty() -> Self {
         Self::new(ArraySet::empty(), false)
     }
 
     pub fn all() -> Self {
         Self::new(ArraySet::empty(), true)
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.elements.shrink_to_fit()
     }
 }
 
@@ -36,11 +54,6 @@ impl<T> From<ArraySet<T>> for TotalArraySet<T> {
     }
 }
 
-impl<T> TotalArraySet<T> {
-    pub fn shrink_to_fit(&mut self) {
-        self.elements.shrink_to_fit()
-    }
-}
 impl<T: Ord> TotalArraySet<T> {
     pub fn contains(&self, value: &T) -> bool {
         self.negated ^ self.elements.contains(value)
@@ -67,201 +80,168 @@ impl<T: Ord> TotalArraySet<T> {
             (true, true) => false,
         }
     }
-
-    pub fn union_with(&mut self, that: Self) {
-        match (self.negated, that.negated) {
-            // union of elements
-            (false, false) => {
-                self.elements |= that.elements;
-                self.negated = false;
-            }
-            // remove holes from that
-            (false, true) => {
-                let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
-                self.elements -= that.elements;
-                self.negated = true;
-            }
-            // remove holes from self
-            (true, false) => {
-                self.elements -= that.elements;
-                self.negated = true;
-            }
-            // intersection of holes
-            (true, true) => {
-                self.elements &= that.elements;
-                self.negated = true;
-            }
-        };
-    }
-
-    pub fn intersection_with(&mut self, that: Self) {
-        match (self.negated, that.negated) {
-            // intersection of elements
-            (false, false) => {
-                self.elements &= that.elements;
-                self.negated = false;
-            }
-            // remove elements from self
-            (false, true) => {
-                self.elements -= that.elements;
-                self.negated = false;
-            }
-            // remove elements from that
-            (true, false) => {
-                let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
-                self.elements -= that.elements;
-                self.negated = true;
-            }
-            // union of elements
-            (true, true) => {
-                self.elements |= that.elements;
-                self.negated = true;
-            }
-        };
-    }
-
-    pub fn difference_with(&mut self, that: Self) {
-        match (self.negated, that.negated) {
-            // intersection of elements
-            (false, false) => {
-                self.elements -= that.elements;
-                self.negated = false;
-            }
-            // keep only holes of that
-            (false, true) => {
-                self.elements &= that.elements;
-                self.negated = false;
-            }
-            // add holes from that
-            (true, false) => {
-                self.elements |= that.elements;
-                self.negated = true;
-            }
-            // union of elements
-            (true, true) => {
-                let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
-                self.elements -= that.elements;
-                self.negated = false;
-            }
-        }
-    }
-
-    pub fn xor_with(&mut self, that: Self) {
-        self.elements ^= that.elements;
-        self.negated ^= that.negated;
-    }
-}
-
-impl<T: Clone> TotalArraySet<T> {
-    fn negate(&self) -> Self {
-        Self::new(self.elements.clone(), !self.negated)
-    }
-}
-
-impl<T: Ord + Clone> TotalArraySet<T> {
-    pub fn xor(&self, that: &Self) -> Self {
-        Self::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
-    }
-
-    pub fn union(&self, that: &Self) -> Self {
-        match (self.negated, that.negated) {
-            // union of elements
-            (false, false) => Self::new(&self.elements | &that.elements, false),
-            // remove holes from that
-            (false, true) => Self::new(&that.elements - &self.elements, true),
-            // remove holes from self
-            (true, false) => Self::new(&self.elements - &that.elements, true),
-            // intersection of holes
-            (true, true) => Self::new(&that.elements & &self.elements, true),
-        }
-    }
-
-    pub fn intersection(&self, that: &Self) -> Self {
-        match (self.negated, that.negated) {
-            // intersection of elements
-            (false, false) => Self::new(&self.elements & &that.elements, false),
-            // remove elements from self
-            (false, true) => Self::new(&self.elements - &that.elements, false),
-            // remove elements from that
-            (true, false) => Self::new(&that.elements - &self.elements, false),
-            // union of elements
-            (true, true) => Self::new(&that.elements | &self.elements, true),
-        }
-    }
-
-    pub fn difference(&self, that: &Self) -> Self {
-        match (self.negated, that.negated) {
-            // intersection of elements
-            (false, false) => Self::new(&self.elements - &that.elements, false),
-            // keep only holes of that
-            (false, true) => Self::new(&self.elements & &that.elements, false),
-            // add holes from that
-            (true, false) => Self::new(&self.elements | &that.elements, true),
-            // union of elements
-            (true, true) => Self::new(&that.elements - &self.elements, false),
-        }
-    }
 }
 
 impl<T: Ord + Clone> BitAnd for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn bitand(self, rhs: Self) -> Self::Output {
-        self.intersection(rhs)
+    fn bitand(self, that: Self) -> Self::Output {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => Self::Output::new(&self.elements & &that.elements, false),
+            // remove elements from self
+            (false, true) => Self::Output::new(&self.elements - &that.elements, false),
+            // remove elements from that
+            (true, false) => Self::Output::new(&that.elements - &self.elements, false),
+            // union of elements
+            (true, true) => Self::Output::new(&that.elements | &self.elements, true),
+        }
     }
 }
 
 impl<T: Ord> BitAndAssign for TotalArraySet<T> {
-    fn bitand_assign(&mut self, rhs: Self) {
-        self.intersection_with(rhs)
+    fn bitand_assign(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => {
+                self.elements &= that.elements;
+                self.negated = false;
+            }
+            // remove elements from self
+            (false, true) => {
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+            // remove elements from that
+            (true, false) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+            // union of elements
+            (true, true) => {
+                self.elements |= that.elements;
+                self.negated = true;
+            }
+        };
     }
 }
 
 impl<T: Ord + Clone> BitOr for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        self.union(rhs)
+    fn bitor(self, that: Self) -> Self::Output {
+        match (self.negated, that.negated) {
+            // union of elements
+            (false, false) => Self::Output::new(&self.elements | &that.elements, false),
+            // remove holes from that
+            (false, true) => Self::Output::new(&that.elements - &self.elements, true),
+            // remove holes from self
+            (true, false) => Self::Output::new(&self.elements - &that.elements, true),
+            // intersection of holes
+            (true, true) => Self::Output::new(&that.elements & &self.elements, true),
+        }
     }
 }
 
 impl<T: Ord> BitOrAssign for TotalArraySet<T> {
-    fn bitor_assign(&mut self, rhs: Self) {
-        self.union_with(rhs)
+    fn bitor_assign(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // union of elements
+            (false, false) => {
+                self.elements |= that.elements;
+                self.negated = false;
+            }
+            // remove holes from that
+            (false, true) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = true;
+            }
+            // remove holes from self
+            (true, false) => {
+                self.elements -= that.elements;
+                self.negated = true;
+            }
+            // intersection of holes
+            (true, true) => {
+                self.elements &= that.elements;
+                self.negated = true;
+            }
+        };
     }
 }
 
 impl<T: Ord + Clone> BitXor for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        self.xor(rhs)
+    fn bitxor(self, that: Self) -> Self::Output {
+        Self::Output::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
     }
 }
 
 impl<T: Ord> BitXorAssign for TotalArraySet<T> {
-    fn bitxor_assign(&mut self, rhs: Self) {
-        self.xor_with(rhs)
+    fn bitxor_assign(&mut self, that: Self) {
+        self.elements ^= that.elements;
+        self.negated ^= that.negated;
     }
 }
 
 impl<T: Ord + Clone> Sub for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn sub(self, rhs: Self) -> Self::Output {
-        self.difference(rhs)
+    fn sub(self, that: Self) -> Self::Output {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => Self::Output::new(&self.elements - &that.elements, false),
+            // keep only holes of that
+            (false, true) => Self::Output::new(&self.elements & &that.elements, false),
+            // add holes from that
+            (true, false) => Self::Output::new(&self.elements | &that.elements, true),
+            // union of elements
+            (true, true) => Self::Output::new(&that.elements - &self.elements, false),
+        }
     }
 }
 
 impl<T: Ord> SubAssign for TotalArraySet<T> {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.difference_with(rhs)
+    fn sub_assign(&mut self, that: Self) {
+        match (self.negated, that.negated) {
+            // intersection of elements
+            (false, false) => {
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+            // keep only holes of that
+            (false, true) => {
+                self.elements &= that.elements;
+                self.negated = false;
+            }
+            // add holes from that
+            (true, false) => {
+                self.elements |= that.elements;
+                self.negated = true;
+            }
+            // union of elements
+            (true, true) => {
+                let mut that = that;
+                std::mem::swap(&mut that.elements, &mut self.elements);
+                self.elements -= that.elements;
+                self.negated = false;
+            }
+        }
     }
 }
 
-impl<T: Ord + Clone> Neg for &TotalArraySet<T> {
+impl<T: Ord + Clone> Not for &TotalArraySet<T> {
     type Output = TotalArraySet<T>;
-    fn neg(self) -> Self::Output {
-        self.negate()
+    fn not(self) -> Self::Output {
+        Self::Output::new(self.elements.clone(), !self.negated)
+    }
+}
+
+impl<T: Ord> Not for TotalArraySet<T> {
+    type Output = TotalArraySet<T>;
+    fn not(self) -> Self::Output {
+        Self::Output::new(self.elements, !self.negated)
     }
 }
 
@@ -275,7 +255,10 @@ mod tests {
 
     impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalArraySet<T> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
-            TotalArraySet::new(Arbitrary::arbitrary(g), Arbitrary::arbitrary(g))
+            let mut elements: Vec<T> = Arbitrary::arbitrary(g);
+            elements.truncate(2);
+            let negated: bool = Arbitrary::arbitrary(g);
+            TotalArraySet::new(elements.into(), negated)
         }
     }
 
@@ -344,4 +327,9 @@ mod tests {
             binary_op(&a, &b, &(&a - &b), |a, b| a & !b)
         }
     }
+
+    bitop_assign_consistent!(Test);
+    bitop_symmetry!(Test);
+    empty_neutral!(Test);
+    all_neutral!(Test);
 }

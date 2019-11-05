@@ -3,15 +3,17 @@ use std::cmp::Ordering;
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
 pub(crate) type EarlyOut = Option<()>;
 
-pub(crate) trait MergeState<A, B> {
+/// The read part of the merge state that is needed for the binary merge algorithm
+/// it just needs random access for the remainder of a and b
+pub(crate) trait MergeStateRead<A, B> {
     /// The remaining data in a
     fn a_slice(&self) -> &[A];
     /// The remaining data in b
     fn b_slice(&self) -> &[B];
 }
 
-/// The state needed by a binary merge operation
-pub(crate) trait MergeStateMod<A, B>: MergeState<A, B> {
+/// A typical write part for the merge state
+pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
     /// Move n elements from a to r
     fn move_a(&mut self, n: usize) -> EarlyOut;
     /// Skip n elements in a
@@ -26,7 +28,7 @@ pub(crate) trait MergeStateMod<A, B>: MergeState<A, B> {
 /// A minimum comparison merge operation. Not 100% sure if this is actually minimum comparison,
 /// since proving this is beyond my ability. But it is optimal for many common cases.
 ///
-pub(crate) trait ShortcutMergeOperation<A, B, M: MergeState<A, B>> {
+pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;
@@ -34,9 +36,13 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeState<A, B>> {
     /// merge `an` elements from a and `bn` elements from b into the result
     fn merge0(&self, m: &mut M, an: usize, bn: usize) -> EarlyOut {
         if an == 0 {
-            self.from_b(m, bn)?
+            if bn > 0 {
+                self.from_b(m, bn)?
+            }
         } else if bn == 0 {
-            self.from_a(m, an)?
+            if an > 0 {
+                self.from_a(m, an)?
+            }
         } else {
             // neither a nor b are 0
             let am: usize = an / 2;
@@ -72,7 +78,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeState<A, B>> {
     }
 }
 
-pub(crate) trait MergeOperation<A, B, M: MergeState<A, B>> {
+pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
     fn from_a(&self, m: &mut M, n: usize);
     fn from_b(&self, m: &mut M, n: usize);
     fn collision(&self, m: &mut M);
@@ -80,9 +86,13 @@ pub(crate) trait MergeOperation<A, B, M: MergeState<A, B>> {
     /// merge `an` elements from a and `bn` elements from b into the result
     fn merge0(&self, m: &mut M, an: usize, bn: usize) {
         if an == 0 {
-            self.from_b(m, bn);
+            if bn > 0 {
+                self.from_b(m, bn);
+            }
         } else if bn == 0 {
-            self.from_a(m, an);
+            if an > 0 {
+                self.from_a(m, an);
+            }
         } else {
             // neither a nor b are 0
             let am: usize = an / 2;

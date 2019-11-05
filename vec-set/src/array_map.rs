@@ -1,6 +1,6 @@
 use crate::binary_merge::MergeOperation;
-use crate::binary_merge::MergeState;
-use crate::binary_merge::MergeStateMod;
+use crate::binary_merge::MergeStateMut;
+use crate::binary_merge::MergeStateRead;
 use crate::merge_state::UnsafeInPlaceMergeState;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
@@ -27,7 +27,7 @@ impl<K: Debug, V: Debug> Debug for ArrayMap<K, V> {
 
 struct RightBiasedUnionOp;
 
-impl<'a, K: Ord, V, I: MergeStateMod<(K, V), (K, V)>> MergeOperation<(K, V), (K, V), I>
+impl<'a, K: Ord, V, I: MergeStateMut<(K, V), (K, V)>> MergeOperation<(K, V), (K, V), I>
     for RightBiasedUnionOp
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
@@ -118,7 +118,7 @@ impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
     }
 }
 
-impl<'a, A, B, R> MergeState<A, B> for VecMergeState<'a, A, B, R> {
+impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }

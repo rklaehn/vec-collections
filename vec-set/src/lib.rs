@@ -6,7 +6,15 @@ extern crate quickcheck;
 #[macro_use]
 extern crate maplit;
 
+#[cfg(test)]
+#[macro_use(quickcheck)]
+extern crate quickcheck_macros;
+
 extern crate flip_buffer;
+
+#[cfg(test)]
+#[macro_use]
+mod test_macros;
 
 mod binary_merge;
 mod merge_state;
@@ -20,7 +28,7 @@ mod total_array_set;
 mod array_map;
 mod total_array_map;
 
-mod countable_interval_set;
+mod range_set;
 
 mod sonic_reducer;
 
