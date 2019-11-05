@@ -1,4 +1,4 @@
-use crate::array_map::SliceIterator;
+use crate::iterators::SliceIterator;
 use crate::binary_merge::MergeOperation;
 use crate::binary_merge::{EarlyOut, MergeStateMut, MergeStateRead, ShortcutMergeOperation};
 use flip_buffer::FlipBuffer;

@@ -1,3 +1,4 @@
+use crate::iterators::SliceIterator;
 use crate::binary_merge::MergeOperation;
 use crate::binary_merge::MergeStateMut;
 use crate::binary_merge::MergeStateRead;
@@ -42,38 +43,6 @@ impl<'a, K: Ord, V, I: MergeStateMut<(K, V), (K, V)>> MergeOperation<(K, V), (K,
     fn collision(&self, m: &mut I) {
         m.move_a(1);
         m.skip_b(1);
-    }
-}
-
-pub struct SliceIterator<'a, T>(pub &'a [T]);
-
-impl<'a, T> Iterator for SliceIterator<'a, T> {
-    type Item = &'a T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
-            None
-        } else {
-            let res: Self::Item = &self.0[0];
-            self.0 = &self.0[1..];
-            Some(res)
-        }
-    }
-}
-
-impl<'a, T> SliceIterator<'a, T> {
-    pub fn as_slice(&self) -> &[T] {
-        self.0
-    }
-
-    pub(crate) fn drop_front(&mut self, n: usize) {
-        self.0 = &self.0[n..];
-    }
-
-    pub(crate) fn take_front(&mut self, n: usize) -> &'a [T] {
-        let res = &self.0[..n];
-        self.0 = &self.0[n..];
-        res
     }
 }
 
@@ -284,7 +253,7 @@ impl<K, V> ArrayMap<K, V> {
         self.0.retain(|entry| f((&entry.0, &entry.1)))
     }
 
-    pub fn iter(&self) -> SliceIterator<(K, V)> {
+    pub(crate) fn iter(&self) -> SliceIterator<(K, V)> {
         SliceIterator(self.0.as_slice())
     }
 

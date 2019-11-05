@@ -59,6 +59,14 @@ impl<T: Ord> TotalArraySet<T> {
         self.negated ^ self.elements.contains(value)
     }
 
+    pub fn insert(&mut self, that: T) {
+        if !self.negated {
+            self.elements.insert(that)
+        } else {
+            self.elements.remove(&that)
+        }
+    }
+
     pub fn is_superset(&self, that: &Self) -> bool {
         !self.is_subset(that)
     }
@@ -78,6 +86,17 @@ impl<T: Ord> TotalArraySet<T> {
             (false, true) => self.elements.is_subset(&that.elements),
             (true, false) => self.elements.is_superset(&that.elements),
             (true, true) => false,
+        }
+    }
+}
+
+impl<T: Ord + Clone> TotalArraySet<T> {
+
+    pub fn remove(&mut self, that: &T) {
+        if self.negated {
+            self.elements.insert(that.clone())
+        } else {
+            self.elements.remove(that)
         }
     }
 }

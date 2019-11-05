@@ -137,6 +137,13 @@ macro_rules! set_predicate_consistency {
         }
 
         #[quickcheck]
+        fn is_subset_is_superset_consistent(a: $test, b: $test) -> bool {
+            let r1 = a.is_subset(&b);
+            let r2 = b.is_superset(&a);
+            r1 == r2
+        }
+
+        #[quickcheck]
         fn empty_is_empty_consistent(a: $test) -> bool {
             let r1 = a.is_empty();
             let r2 = a == Test::empty();

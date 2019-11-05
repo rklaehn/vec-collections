@@ -1,4 +1,4 @@
-use crate::array_map::SliceIterator;
+use crate::iterators::SliceIterator;
 use crate::binary_merge::{EarlyOut, MergeStateMut, ShortcutMergeOperation};
 use crate::dedup::SortAndDedup;
 use crate::merge_state::{
@@ -88,12 +88,15 @@ impl<T: Debug> Debug for ArraySet<T> {
     }
 }
 
-impl<T> ArraySet<T> {
-    pub fn single(value: T) -> Self {
-        Self(vec![value])
-    }
-    pub fn into_vec(self) -> Vec<T> {
+impl<T> Into<Vec<T>> for ArraySet<T> {
+    fn into(self) -> Vec<T> {
         self.0
+    }
+}
+
+impl<T> ArraySet<T> {
+    pub fn singleton(value: T) -> Self {
+        Self(vec![value])
     }
     pub fn as_slice(&self) -> &[T] {
         &self.0
@@ -110,8 +113,11 @@ impl<T> ArraySet<T> {
     pub fn empty() -> Self {
         Self(Vec::new())
     }
-    pub fn iter(&self) -> SliceIterator<T> {
-        SliceIterator(self.as_slice())
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.0.iter()
+    }
+    pub fn retain<F: FnMut(&T) -> bool>(&mut self, f: F) {
+        self.0.retain(f)
     }
 }
 
@@ -241,6 +247,22 @@ impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for ArraySet<T> {
 }
 
 impl<T: Ord> ArraySet<T> {
+    pub fn insert(&mut self, that: T) {
+        match self.0.binary_search(&that) {
+            Ok(index) => self.0[index] = that,
+            Err(index) => self.0.insert(index, that),
+        }
+    }
+
+    pub fn remove(&mut self, that: &T) {
+        match self.0.binary_search(&that) {
+            Ok(index) => {
+                self.0.remove(index);
+            }
+            _ => {}
+        };
+    }
+
     pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
     }
@@ -256,34 +278,11 @@ impl<T: Ord> ArraySet<T> {
         self.0.binary_search(value).is_ok()
     }
 
-    pub fn retain<F: FnMut(&T) -> bool>(&mut self, f: F) {
-        self.0.retain(f)
-    }
-
     fn from_vec(vec: Vec<T>) -> Self {
         let mut vec = vec;
         vec.sort();
         vec.dedup();
         Self(vec)
-    }
-}
-
-impl<T: Ord + Clone> ArraySet<T> {
-
-    pub fn insert(&mut self, that: T) {
-        match self.0.binary_search(&that) {
-            Ok(index) => self.0[index] = that,
-            Err(index) => self.0.insert(index, that),
-        }
-    }
-
-    pub fn remove(&mut self, that: &T) {
-        match self.0.binary_search(&that) {
-            Ok(index) => {
-                self.0.remove(index);
-            }
-            _ => {}
-        };
     }
 }
 
@@ -311,7 +310,7 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 }
 
 #[cfg(test)]
-mod tests {
+mod Test {
     use super::*;
     use crate::test_macros::*;
     use quickcheck::*;
@@ -324,12 +323,12 @@ mod tests {
     }
 
     fn binary_op(
-        a: &ArraySet<i64>,
-        b: &ArraySet<i64>,
-        r: &ArraySet<i64>,
+        a: &Test,
+        b: &Test,
+        r: &Test,
         op: impl Fn(bool, bool) -> bool,
     ) -> bool {
-        let mut samples: BTreeSet<i64> = BTreeSet::new();
+        let mut samples: Reference = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
         samples.insert(std::i64::MIN);
@@ -339,12 +338,12 @@ mod tests {
     }
 
     fn binary_property(
-        a: &ArraySet<i64>,
-        b: &ArraySet<i64>,
+        a: &Test,
+        b: &Test,
         r: bool,
         op: impl Fn(bool, bool) -> bool,
     ) -> bool {
-        let mut samples: BTreeSet<i64> = BTreeSet::new();
+        let mut samples: Reference = BTreeSet::new();
         samples.extend(a.as_slice().iter().cloned());
         samples.extend(b.as_slice().iter().cloned());
         samples.insert(std::i64::MIN);
@@ -365,95 +364,96 @@ mod tests {
     }
 
     type Test = ArraySet<i64>;
+    type Reference = BTreeSet<i64>;
 
     quickcheck! {
 
-        fn is_disjoint_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn is_disjoint_sample(a: Test, b: Test) -> bool {
             binary_property(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
         }
 
-        fn is_subset_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn is_subset_sample(a: Test, b: Test) -> bool {
             binary_property(&a, &b, a.is_subset(&b), |a, b| !a | b)
         }
 
-        fn union_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn union_sample(a: Test, b: Test) -> bool {
             binary_op(&a, &b, &(&a | &b), |a, b| a | b)
         }
 
-        fn intersection_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn intersection_sample(a: Test, b: Test) -> bool {
             binary_op(&a, &b, &(&a & &b), |a, b| a & b)
         }
 
-        fn xor_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn xor_sample(a: Test, b: Test) -> bool {
             binary_op(&a, &b, &(&a ^ &b), |a, b| a ^ b)
         }
 
-        fn diff_sample(a: ArraySet<i64>, b: ArraySet<i64>) -> bool {
+        fn diff_sample(a: Test, b: Test) -> bool {
             binary_op(&a, &b, &(&a - &b), |a, b| a & !b)
         }
 
-        fn union(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn union(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 | &b1;
             a1 |= b1;
-            let expected: Vec<u32> = a.union(&b).cloned().collect();
-            let actual: Vec<u32> = a1.into_vec();
-            let actual2 = r2.into_vec();
+            let expected: Vec<i64> = a.union(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
             expected == actual && expected == actual2
         }
 
-        fn intersection(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn intersection(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 & &b1;
             a1 &= b1;
-            let expected: Vec<u32> = a.intersection(&b).cloned().collect();
-            let actual: Vec<u32> = a1.into_vec();
-            let actual2 = r2.into_vec();
+            let expected: Vec<i64> = a.intersection(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
             expected == actual && expected == actual2
         }
 
-        fn xor(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn xor(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 ^ &b1;
             a1 ^= b1;
-            let expected: Vec<u32> = a.symmetric_difference(&b).cloned().collect();
-            let actual: Vec<u32> = a1.into_vec();
-            let actual2 = r2.into_vec();
+            let expected: Vec<i64> = a.symmetric_difference(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
             expected == actual && expected == actual2
         }
 
-        fn difference(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let mut a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn difference(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 - &b1;
             a1 -= b1;
-            let expected: Vec<u32> = a.difference(&b).cloned().collect();
-            let actual: Vec<u32> = a1.into_vec();
-            let actual2 = r2.into_vec();
+            let expected: Vec<i64> = a.difference(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
             expected == actual && expected == actual2
         }
 
-        fn is_disjoint(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn is_disjoint(a: Reference, b: Reference) -> bool {
+            let a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let actual = a1.is_disjoint(&b1);
             let expected = a.is_disjoint(&b);
             expected == actual
         }
 
-        fn is_subset(a: BTreeSet<u32>, b: BTreeSet<u32>) -> bool {
-            let a1: ArraySet<u32> = a.iter().cloned().collect();
-            let b1: ArraySet<u32> = b.iter().cloned().collect();
+        fn is_subset(a: Reference, b: Reference) -> bool {
+            let a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
             let actual = a1.is_subset(&b1);
             let expected = a.is_subset(&b);
             expected == actual
         }
 
-        fn contains(a: BTreeSet<u32>, b: u32) -> bool {
-            let a1: ArraySet<u32> = a.iter().cloned().collect();
+        fn contains(a: Reference, b: i64) -> bool {
+            let a1: Test = a.iter().cloned().collect();
             let expected = a.contains(&b);
             let actual = a1.contains(&b);
             expected == actual

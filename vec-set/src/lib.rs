@@ -34,6 +34,8 @@ mod sonic_reducer;
 
 mod dedup;
 
+mod iterators;
+
 pub use array_seq::*;
 pub use array_set::*;
 pub use total_array_seq::*;
