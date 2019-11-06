@@ -10,11 +10,11 @@ extern crate maplit;
 #[macro_use(quickcheck)]
 extern crate quickcheck_macros;
 
-extern crate flip_buffer;
-
 #[cfg(test)]
 #[macro_use]
 mod test_macros;
+
+mod flip_buffer;
 
 mod binary_merge;
 mod merge_state;

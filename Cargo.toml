@@ -1,5 +1,14 @@
-[workspace]
-members = [
-    "flip-buffer",
-    "vec-set",
-]
+[package]
+name = "vec-set"
+version = "0.1.0"
+authors = ["Rüdiger Klaehn <rklaehn@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+alga = "0.9"
+
+[dev-dependencies]
+quickcheck = "0.8"
+maplit = "1.0.2"
+quickcheck_macros = "0.8.0"
+testdrop = "0.1.2"

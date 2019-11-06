@@ -2,7 +2,7 @@ use crate::binary_merge::{
     EarlyOut, MergeOperation, MergeStateRead, ShortcutMergeOperation,
 };
 use crate::iterators::SliceIterator;
-use flip_buffer::FlipBuffer;
+use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
@@ -20,7 +20,7 @@ pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
 }
 
 pub(crate) struct UnsafeInPlaceMergeState<A, B> {
-    a: FlipBuffer<A>,
+    a: InPlaceVecBuilder<A>,
     b: std::vec::IntoIter<B>,
 }
 

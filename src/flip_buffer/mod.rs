@@ -1,14 +1,15 @@
 //! A data structure for in place modification of vecs.
-#![deny(warnings)]
+// #![deny(warnings)]
 #![deny(missing_docs)]
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
 
 /// A contiguous chunk of memory that is logically divided into a source and a target part.
+/// This can be used to build a `Vec<T>` while reusing elements from an existing `Vec<T>` in place.
 ///
 /// This is using a `Vec<T>` as storage and divides it logically into a source and target part.
 /// You can take or drop elements from the source part, and append elements to the target part.
-pub struct FlipBuffer<T> {
+pub struct InPlaceVecBuilder<T> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
     v: Vec<T>,
     /// the end of the target area
@@ -17,11 +18,11 @@ pub struct FlipBuffer<T> {
     s0: usize,
 }
 
-impl<T: Debug> Debug for FlipBuffer<T> {
+impl<T: Debug> Debug for InPlaceVecBuilder<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "FlipBuffer({:?},{:?})",
+            "InPlaceVecBuilder({:?},{:?})",
             self.target_slice(),
             self.source_slice()
         )
@@ -30,13 +31,13 @@ impl<T: Debug> Debug for FlipBuffer<T> {
 
 /// initializes the source part of this flip buffer with the given vector.
 /// The target part is initially empty.
-impl<T> From<Vec<T>> for FlipBuffer<T> {
+impl<T> From<Vec<T>> for InPlaceVecBuilder<T> {
     fn from(value: Vec<T>) -> Self {
-        Self { v: value, s0: 0, t1: 0 }
+        InPlaceVecBuilder { v: value, s0: 0, t1: 0 }
     }
 }
 
-impl<T> FlipBuffer<T> {
+impl<T> InPlaceVecBuilder<T> {
 
     /// The current target part as a slice
     pub fn target_slice(&self) -> &[T] {
@@ -157,7 +158,7 @@ impl<T> FlipBuffer<T> {
     }
 }
 
-impl<T> Drop for FlipBuffer<T> {
+impl<T> Drop for InPlaceVecBuilder<T> {
     fn drop(&mut self) {
         // drop the source part.
         // The target part will be dropped normally by the vec itself.
@@ -192,7 +193,7 @@ mod tests {
 
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
-        F: Fn(Vec<Item<'a>>, Vec<Item<'a>>) -> FlipBuffer<Item<'a>>,
+        F: Fn(Vec<Item<'a>>, Vec<Item<'a>>) -> InPlaceVecBuilder<Item<'a>>,
     {
         let mut a: Vec<Item> = Vec::new();
         let mut b: Vec<Item> = Vec::new();
@@ -222,7 +223,7 @@ mod tests {
     #[test]
     fn target_push_gap() {
         everything_dropped(&TestDrop::new(), 10, |a, b| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             for x in b.into_iter() {
                 res.push(x, 100);
             }
@@ -233,7 +234,7 @@ mod tests {
     #[test]
     fn source_move_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             res.take(3);
             res
         })
@@ -242,7 +243,7 @@ mod tests {
     #[test]
     fn source_move_all() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             res.take(10);
             res
         })
@@ -251,7 +252,7 @@ mod tests {
     #[test]
     fn source_drop_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             res.skip(3);
             res
         })
@@ -260,7 +261,7 @@ mod tests {
     #[test]
     fn source_drop_all() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             res.skip(10);
             res
         })
@@ -269,7 +270,7 @@ mod tests {
     #[test]
     fn source_pop_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: FlipBuffer<Item> = a.into();
+            let mut res: InPlaceVecBuilder<Item> = a.into();
             res.pop_front();
             res.pop_front();
             res.pop_front();

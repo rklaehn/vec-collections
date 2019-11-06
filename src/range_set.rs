@@ -2,7 +2,7 @@
 use crate::binary_merge::EarlyOut;
 use crate::binary_merge::MergeStateRead;
 use crate::binary_merge::ShortcutMergeOperation;
-use flip_buffer::FlipBuffer;
+use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
@@ -343,7 +343,7 @@ impl<'a, T> MergeStateRead<T, T> for VecMergeState<'a, T> {
 }
 
 struct InPlaceMergeState<T> {
-    a: FlipBuffer<T>,
+    a: InPlaceVecBuilder<T>,
     b: std::vec::IntoIter<T>,
     ac: bool,
     bc: bool,
