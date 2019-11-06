@@ -39,6 +39,42 @@ impl<'a, T> SliceIterator<'a, T> {
 /// An iterator that is guaranteed to be sorted according to the order of its elements
 pub struct SortedIter<I: Iterator>(Peekable<I>);
 
+macro_rules! borrowed_iter_from {
+    ($t:ty) => {
+        impl<'a, T: Ord> From<$t> for SortedIter<$t> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+macro_rules! borrowed_iter_from_kv {
+    ($t:ty) => {
+        impl<'a, K: Ord, V> From<$t> for SortedIter<$t> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+macro_rules! owned_iter_from {
+    ($t:ty) => {
+        impl<T: Ord> From<$t> for SortedIter<$t> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+borrowed_iter_from!(std::collections::btree_set::Iter<'a, T>);
+borrowed_iter_from!(std::collections::btree_set::Union<'a, T>);
+borrowed_iter_from!(std::collections::btree_set::Intersection<'a, T>);
+borrowed_iter_from!(std::collections::btree_set::SymmetricDifference<'a, T>);
+borrowed_iter_from!(std::collections::btree_set::Difference<'a, T>);
+borrowed_iter_from!(std::collections::btree_set::Range<'a, T>);
+borrowed_iter_from_kv!(std::collections::btree_map::Keys<'a, K, V>);
+owned_iter_from!(std::collections::btree_set::IntoIter<T>);
+
 impl<K, I: Iterator<Item = K>> SortedIter<I> {
     fn peek(&mut self) -> Option<&I::Item> {
         self.0.peek()
@@ -151,6 +187,28 @@ impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
 
 /// An iterator of pairs is guaranteed to be sorted according to the order of the keys
 pub struct SortedPairIter<I: Iterator>(Peekable<I>);
+
+macro_rules! borrowed_pair_iter_from {
+    ($t:ty) => {
+        impl<'a, K: Ord, V> From<$t> for SortedPairIter<$t> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+macro_rules! owned_pair_iter_from {
+    ($t:ty) => {
+        impl<K: Ord, V> From<$t> for SortedPairIter<$t> {
+            fn from(value: $t) -> Self {
+                Self::new(value)
+            }
+        }
+    };
+}
+borrowed_pair_iter_from!(std::collections::btree_map::Iter<'a, K, V>);
+borrowed_pair_iter_from!(std::collections::btree_map::Range<'a, K, V>);
+owned_pair_iter_from!(std::collections::btree_map::IntoIter<K, V>);
 
 impl<I: Iterator> SortedPairIter<I> {
     fn peek(&mut self) -> Option<&I::Item> {

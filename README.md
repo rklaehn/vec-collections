@@ -10,8 +10,11 @@
 
 # About
 
-This is a port of [array based collections](https://github.com/rklaehn/abc) from Scala to Rust. Here is a [blog post](http://rklaehn.github.io/2015/12/18/array-based-immutable-collections/) from ages ago explaining the motivatiaon.
+This is a port of [array based collections](https://github.com/rklaehn/abc) from Scala to Rust. Here is a [blog post](http://rklaehn.github.io/2015/12/18/array-based-immutable-collections/) from ages ago explaining the motivation.
 
 A straight port would have been pretty easy, but I have tried to make the port more rusty by offering in-place operations that do not allocate.
+
+The core algorithm that is used for all operations is a minimum comparison merge algorithm that requires fast random access
+to the elements of a collection, which you of course have in case of a slice or a vec.
 
 This is also a bit of a nursery for things I am currently working on.
