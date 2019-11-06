@@ -1,6 +1,6 @@
 use crate::binary_merge::{MergeOperation, MergeStateRead};
 use crate::iterators::SliceIterator;
-use crate::merge_state::{MergeStateMut, UnsafeInPlaceMergeState};
+use crate::merge_state::{MergeStateMut, VecMergeState, UnsafeInPlaceMergeState};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -66,33 +66,6 @@ struct RightJoinOp<F>(F);
 struct InnerJoinOp<F>(F);
 
 struct OuterJoinWithOp<F>(F);
-
-pub(crate) struct VecMergeState<'a, A, B, R> {
-    pub(crate) a: SliceIterator<'a, A>,
-    pub(crate) b: SliceIterator<'a, B>,
-    pub(crate) r: Vec<R>,
-}
-
-impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
-    pub fn merge<O: MergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
-        let mut state = Self {
-            a: SliceIterator(a),
-            b: SliceIterator(b),
-            r: Vec::new(),
-        };
-        o.merge(&mut state);
-        state.r
-    }
-}
-
-impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
-    fn a_slice(&self) -> &[A] {
-        self.a.as_slice()
-    }
-    fn b_slice(&self) -> &[B] {
-        self.b.as_slice()
-    }
-}
 
 type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
 

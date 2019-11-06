@@ -1,6 +1,5 @@
 use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
 use crate::dedup::SortAndDedup;
-use crate::iterators::SliceIterator;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState, VecMergeState,
 };
@@ -154,7 +153,11 @@ impl<T: Ord> SubAssign for VecSet<T> {
 impl<T: Ord + Clone> BitAnd for &VecSet<T> {
     type Output = VecSet<T>;
     fn bitand(self, that: Self) -> Self::Output {
-        VecSet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp))
+        VecSet(VecMergeState::merge_shortcut(
+            &self.0,
+            &that.0,
+            SetIntersectionOp,
+        ))
     }
 }
 
@@ -169,7 +172,7 @@ impl<T: Ord> BitAnd for VecSet<T> {
 impl<T: Ord + Clone> BitOr for &VecSet<T> {
     type Output = VecSet<T>;
     fn bitor(self, that: Self) -> Self::Output {
-        VecSet(VecMergeState::merge(&self.0, &that.0, SetUnionOp))
+        VecSet(VecMergeState::merge_shortcut(&self.0, &that.0, SetUnionOp))
     }
 }
 
@@ -184,7 +187,7 @@ impl<T: Ord> BitOr for VecSet<T> {
 impl<T: Ord + Clone> BitXor for &VecSet<T> {
     type Output = VecSet<T>;
     fn bitxor(self, that: Self) -> Self::Output {
-        VecSet(VecMergeState::merge(&self.0, &that.0, SetXorOp))
+        VecSet(VecMergeState::merge_shortcut(&self.0, &that.0, SetXorOp))
     }
 }
 
@@ -199,7 +202,7 @@ impl<T: Ord> BitXor for VecSet<T> {
 impl<T: Ord + Clone> Sub for &VecSet<T> {
     type Output = VecSet<T>;
     fn sub(self, that: Self) -> Self::Output {
-        VecSet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt))
+        VecSet(VecMergeState::merge_shortcut(&self.0, &that.0, SetDiffOpt))
     }
 }
 
@@ -225,7 +228,7 @@ impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
 
 impl<T: Ord> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut iter = iter.into_iter();
+        let iter = iter.into_iter();
         let mut agg = SortAndDedup::<T>::new();
         for x in iter {
             agg.push(x);
@@ -309,7 +312,6 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_macros::*;
     use quickcheck::*;
     use std::collections::BTreeSet;
 
