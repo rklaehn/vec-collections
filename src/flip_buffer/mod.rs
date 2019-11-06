@@ -2,7 +2,6 @@
 // #![deny(warnings)]
 #![deny(missing_docs)]
 use std::fmt::Debug;
-use std::mem::MaybeUninit;
 
 /// A contiguous chunk of memory that is logically divided into a source and a target part.
 /// This can be used to build a `Vec<T>` while reusing elements from an existing `Vec<T>` in place.
@@ -18,14 +17,12 @@ pub struct InPlaceVecBuilder<T> {
     s0: usize,
 }
 
-impl<T: Debug> Debug for InPlaceVecBuilder<T> {
+impl<T> Debug for InPlaceVecBuilder<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "InPlaceVecBuilder({:?},{:?})",
-            self.target_slice(),
-            self.source_slice()
-        )
+        let InPlaceVecBuilder { s0, t1, v } = self;
+        let s1 = v.len();
+        let cap = v.capacity();
+        write!(f, "InPlaceVecBuilder(0..{},{}..{},{})", t1, s0, s1, cap)
     }
 }
 
@@ -62,9 +59,17 @@ impl<T> InPlaceVecBuilder<T> {
         // ensure we have space!
         if self.t1 + capacity > self.s0 {
             let capacity = std::cmp::max(gap, capacity);
-            // insert missing uninitialized dummy elements before s0
-            self.v
-                .splice(self.s0..self.s0, Spacer::<T>::sized(capacity));
+            let s0 = self.s0;
+            let s1 = self.v.len();
+            // reserve_exact because we assume that gap is the worst case that we are going to need
+            self.v.reserve_exact(capacity);
+            // just move source to the end without any concern about dropping
+            unsafe {
+                let src = self.v.as_ptr().add(s0);
+                let tgt = self.v.as_mut_ptr().add(s0 + capacity);
+                std::ptr::copy(src, tgt, s1 - s0);
+                self.v.set_len(self.v.capacity());
+            }
             // move s0
             self.s0 += capacity;
         }
@@ -141,6 +146,8 @@ impl<T> InPlaceVecBuilder<T> {
         unsafe {
             self.v.set_len(self.t1);
         }
+        self.s0 = self.t1;
+        // shorten the source part
     }
 
     /// takes the target part of the flip buffer as a vec and drops the remaining source part, if any
@@ -159,25 +166,6 @@ impl<T> Drop for InPlaceVecBuilder<T> {
         self.drop_source();
         // explicitly drop the target part.
         self.v.clear();
-    }
-}
-
-/// This thing is evil incarnate. It allows you to create single or multiple T from uninitialized memory
-struct Spacer<T>(std::marker::PhantomData<T>);
-
-impl<T> Spacer<T> {
-    fn sized(count: usize) -> impl Iterator<Item = T> {
-        Self(std::marker::PhantomData).take(count)
-    }
-    fn single() -> T {
-        unsafe { MaybeUninit::uninit().assume_init() }
-    }
-}
-
-impl<T> Iterator for Spacer<T> {
-    type Item = T;
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(Self::single())
     }
 }
 
