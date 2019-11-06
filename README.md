@@ -10,7 +10,7 @@
 
 # About
 
-This is a port of [array based collections](https://github.com/rklaehn/abc) from Scala to Rust.
+This is a port of [array based collections](https://github.com/rklaehn/abc) from Scala to Rust. Here is a [blog post](http://rklaehn.github.io/2015/12/18/array-based-immutable-collections/) from ages ago explaining the motivatiaon.
 
 A straight port would have been pretty easy, but I have tried to make the port more rusty by offering in-place operations that do not allocate.
 
