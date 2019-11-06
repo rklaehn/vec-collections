@@ -372,11 +372,11 @@ where
     J: Iterator<Item = (K, B)>,
     F: FnMut(Option<A>, Option<B>) -> R,
 {
-    fn from_a(&mut self) -> Option<(K, R)> {
+    fn next_a(&mut self) -> Option<(K, R)> {
         self.a.next().map(|(ak, av)| (ak, (self.f)(Some(av), None)))
     }
 
-    fn from_b(&mut self) -> Option<(K, R)> {
+    fn next_b(&mut self) -> Option<(K, R)> {
         self.b.next().map(|(bk, bv)| (bk, (self.f)(None, Some(bv))))
     }
 }
@@ -393,8 +393,8 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         if let (Some((ak, _)), Some((bk, _))) = (self.a.peek(), self.b.peek()) {
             match ak.cmp(&bk) {
-                Less => self.from_a(),
-                Greater => self.from_b(),
+                Less => self.next_a(),
+                Greater => self.next_b(),
                 Equal => self.a.next().and_then(|(ak, av)| {
                     self.b
                         .next()
@@ -402,7 +402,7 @@ where
                 }),
             }
         } else {
-            self.from_a().or_else(|| self.from_b())
+            self.next_a().or_else(|| self.next_b())
         }
     }
 
@@ -521,7 +521,7 @@ impl<K, V, I: Iterator<Item = (K, V)>> Iterator for SortedPairIter<I> {
     }
 }
 
-pub fn test_join<'a>(a: Vec<(i32, i32)>, b: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
+pub fn test_join(a: Vec<(i32, i32)>, b: Vec<(i32, i32)>) -> Vec<(i32, i32)> {
     let a = SortedPairIter::new(a.into_iter());
     let b = SortedPairIter::new(b.into_iter());
     a.inner_join(b, |a, b| a + b).collect()

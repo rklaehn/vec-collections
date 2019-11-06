@@ -181,9 +181,7 @@ impl<'a, T: Clone + Default> MergeStateMut<T, T> for InPlaceMergeState<'a, T> {
     fn move_b(&mut self, n: usize) -> EarlyOut {
         self.ensure_capacity(n);
         let t = self.rn;
-        for i in 0..n {
-            self.a[t + i] = self.b[i].clone();
-        }
+        self.a[t..(t + n)].clone_from_slice(&self.b[..n]);
         self.skip_b(n)?;
         self.rn += n;
         Some(())
