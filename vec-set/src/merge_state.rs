@@ -20,7 +20,7 @@ impl<A, B> UnsafeInPlaceMergeState<A, B> {
         }
     }
     fn result(self) -> Vec<A> {
-        self.a.into()
+        self.a.into_vec()
     }
 }
 
@@ -53,11 +53,11 @@ impl<'a, A, B> MergeStateRead<A, B> for UnsafeInPlaceMergeState<A, B> {
 
 impl<'a, T> MergeStateMut<T, T> for UnsafeInPlaceMergeState<T, T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
-        self.a.source_move(n);
+        self.a.take(n);
         Some(())
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
-        self.a.source_drop(n);
+        self.a.skip(n);
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {

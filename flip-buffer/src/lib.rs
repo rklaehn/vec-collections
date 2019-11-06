@@ -1,13 +1,19 @@
-//! A data structure for in place modification of vecs
+//! A data structure for in place modification of vecs.
 #![deny(warnings)]
 #![deny(missing_docs)]
 use std::fmt::Debug;
 use std::mem::MaybeUninit;
 
-/// A contiguous chunk of memory that is logically divided into a source and a target part
+/// A contiguous chunk of memory that is logically divided into a source and a target part.
+///
+/// This is using a Vec<T> `v` as storage, but allows an unitialized area inside the Vec!
+/// Everything between `t0` and `s1` is uninitialized and must not be dropped!
 pub struct FlipBuffer<T> {
+    /// the underlying vector, possibly containing some uninitialized values in the middle!
     v: Vec<T>,
+    /// the end of the target area
     t1: usize,
+    /// the start of the source area
     s0: usize,
 }
 
@@ -22,32 +28,36 @@ impl<T: Debug> Debug for FlipBuffer<T> {
     }
 }
 
+/// initializes the source part of this flip buffer with the given vector.
+/// The target part is initially empty.
 impl<T> From<Vec<T>> for FlipBuffer<T> {
     fn from(value: Vec<T>) -> Self {
-        Self::source_from_vec(value)
-    }
-}
-
-impl<T> Into<Vec<T>> for FlipBuffer<T> {
-    fn into(self) -> Vec<T> {
-        self.target_into_vec()
+        Self { v: value, s0: 0, t1: 0 }
     }
 }
 
 impl<T> FlipBuffer<T> {
+
     /// The current target part as a slice
     pub fn target_slice(&self) -> &[T] {
         &self.v[..self.t1]
     }
+
     /// The current source part as a slice
     pub fn source_slice(&self) -> &[T] {
         &self.v[self.s0..]
     }
-    /// ensure that we have at least `n` space. If we have less than n, we will make `capacity` space
-    fn ensure_capacity(&mut self, n: usize, capacity: usize) {
+
+    /// ensure that we have at least `capacity` space. If we have less than that, we will make `gap` space.
+    /// if `gap` is less than `capacity`, we will make exactly `capacity` space. But that can be inefficient
+    /// when you know that you will need more room later. So typical usage is to provide the maximum you might
+    /// need as `gap`.
+    /// 
+    /// Note that if we have `capacity` space, nothing will be done no matter what the value of `gap` is.
+    fn ensure_capacity(&mut self, capacity: usize, gap: usize) {
         // ensure we have space!
-        if self.t1 + n > self.s0 {
-            let capacity = std::cmp::max(capacity, n);
+        if self.t1 + capacity > self.s0 {
+            let capacity = std::cmp::max(gap, capacity);
             // insert missing uninitialized dummy elements before s0
             self.v
                 .splice(self.s0..self.s0, Spacer::<T>::sized(capacity));
@@ -55,32 +65,32 @@ impl<T> FlipBuffer<T> {
             self.s0 += capacity;
         }
     }
-    /// Take at most n elements from `iter` to the target. This will make room for `capacity` elements if there is no space
-    pub fn target_extend_from_iter<I: Iterator<Item = T>>(
-        &mut self,
-        iter: &mut I,
-        n: usize,
-        capacity: usize,
-    ) {
+
+    /// Take at most `n` elements from `iter` to the target. This will make room for `gap` elements if there is no space
+    pub fn target_extend_from_iter<I: Iterator<Item=T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
         if n > 0 {
-            self.ensure_capacity(n, capacity);
+            self.ensure_capacity(n, gap);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
                     self.set(self.t1, value);
                     self.t1 += 1;
-                }
+                } 
             }
         }
     }
-    /// Push a value to the target. This will make room for `capacity` elements if there is no space
-    pub fn target_push(&mut self, value: T, capacity: usize) {
+
+    /// Push a single value to the target. This will make room for `gap` elements if there is no space
+    pub fn target_push(&mut self, value: T, gap: usize) {
         // ensure we have space!
-        self.ensure_capacity(1, capacity);
+        self.ensure_capacity(1, gap);
         self.set(self.t1, value);
         self.t1 += 1;
     }
-    /// drop up to `n` elements from source
-    pub fn source_drop(&mut self, n: usize) {
+
+    /// skip up to `n` elements from source without adding them to the target.
+    ///
+    /// they will be immediately dropped!
+    pub fn skip(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         for i in 0..n {
             // this is not a noop but is necessary to call drop!
@@ -88,9 +98,11 @@ impl<T> FlipBuffer<T> {
         }
         self.s0 += n;
     }
-    /// move up to n elements from source to target.
+
+    /// take up to `n` elements from source to target.
+    ///
     /// If n is larger than the size of the remaining source, this will only copy all remaining elements in source.
-    pub fn source_move(&mut self, n: usize) {
+    pub fn take(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         if self.t1 != self.s0 {
             for i in 0..n {
@@ -100,8 +112,9 @@ impl<T> FlipBuffer<T> {
         self.t1 += n;
         self.s0 += n;
     }
+
     /// Takes the next element from the source, if it exists
-    pub fn source_pop_front(&mut self) -> Option<T> {
+    pub fn pop_front(&mut self) -> Option<T> {
         if self.s0 < self.v.len() {
             let old = self.s0;
             self.s0 += 1;
@@ -110,13 +123,16 @@ impl<T> FlipBuffer<T> {
             None
         }
     }
+
     fn get(&self, offset: usize) -> T {
         unsafe { std::ptr::read(self.v.as_ptr().add(offset)) }
     }
+
     fn set(&mut self, offset: usize, value: T) {
         unsafe { std::ptr::write(self.v.as_mut_ptr().add(offset), value) }
     }
-    fn drop_source_part(&mut self) {
+
+    fn drop_source(&mut self) {
         let len = self.v.len();
         // truncate so that just the target part remains
         // this will do nothing to the remaining part of the vector, no drop
@@ -128,52 +144,32 @@ impl<T> FlipBuffer<T> {
         // in the unlikely case of a panic in drop, we will just stop dropping and thus leak,
         // but not double-drop!
         for i in self.s0..len {
+            // I hope this will be just as fast as using std::ptr::drop_in_place...
             let _ = self.get(i);
         }
     }
-    /// initializes the source part of the flip buffer with the given data
-    fn source_from_vec(v: Vec<T>) -> Self {
-        FlipBuffer { v, s0: 0, t1: 0 }
-    }
+
     /// takes the target part of the flip buffer as a vec and drops the remaining source part, if any
-    fn target_into_vec(self) -> Vec<T> {
+    pub fn into_vec(self) -> Vec<T> {
         let mut r = self;
-        r.drop_source_part();
+        r.drop_source();
         let mut t: Vec<T> = Vec::new();
         std::mem::swap(&mut t, &mut r.v);
         t
     }
 }
 
-// impl<T: Clone> FlipBuffer<T> {
-//     /// extend from the given slice
-//     pub fn target_extend_from_slice(&mut self, slice: &[T], capacity: usize) {
-//         let needed = slice.len();
-//         // ensure we have space!
-//         if self.t1 + needed < self.s0 {
-//             let capacity = std::cmp::max(capacity, needed);
-//             // insert missing uninitialized dummy elements before s0
-//             self.v
-//                 .splice(self.s0..self.s0, Spacer::<T>::sized(capacity));
-//             // move s0
-//             self.s0 += capacity;
-//         }
-//         for elem in slice {
-//             self.set(self.t1, elem.clone());
-//             self.t1 += 1;
-//         }
-//     }
-// }
-
 impl<T> Drop for FlipBuffer<T> {
     fn drop(&mut self) {
-        self.drop_source_part();
+        // drop the source part.
+        // The target part will be dropped normally by the vec itself.
+        self.drop_source();
     }
 }
 
+/// This thing is evil incarnate. It allows you to create single or multiple T from uninitialized memory
 struct Spacer<T>(std::marker::PhantomData<T>);
 
-/// This thing is evil incarnate. It allows you to create single or multiple T from uninitialized memory
 impl<T> Spacer<T> {
     fn sized(count: usize) -> impl Iterator<Item = T> {
         Self(std::marker::PhantomData).take(count)
@@ -240,7 +236,7 @@ mod tests {
     fn source_move_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
-            res.source_move(3);
+            res.take(3);
             res
         })
     }
@@ -249,7 +245,7 @@ mod tests {
     fn source_move_all() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
-            res.source_move(10);
+            res.take(10);
             res
         })
     }
@@ -258,7 +254,7 @@ mod tests {
     fn source_drop_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
-            res.source_drop(3);
+            res.skip(3);
             res
         })
     }
@@ -267,7 +263,7 @@ mod tests {
     fn source_drop_all() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
-            res.source_drop(10);
+            res.skip(10);
             res
         })
     }
@@ -276,9 +272,9 @@ mod tests {
     fn source_pop_some() {
         everything_dropped(&TestDrop::new(), 10, |a, _| {
             let mut res: FlipBuffer<Item> = a.into();
-            res.source_pop_front();
-            res.source_pop_front();
-            res.source_pop_front();
+            res.pop_front();
+            res.pop_front();
+            res.pop_front();
             res
         })
     }

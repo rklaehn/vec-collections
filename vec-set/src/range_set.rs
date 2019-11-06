@@ -366,7 +366,7 @@ impl<T> InPlaceMergeState<T> {
             bc: b0,
         };
         o.merge(&mut state);
-        *a = state.a.into();
+        *a = state.a.into_vec();
     }
 }
 
@@ -387,9 +387,9 @@ impl<'a, T> MergeStateMut<T> for InPlaceMergeState<T> {
     }
     fn advance_a(&mut self, n: usize, copy: bool) -> EarlyOut {
         if copy {
-            self.a.source_move(n);
+            self.a.take(n);
         } else {
-            self.a.source_drop(n);
+            self.a.skip(n);
         }
         self.ac ^= is_odd(n);
         Some(())
