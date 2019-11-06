@@ -132,17 +132,9 @@ impl<T> InPlaceVecBuilder<T> {
     }
 
     fn drop_source(&mut self) {
-        let len = self.v.len();
-        // drop all remaining elements of the source, if any
-        // in the unlikely case of a panic in drop, we will just stop dropping and thus leak,
-        // but not double-drop!
-        for i in self.s0..len {
-            // I hope this will be just as fast as using std::ptr::drop_in_place...
-            let _ = self.get(i);
-        }
-        // truncate so that just the target part remains
-        // this will do nothing to the remaining part of the vector, no drop
-        // this is done first so we don't double drop if there is a panic in a drop.
+        // use truncate to get rid of the source part, if any, calling drop as needed
+        self.v.truncate(self.s0);
+        // use set_len to get rid of the gap part between t1 and s0, not calling drop!
         unsafe {
             self.v.set_len(self.t1);
         }
@@ -161,8 +153,9 @@ impl<T> InPlaceVecBuilder<T> {
 impl<T> Drop for InPlaceVecBuilder<T> {
     fn drop(&mut self) {
         // drop the source part.
-        // The target part will be dropped normally by the vec itself.
         self.drop_source();
+        // explicitly drop the target part.
+        self.v.clear();
     }
 }
 
