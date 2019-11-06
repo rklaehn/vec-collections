@@ -36,6 +36,7 @@ impl<'a, T> SliceIterator<'a, T> {
     }
 }
 
+/// An iterator that is guaranteed to be sorted according to the order of its elements
 pub struct SortedIter<I: Iterator>(Peekable<I>);
 
 impl<K, I: Iterator<Item = K>> SortedIter<I> {
@@ -148,6 +149,7 @@ impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
     }
 }
 
+/// An iterator of pairs is guaranteed to be sorted according to the order of the keys
 pub struct SortedPairIter<I: Iterator>(Peekable<I>);
 
 impl<I: Iterator> SortedPairIter<I> {
@@ -343,7 +345,7 @@ impl<K: Ord, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
     pub fn take_while<P: FnMut(&I::Item) -> bool>(
         self,
         predicate: P,
-    ) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
+    ) -> SortedPairIter<impl Iterator> {
         SortedPairIter::new(self.0.take_while(predicate))
     }
     pub fn skip(self, n: usize) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
