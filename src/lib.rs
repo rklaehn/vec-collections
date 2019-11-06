@@ -14,6 +14,7 @@ extern crate quickcheck_macros;
 #[macro_use]
 mod test_macros;
 
+#[allow(dead_code)]
 mod flip_buffer;
 
 mod binary_merge;
@@ -31,6 +32,8 @@ mod vec_map;
 mod dedup;
 mod iterators;
 mod range_set;
+
+#[allow(dead_code)]
 mod sonic_reducer;
 
 pub use iterators::*;

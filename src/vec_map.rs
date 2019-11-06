@@ -55,11 +55,11 @@ struct LeftJoinOp<F>(F);
 struct RightJoinOp<F>(F);
 struct InnerJoinOp<F>(F);
 
-struct OuterJoinWithOp<F>(F);
+// struct OuterJoinWithOp<F>(F);
 
 type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
 
-type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
+// type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
 
 impl<K: Ord, V> FromIterator<(K, V)> for VecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
@@ -224,7 +224,7 @@ impl<K, V> VecMap<K, V> {
         Self(v)
     }
 
-    pub(crate) fn into_sorted_vec(self) -> Vec<(K, V)> {
+    pub fn into_sorted_vec(self) -> Vec<(K, V)> {
         self.0
     }
 }
@@ -377,7 +377,7 @@ mod tests {
             let expected: Test = inner_join_reference(&a, &b).into();
             let a: Test = a.into();
             let b: Test = b.into();
-            let actual = a.inner_join(&b, |a,b| a.clone());
+            let actual = a.inner_join(&b, |a,_| a.clone());
             expected == actual
         }
     }

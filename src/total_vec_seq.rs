@@ -5,14 +5,12 @@ use alga::general::AbstractMonoid;
 use alga::general::AbstractQuasigroup;
 use alga::general::AbstractSemigroup;
 use alga::general::Additive;
-use alga::general::ClosedAdd;
 use alga::general::Identity;
 use alga::general::TwoSidedInverse;
 use std::cmp::max;
 use std::cmp::min;
 use std::fmt;
 use std::fmt::Display;
-use std::ops::{Add, AddAssign};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct TotalVecSeq<T> {

@@ -3,7 +3,6 @@ use alga::general::AbstractMagma;
 use alga::general::AbstractMonoid;
 use alga::general::AbstractSemigroup;
 use alga::general::Additive;
-use alga::general::AdditiveSemigroup;
 use alga::general::Identity;
 use std::fmt;
 use std::fmt::Display;
@@ -13,7 +12,7 @@ use std::ops::{Add, AddAssign};
 pub struct VecSeq<T>(Vec<T>);
 
 impl<T: Eq> VecSeq<T> {
-    fn into_total(self, default: T) -> TotalVecSeq<T> {
+    pub fn into_total(self, default: T) -> TotalVecSeq<T> {
         TotalVecSeq::new(self.0, default)
     }
 }
