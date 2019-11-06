@@ -1,4 +1,4 @@
-use crate::binary_merge::{MergeOperation, MergeStateRead};
+use crate::binary_merge::MergeOperation;
 use crate::iterators::SliceIterator;
 use crate::merge_state::{MergeStateMut, VecMergeState, UnsafeInPlaceMergeState};
 use std::borrow::Borrow;
