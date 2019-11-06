@@ -1,7 +1,7 @@
-extern crate vec_set;
+extern crate vec_collections;
 
 use std::collections::{BTreeSet, HashSet};
-use vec_set::ArraySet;
+use vec_collections::VecSet;
 
 type Element = i32;
 
@@ -30,12 +30,12 @@ impl TestData {
 }
 
 fn union_arrayset(data: &TestData) {
-    let a: ArraySet<Element> = data.a.clone().into();
-    let b: ArraySet<Element> = data.b.clone().into();
+    let a: VecSet<Element> = data.a.clone().into();
+    let b: VecSet<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a | &b;
     let dt = std::time::Instant::now() - t0;
-    println!("union arrayset {} {:?}", data.params, dt);
+    println!("union vecset {} {:?}", data.params, dt);
 }
 
 fn union_btreeset(data: &TestData) {
@@ -57,12 +57,12 @@ fn union_hashset(data: &TestData) {
 }
 
 fn intersection_arrayset(data: &TestData) {
-    let a: ArraySet<Element> = data.a.clone().into();
-    let b: ArraySet<Element> = data.b.clone().into();
+    let a: VecSet<Element> = data.a.clone().into();
+    let b: VecSet<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a & &b;
     let dt = std::time::Instant::now() - t0;
-    println!("intersection arrayset {} {:?}", data.params, dt);
+    println!("intersection vecset {} {:?}", data.params, dt);
 }
 
 fn intersection_btreeset(data: &TestData) {
@@ -84,12 +84,12 @@ fn intersection_hashset(data: &TestData) {
 }
 
 fn is_disjoint_arrayset(data: &TestData) {
-    let a: ArraySet<Element> = data.a.clone().into();
-    let b: ArraySet<Element> = data.b.clone().into();
+    let a: VecSet<Element> = data.a.clone().into();
+    let b: VecSet<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = a.is_disjoint(&b);
     let dt = std::time::Instant::now() - t0;
-    println!("is_disjoint arrayset {} {} {:?}", _r, data.params, dt);
+    println!("is_disjoint vecset {} {} {:?}", _r, data.params, dt);
 }
 
 fn is_disjoint_btreeset(data: &TestData) {
@@ -112,9 +112,9 @@ fn is_disjoint_hashset(data: &TestData) {
 fn creation_arrayset(name: &str, data: &Vec<i32>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
-    let a: ArraySet<Element> = elems.into_iter().collect();
+    let a: VecSet<Element> = elems.into_iter().collect();
     let dt = std::time::Instant::now() - t0;
-    println!("creation arrayset {} {} {:?}", a.len(), name, dt);
+    println!("creation vecset {} {} {:?}", a.len(), name, dt);
 }
 fn creation_btreeset(name: &str, data: &Vec<i32>) {
     let elems = data.clone();

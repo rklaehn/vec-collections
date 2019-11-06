@@ -8,15 +8,15 @@ use std::fmt::Debug;
 use std::iter::FromIterator;
 
 #[derive(Hash, Clone, Eq, PartialEq)]
-pub struct ArrayMap<K, V>(Vec<(K, V)>);
+pub struct VecMap<K, V>(Vec<(K, V)>);
 
-impl<K, V> Default for ArrayMap<K, V> {
+impl<K, V> Default for VecMap<K, V> {
     fn default() -> Self {
         Self(Vec::default())
     }
 }
 
-impl<K: Debug, V: Debug> Debug for ArrayMap<K, V> {
+impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entries(self.0.iter().map(|(k, v)| (k, v)))
@@ -98,7 +98,7 @@ type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
 
 type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
 
-impl<K: Ord, V> FromIterator<(K, V)> for ArrayMap<K, V> {
+impl<K: Ord, V> FromIterator<(K, V)> for VecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
         // TODO: make better from_iter
         let temp: BTreeMap<K, V> = iter.into_iter().collect();
@@ -106,14 +106,14 @@ impl<K: Ord, V> FromIterator<(K, V)> for ArrayMap<K, V> {
     }
 }
 
-impl<K, V> From<BTreeMap<K, V>> for ArrayMap<K, V> {
+impl<K, V> From<BTreeMap<K, V>> for VecMap<K, V> {
     fn from(value: BTreeMap<K, V>) -> Self {
         let elements: Vec<(K, V)> = value.into_iter().collect();
         Self::from_sorted_vec(elements)
     }
 }
 
-impl<K: Ord, V> Extend<(K, V)> for ArrayMap<K, V> {
+impl<K: Ord, V> Extend<(K, V)> for VecMap<K, V> {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.merge_with(iter.into_iter().collect());
     }
@@ -234,7 +234,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
     }
 }
 
-impl<K, V> ArrayMap<K, V> {
+impl<K, V> VecMap<K, V> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -255,8 +255,8 @@ impl<K, V> ArrayMap<K, V> {
         SliceIterator(self.0.as_slice())
     }
 
-    pub fn map_values<R, F: FnMut(V) -> R>(self, mut f: F) -> ArrayMap<K, R> {
-        ArrayMap::from_sorted_vec(
+    pub fn map_values<R, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<K, R> {
+        VecMap::from_sorted_vec(
             self.0
                 .into_iter()
                 .map(|entry| (entry.0, f(entry.1)))
@@ -273,8 +273,8 @@ impl<K, V> ArrayMap<K, V> {
     }
 }
 
-impl<K: Ord, V> ArrayMap<K, V> {
-    fn merge_with(&mut self, rhs: ArrayMap<K, V>) {
+impl<K: Ord, V> VecMap<K, V> {
+    fn merge_with(&mut self, rhs: VecMap<K, V>) {
         UnsafeInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
@@ -302,17 +302,17 @@ impl<K: Ord, V> ArrayMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
+impl<K: Ord + Clone, V: Clone> VecMap<K, V> {
     pub fn single(k: K, v: V) -> Self {
         Self::from_sorted_vec(vec![(k, v)])
     }
 
     // pub fn outer_join_with<W: Clone, R, F: Fn(OuterJoinArg<&V, W>)>(
     //     &self,
-    //     that: &ArrayMap<K, W>,
+    //     that: &VecMap<K, W>,
     //     f: F,
-    // ) -> ArrayMap<K, R> {
-    //     ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    // ) -> VecMap<K, R> {
+    //     VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
     //         self.0.as_slice(),
     //         that.0.as_slice(),
     //         OuterJoinWithOp(f),
@@ -321,10 +321,10 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
 
     pub fn outer_join<W: Clone, R, F: Fn(OuterJoinArg<&V, &W>) -> R>(
         &self,
-        that: &ArrayMap<K, W>,
+        that: &VecMap<K, W>,
         f: F,
-    ) -> ArrayMap<K, R> {
-        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    ) -> VecMap<K, R> {
+        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             OuterJoinOp(f),
@@ -333,10 +333,10 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
 
     pub fn left_join<W: Clone, R, F: Fn(LeftJoinArg<&V, &W>) -> R>(
         &self,
-        that: &ArrayMap<K, W>,
+        that: &VecMap<K, W>,
         f: F,
-    ) -> ArrayMap<K, R> {
-        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    ) -> VecMap<K, R> {
+        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             LeftJoinOp(f),
@@ -345,10 +345,10 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
 
     pub fn right_join<W: Clone, R, F: Fn(RightJoinArg<&V, &W>) -> R>(
         &self,
-        that: &ArrayMap<K, W>,
+        that: &VecMap<K, W>,
         f: F,
-    ) -> ArrayMap<K, R> {
-        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    ) -> VecMap<K, R> {
+        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             RightJoinOp(f),
@@ -357,10 +357,10 @@ impl<K: Ord + Clone, V: Clone> ArrayMap<K, V> {
 
     pub fn inner_join<W: Clone, R, F: Fn(&V, &W) -> R>(
         &self,
-        that: &ArrayMap<K, W>,
+        that: &VecMap<K, W>,
         f: F,
-    ) -> ArrayMap<K, R> {
-        ArrayMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+    ) -> VecMap<K, R> {
+        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             InnerJoinOp(f),
@@ -376,10 +376,10 @@ mod tests {
     use std::collections::BTreeMap;
     use OuterJoinArg::*;
 
-    type Test = ArrayMap<i32, i32>;
+    type Test = VecMap<i32, i32>;
     type Ref = BTreeMap<i32, i32>;
 
-    impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for ArrayMap<K, V> {
+    impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for VecMap<K, V> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let t: BTreeMap<K, V> = Arbitrary::arbitrary(g);
             t.into()

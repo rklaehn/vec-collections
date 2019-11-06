@@ -10,31 +10,31 @@ use std::fmt::Display;
 use std::ops::{Add, AddAssign};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
-pub struct ArraySeq<T>(Vec<T>);
+pub struct VecSeq<T>(Vec<T>);
 
-impl<T: Eq> ArraySeq<T> {
-    fn as_total(self, default: T) -> TotalArraySeq<T> {
-        TotalArraySeq::new(self.0, default)
+impl<T: Eq> VecSeq<T> {
+    fn as_total(self, default: T) -> TotalVecSeq<T> {
+        TotalVecSeq::new(self.0, default)
     }
 }
 
-impl<T> From<Vec<T>> for ArraySeq<T> {
+impl<T> From<Vec<T>> for VecSeq<T> {
     fn from(value: Vec<T>) -> Self {
-        ArraySeq(value)
+        VecSeq(value)
     }
 }
 
-impl<T> Into<Vec<T>> for ArraySeq<T> {
+impl<T> Into<Vec<T>> for VecSeq<T> {
     fn into(self) -> Vec<T> {
         self.0
     }
 }
 
-impl<T: Display> Display for ArraySeq<T> {
+impl<T: Display> Display for VecSeq<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ArraySeq([{}])",
+            "VecSeq([{}])",
             self.0
                 .iter()
                 .map(|x| format!("{}", x))
@@ -44,30 +44,30 @@ impl<T: Display> Display for ArraySeq<T> {
     }
 }
 
-impl<T> Identity<Additive> for ArraySeq<T> {
+impl<T> Identity<Additive> for VecSeq<T> {
     fn identity() -> Self {
-        ArraySeq(Vec::new())
+        VecSeq(Vec::new())
     }
 }
 
-impl<T: Clone> AbstractMagma<Additive> for ArraySeq<T> {
+impl<T: Clone> AbstractMagma<Additive> for VecSeq<T> {
     fn operate(&self, right: &Self) -> Self {
         let mut res = self.0.clone();
         res.extend(right.0.clone());
-        ArraySeq(res)
+        VecSeq(res)
     }
 }
 
-impl<T: Clone + Eq> AbstractSemigroup<Additive> for ArraySeq<T> {}
-impl<T: Clone + Eq> AbstractMonoid<Additive> for ArraySeq<T> {}
-impl<'a, 'b, T: Clone + Eq> Add<&'b ArraySeq<T>> for &'a ArraySeq<T> {
-    type Output = ArraySeq<T>;
-    fn add(self, rhs: &'b ArraySeq<T>) -> ArraySeq<T> {
+impl<T: Clone + Eq> AbstractSemigroup<Additive> for VecSeq<T> {}
+impl<T: Clone + Eq> AbstractMonoid<Additive> for VecSeq<T> {}
+impl<'a, 'b, T: Clone + Eq> Add<&'b VecSeq<T>> for &'a VecSeq<T> {
+    type Output = VecSeq<T>;
+    fn add(self, rhs: &'b VecSeq<T>) -> VecSeq<T> {
         self.operate(rhs)
     }
 }
-impl<T: Clone + Eq> AddAssign<&ArraySeq<T>> for ArraySeq<T> {
-    fn add_assign(&mut self, rhs: &ArraySeq<T>) {
+impl<T: Clone + Eq> AddAssign<&VecSeq<T>> for VecSeq<T> {
+    fn add_assign(&mut self, rhs: &VecSeq<T>) {
         *self = self.operate(rhs)
     }
 }
@@ -78,8 +78,8 @@ mod tests {
 
     #[test]
     fn test_basic_usage() {
-        let a: ArraySeq<i64> = vec![1, 2, 3].into();
-        let b: ArraySeq<i64> = vec![1, 2, 3].into();
+        let a: VecSeq<i64> = vec![1, 2, 3].into();
+        let b: VecSeq<i64> = vec![1, 2, 3].into();
         let mut c = &a + &b;
         c += &b;
         let at = a.clone().as_total(0);

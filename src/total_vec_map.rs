@@ -1,15 +1,15 @@
-use crate::array_map::ArrayMap;
-use crate::array_map::VecMergeState;
+use crate::vec_map::VecMap;
+use crate::vec_map::VecMergeState;
 use crate::binary_merge::MergeOperation;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Index;
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq, Default)]
-pub struct TotalArrayMap<K, V>(ArrayMap<K, V>, V);
+pub struct TotalArrayMap<K, V>(VecMap<K, V>, V);
 
 impl<K, V: Eq> TotalArrayMap<K, V> {
-    pub fn new(map: ArrayMap<K, V>, default: V) -> Self {
+    pub fn new(map: VecMap<K, V>, default: V) -> Self {
         let mut entries = map;
         // ensure canonical representation!
         entries.retain(|(_, v)| *v != default);
@@ -19,7 +19,7 @@ impl<K, V: Eq> TotalArrayMap<K, V> {
 
 impl<K, V> TotalArrayMap<K, V> {
     pub fn constant(value: V) -> Self {
-        Self(ArrayMap::default(), value)
+        Self(VecMap::default(), value)
     }
 
     pub fn as_slice(&self) -> &[(K, V)] {
@@ -122,7 +122,7 @@ impl<K: Ord + Clone, V: Eq> TotalArrayMap<K, V> {
             r_default: &r_default,
         };
         let r = VecMergeState::merge(self.as_slice(), that.as_slice(), op);
-        Self(ArrayMap::from_sorted_vec(r), r_default)
+        Self(VecMap::from_sorted_vec(r), r_default)
     }
 }
 
@@ -147,7 +147,7 @@ impl<K: Ord + Clone, V: Eq + Clone> TotalArrayMap<K, V> {
             r_default: &r_default,
         };
         let r = VecMergeState::merge(self.as_slice(), that.as_slice(), op);
-        Self(ArrayMap::from_sorted_vec(r), r_default)
+        Self(VecMap::from_sorted_vec(r), r_default)
     }
 }
 
@@ -166,7 +166,7 @@ impl<K: Clone, V: Eq> TotalArrayMap<K, V> {
                 }
             })
             .collect();
-        TotalArrayMap(ArrayMap::from_sorted_vec(elements), default)
+        TotalArrayMap(VecMap::from_sorted_vec(elements), default)
     }
 }
 

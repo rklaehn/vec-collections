@@ -15,28 +15,28 @@ use std::fmt::Display;
 use std::ops::{Add, AddAssign};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
-pub struct TotalArraySeq<T> {
+pub struct TotalVecSeq<T> {
     default: T,
     values: Vec<T>,
 }
 
-impl<T> TotalArraySeq<T> {
+impl<T> TotalVecSeq<T> {
     pub fn constant(value: T) -> Self {
-        TotalArraySeq {
+        TotalVecSeq {
             default: value,
             values: Vec::new(),
         }
     }
 }
 
-impl<T: Eq> TotalArraySeq<T> {
-    pub fn new(mut values: Vec<T>, default: T) -> TotalArraySeq<T> {
+impl<T: Eq> TotalVecSeq<T> {
+    pub fn new(mut values: Vec<T>, default: T) -> TotalVecSeq<T> {
         let mut i = values.len();
         while i > 0 && values[i - 1] == default {
             i -= 1;
         }
         values.truncate(i);
-        TotalArraySeq { default, values }
+        TotalVecSeq { default, values }
     }
     fn map<F: Fn(&T) -> T>(&self, op: F) -> Self {
         let default = op(&self.default);
@@ -44,7 +44,7 @@ impl<T: Eq> TotalArraySeq<T> {
         for x in &self.values {
             values.push(op(x))
         }
-        TotalArraySeq::new(values, default)
+        TotalVecSeq::new(values, default)
     }
     fn zip_with<F: Fn(&T, &T) -> T>(&self, rhs: &Self, op: F) -> Self {
         let lhs = self;
@@ -63,15 +63,15 @@ impl<T: Eq> TotalArraySeq<T> {
             values.push(op(&lhs.default, &rhs.values[i]));
             i += 1;
         }
-        TotalArraySeq::new(values, default)
+        TotalVecSeq::new(values, default)
     }
 }
 
-impl<T: Display> Display for TotalArraySeq<T> {
+impl<T: Display> Display for TotalVecSeq<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "TotalArraySeq([{}], {})",
+            "TotalVecSeq([{}], {})",
             self.values
                 .iter()
                 .map(|x| format!("{}", x))
@@ -82,21 +82,21 @@ impl<T: Display> Display for TotalArraySeq<T> {
     }
 }
 
-impl<T: Identity<Additive>> Identity<Additive> for TotalArraySeq<T> {
+impl<T: Identity<Additive>> Identity<Additive> for TotalVecSeq<T> {
     fn identity() -> Self {
-        TotalArraySeq::constant(T::identity())
+        TotalVecSeq::constant(T::identity())
     }
 }
 
-impl<T: AbstractMagma<Additive> + Eq> AbstractMagma<Additive> for TotalArraySeq<T> {
+impl<T: AbstractMagma<Additive> + Eq> AbstractMagma<Additive> for TotalVecSeq<T> {
     fn operate(&self, rhs: &Self) -> Self {
-        TotalArraySeq::zip_with(self, rhs, T::operate)
+        TotalVecSeq::zip_with(self, rhs, T::operate)
     }
 }
 
-impl<T: TwoSidedInverse<Additive> + Eq> TwoSidedInverse<Additive> for TotalArraySeq<T> {
+impl<T: TwoSidedInverse<Additive> + Eq> TwoSidedInverse<Additive> for TotalVecSeq<T> {
     fn two_sided_inverse(&self) -> Self {
-        TotalArraySeq::map(self, T::two_sided_inverse)
+        TotalVecSeq::map(self, T::two_sided_inverse)
     }
     fn two_sided_inverse_mut(&mut self) {
         self.default.two_sided_inverse_mut();
@@ -106,8 +106,8 @@ impl<T: TwoSidedInverse<Additive> + Eq> TwoSidedInverse<Additive> for TotalArray
     }
 }
 
-impl<T: AbstractSemigroup<Additive> + Eq> AbstractSemigroup<Additive> for TotalArraySeq<T> {}
-impl<T: AbstractMonoid<Additive> + Eq> AbstractMonoid<Additive> for TotalArraySeq<T> {}
-impl<T: AbstractQuasigroup<Additive> + Eq> AbstractQuasigroup<Additive> for TotalArraySeq<T> {}
-impl<T: AbstractLoop<Additive> + Eq> AbstractLoop<Additive> for TotalArraySeq<T> {}
-impl<T: AbstractGroup<Additive> + Eq> AbstractGroup<Additive> for TotalArraySeq<T> {}
+impl<T: AbstractSemigroup<Additive> + Eq> AbstractSemigroup<Additive> for TotalVecSeq<T> {}
+impl<T: AbstractMonoid<Additive> + Eq> AbstractMonoid<Additive> for TotalVecSeq<T> {}
+impl<T: AbstractQuasigroup<Additive> + Eq> AbstractQuasigroup<Additive> for TotalVecSeq<T> {}
+impl<T: AbstractLoop<Additive> + Eq> AbstractLoop<Additive> for TotalVecSeq<T> {}
+impl<T: AbstractGroup<Additive> + Eq> AbstractGroup<Additive> for TotalVecSeq<T> {}

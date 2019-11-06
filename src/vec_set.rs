@@ -16,7 +16,7 @@ struct SetXorOp;
 struct SetDiffOpt;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct ArraySet<T>(Vec<T>);
+pub struct VecSet<T>(Vec<T>);
 
 impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
@@ -82,19 +82,19 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetXorO
     }
 }
 
-impl<T: Debug> Debug for ArraySet<T> {
+impl<T: Debug> Debug for VecSet<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_set().entries(self.0.iter()).finish()
     }
 }
 
-impl<T> Into<Vec<T>> for ArraySet<T> {
+impl<T> Into<Vec<T>> for VecSet<T> {
     fn into(self) -> Vec<T> {
         self.0
     }
 }
 
-impl<T> ArraySet<T> {
+impl<T> VecSet<T> {
     pub fn singleton(value: T) -> Self {
         Self(vec![value])
     }
@@ -121,109 +121,109 @@ impl<T> ArraySet<T> {
     }
 }
 
-impl<T> Default for ArraySet<T> {
+impl<T> Default for VecSet<T> {
     fn default() -> Self {
-        ArraySet::empty()
+        VecSet::empty()
     }
 }
 
-impl<T: Ord> BitAndAssign for ArraySet<T> {
+impl<T: Ord> BitAndAssign for VecSet<T> {
     fn bitand_assign(&mut self, that: Self) {
         UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetIntersectionOp);
     }
 }
 
-impl<T: Ord> BitOrAssign for ArraySet<T> {
+impl<T: Ord> BitOrAssign for VecSet<T> {
     fn bitor_assign(&mut self, that: Self) {
         UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetUnionOp);
     }
 }
 
-impl<T: Ord> BitXorAssign for ArraySet<T> {
+impl<T: Ord> BitXorAssign for VecSet<T> {
     fn bitxor_assign(&mut self, that: Self) {
         UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetXorOp);
     }
 }
 
-impl<T: Ord> SubAssign for ArraySet<T> {
+impl<T: Ord> SubAssign for VecSet<T> {
     fn sub_assign(&mut self, that: Self) {
         UnsafeInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetDiffOpt);
     }
 }
 
-impl<T: Ord + Clone> BitAnd for &ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord + Clone> BitAnd for &VecSet<T> {
+    type Output = VecSet<T>;
     fn bitand(self, that: Self) -> Self::Output {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp))
+        VecSet(VecMergeState::merge(&self.0, &that.0, SetIntersectionOp))
     }
 }
 
-impl<T: Ord> BitAnd for ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord> BitAnd for VecSet<T> {
+    type Output = VecSet<T>;
     fn bitand(mut self, that: Self) -> Self::Output {
         self &= that;
         self
     }
 }
 
-impl<T: Ord + Clone> BitOr for &ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord + Clone> BitOr for &VecSet<T> {
+    type Output = VecSet<T>;
     fn bitor(self, that: Self) -> Self::Output {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetUnionOp))
+        VecSet(VecMergeState::merge(&self.0, &that.0, SetUnionOp))
     }
 }
 
-impl<T: Ord> BitOr for ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord> BitOr for VecSet<T> {
+    type Output = VecSet<T>;
     fn bitor(mut self, that: Self) -> Self::Output {
         self |= that;
         self
     }
 }
 
-impl<T: Ord + Clone> BitXor for &ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord + Clone> BitXor for &VecSet<T> {
+    type Output = VecSet<T>;
     fn bitxor(self, that: Self) -> Self::Output {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetXorOp))
+        VecSet(VecMergeState::merge(&self.0, &that.0, SetXorOp))
     }
 }
 
-impl<T: Ord> BitXor for ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord> BitXor for VecSet<T> {
+    type Output = VecSet<T>;
     fn bitxor(mut self, that: Self) -> Self::Output {
         self ^= that;
         self
     }
 }
 
-impl<T: Ord + Clone> Sub for &ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord + Clone> Sub for &VecSet<T> {
+    type Output = VecSet<T>;
     fn sub(self, that: Self) -> Self::Output {
-        ArraySet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt))
+        VecSet(VecMergeState::merge(&self.0, &that.0, SetDiffOpt))
     }
 }
 
-impl<T: Ord> Sub for ArraySet<T> {
-    type Output = ArraySet<T>;
+impl<T: Ord> Sub for VecSet<T> {
+    type Output = VecSet<T>;
     fn sub(mut self, that: Self) -> Self::Output {
         self -= that;
         self
     }
 }
 
-impl<T: Ord> From<Vec<T>> for ArraySet<T> {
+impl<T: Ord> From<Vec<T>> for VecSet<T> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
 
-impl<T: Ord> From<BTreeSet<T>> for ArraySet<T> {
+impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
     fn from(value: BTreeSet<T>) -> Self {
         Self(value.into_iter().collect())
     }
 }
 
-impl<T: Ord> FromIterator<T> for ArraySet<T> {
+impl<T: Ord> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut iter = iter.into_iter();
         let mut agg = SortAndDedup::<T>::new();
@@ -234,19 +234,19 @@ impl<T: Ord> FromIterator<T> for ArraySet<T> {
     }
 }
 
-impl<T: Ord> Extend<T> for ArraySet<T> {
+impl<T: Ord> Extend<T> for VecSet<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         *self &= Self::from_iter(iter);
     }
 }
 
-impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for ArraySet<T> {
+impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for VecSet<T> {
     fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
         self.extend(iter.into_iter().cloned())
     }
 }
 
-impl<T: Ord> ArraySet<T> {
+impl<T: Ord> VecSet<T> {
     pub fn insert(&mut self, that: T) {
         match self.0.binary_search(&that) {
             Ok(index) => self.0[index] = that,
@@ -260,15 +260,15 @@ impl<T: Ord> ArraySet<T> {
         };
     }
 
-    pub fn is_disjoint(&self, that: &ArraySet<T>) -> bool {
+    pub fn is_disjoint(&self, that: &VecSet<T>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
     }
 
-    pub fn is_subset(&self, that: &ArraySet<T>) -> bool {
+    pub fn is_subset(&self, that: &VecSet<T>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt)
     }
 
-    pub fn is_superset(&self, that: &ArraySet<T>) -> bool {
+    pub fn is_superset(&self, that: &VecSet<T>) -> bool {
         that.is_subset(self)
     }
     pub fn contains(&self, value: &T) -> bool {
@@ -283,20 +283,20 @@ impl<T: Ord> ArraySet<T> {
     }
 }
 
-// impl<T: Ord + Default + Copy> ArraySet<T> {
-//     pub fn union_with(&mut self, that: &ArraySet<T>) {
+// impl<T: Ord + Default + Copy> VecSet<T> {
+//     pub fn union_with(&mut self, that: &VecSet<T>) {
 //         InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
 //     }
 
-//     pub fn intersection_with(&mut self, that: &ArraySet<T>) {
+//     pub fn intersection_with(&mut self, that: &VecSet<T>) {
 //         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
 //     }
 
-//     pub fn xor_with(&mut self, that: &ArraySet<T>) {
+//     pub fn xor_with(&mut self, that: &VecSet<T>) {
 //         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
 //     }
 
-//     pub fn difference_with(&mut self, that: &ArraySet<T>) {
+//     pub fn difference_with(&mut self, that: &VecSet<T>) {
 //         InPlaceMergeState::merge(&mut self.0, &that.0, SetDiffOpt());
 //     }
 // }
@@ -313,9 +313,9 @@ mod test {
     use quickcheck::*;
     use std::collections::BTreeSet;
 
-    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for ArraySet<T> {
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for VecSet<T> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
-            ArraySet::from_vec(Arbitrary::arbitrary(g))
+            VecSet::from_vec(Arbitrary::arbitrary(g))
         }
     }
 
@@ -350,7 +350,7 @@ mod test {
         }
     }
 
-    type Test = ArraySet<i64>;
+    type Test = VecSet<i64>;
     type Reference = BTreeSet<i64>;
 
     quickcheck! {

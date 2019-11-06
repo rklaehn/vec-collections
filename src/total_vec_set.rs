@@ -1,4 +1,4 @@
-use crate::ArraySet;
+use crate::VecSet;
 use std::fmt::Debug;
 use std::fmt::Write;
 use std::ops::BitAndAssign;
@@ -8,12 +8,12 @@ use std::ops::SubAssign;
 use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct TotalArraySet<T> {
-    elements: ArraySet<T>,
+pub struct TotalVecSet<T> {
+    elements: VecSet<T>,
     negated: bool,
 }
 
-impl<T: Debug> Debug for TotalArraySet<T> {
+impl<T: Debug> Debug for TotalVecSet<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.negated {
             f.write_char('!')?;
@@ -22,8 +22,8 @@ impl<T: Debug> Debug for TotalArraySet<T> {
     }
 }
 
-impl<T> TotalArraySet<T> {
-    fn new(elements: ArraySet<T>, negated: bool) -> Self {
+impl<T> TotalVecSet<T> {
+    fn new(elements: VecSet<T>, negated: bool) -> Self {
         Self { elements, negated }
     }
 
@@ -36,11 +36,11 @@ impl<T> TotalArraySet<T> {
     }
 
     pub fn empty() -> Self {
-        Self::new(ArraySet::empty(), false)
+        Self::new(VecSet::empty(), false)
     }
 
     pub fn all() -> Self {
-        Self::new(ArraySet::empty(), true)
+        Self::new(VecSet::empty(), true)
     }
 
     pub fn shrink_to_fit(&mut self) {
@@ -48,13 +48,13 @@ impl<T> TotalArraySet<T> {
     }
 }
 
-impl<T> From<ArraySet<T>> for TotalArraySet<T> {
-    fn from(value: ArraySet<T>) -> Self {
+impl<T> From<VecSet<T>> for TotalVecSet<T> {
+    fn from(value: VecSet<T>) -> Self {
         Self::new(value, false)
     }
 }
 
-impl<T: Ord> TotalArraySet<T> {
+impl<T: Ord> TotalVecSet<T> {
     pub fn contains(&self, value: &T) -> bool {
         self.negated ^ self.elements.contains(value)
     }
@@ -90,7 +90,7 @@ impl<T: Ord> TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Clone> TotalArraySet<T> {
+impl<T: Ord + Clone> TotalVecSet<T> {
     pub fn remove(&mut self, that: &T) {
         if self.negated {
             self.elements.insert(that.clone())
@@ -100,8 +100,8 @@ impl<T: Ord + Clone> TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitAnd for &TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord + Clone> BitAnd for &TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn bitand(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -116,7 +116,7 @@ impl<T: Ord + Clone> BitAnd for &TotalArraySet<T> {
     }
 }
 
-impl<T: Ord> BitAndAssign for TotalArraySet<T> {
+impl<T: Ord> BitAndAssign for TotalVecSet<T> {
     fn bitand_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -145,8 +145,8 @@ impl<T: Ord> BitAndAssign for TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitOr for &TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord + Clone> BitOr for &TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn bitor(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // union of elements
@@ -161,7 +161,7 @@ impl<T: Ord + Clone> BitOr for &TotalArraySet<T> {
     }
 }
 
-impl<T: Ord> BitOrAssign for TotalArraySet<T> {
+impl<T: Ord> BitOrAssign for TotalVecSet<T> {
     fn bitor_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // union of elements
@@ -190,14 +190,14 @@ impl<T: Ord> BitOrAssign for TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitXor for &TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord + Clone> BitXor for &TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn bitxor(self, that: Self) -> Self::Output {
         Self::Output::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
     }
 }
 
-impl<T: Ord> BitXorAssign for TotalArraySet<T> {
+impl<T: Ord> BitXorAssign for TotalVecSet<T> {
     fn bitxor_assign(&mut self, that: Self) {
         self.elements ^= that.elements;
         self.negated ^= that.negated;
@@ -205,8 +205,8 @@ impl<T: Ord> BitXorAssign for TotalArraySet<T> {
 }
 
 #[allow(clippy::suspicious_arithmetic_impl)]
-impl<T: Ord + Clone> Sub for &TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord + Clone> Sub for &TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn sub(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -221,7 +221,7 @@ impl<T: Ord + Clone> Sub for &TotalArraySet<T> {
     }
 }
 
-impl<T: Ord> SubAssign for TotalArraySet<T> {
+impl<T: Ord> SubAssign for TotalVecSet<T> {
     fn sub_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -250,15 +250,15 @@ impl<T: Ord> SubAssign for TotalArraySet<T> {
     }
 }
 
-impl<T: Ord + Clone> Not for &TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord + Clone> Not for &TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements.clone(), !self.negated)
     }
 }
 
-impl<T: Ord> Not for TotalArraySet<T> {
-    type Output = TotalArraySet<T>;
+impl<T: Ord> Not for TotalVecSet<T> {
+    type Output = TotalVecSet<T>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements, !self.negated)
     }
@@ -270,14 +270,14 @@ mod tests {
     use quickcheck::*;
     use std::collections::BTreeSet;
 
-    type Test = TotalArraySet<i64>;
+    type Test = TotalVecSet<i64>;
 
-    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalArraySet<T> {
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalVecSet<T> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let mut elements: Vec<T> = Arbitrary::arbitrary(g);
             elements.truncate(2);
             let negated: bool = Arbitrary::arbitrary(g);
-            TotalArraySet::new(elements.into(), negated)
+            TotalVecSet::new(elements.into(), negated)
         }
     }
 
