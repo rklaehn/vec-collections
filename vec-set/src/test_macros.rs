@@ -1,5 +1,3 @@
-///! macros for testing operator properties
-
 /// checks that bitops are symmetric
 macro_rules! bitop_symmetry {
     ($test:ty) => {
@@ -7,10 +5,12 @@ macro_rules! bitop_symmetry {
         fn bitor_symmetric(a: $test, b: $test) -> bool {
             &a | &b == &b | &a
         }
+
         #[quickcheck]
         fn bitxor_symmetric(a: $test, b: $test) -> bool {
             &a ^ &b == &b ^ &a
         }
+
         #[quickcheck]
         fn bitand_symmetric(a: $test, b: $test) -> bool {
             &a & &b == &b & &a
@@ -19,23 +19,26 @@ macro_rules! bitop_symmetry {
 }
 
 /// checks properties of the empty element vs. bitops and sub
-macro_rules! empty_neutral {
+macro_rules! bitop_empty {
     ($test:ty) => {
         #[quickcheck]
         fn bitand_empty_neutral(a: $test) -> bool {
             let e = Test::empty();
             (&a & &e) == e && (&e & &a) == e
         }
+
         #[quickcheck]
         fn bitor_empty_neutral(a: $test) -> bool {
             let e = Test::empty();
             (&a | &e) == a && (&e | &a) == a
         }
+
         #[quickcheck]
         fn bitxor_empty_neutral(a: $test) -> bool {
             let e = Test::empty();
             (&a ^ &e) == a && (&e ^ &a) == a
         }
+
         #[quickcheck]
         fn sub_empty_neutral(a: $test) -> bool {
             let e = Test::empty();
@@ -45,7 +48,7 @@ macro_rules! empty_neutral {
 }
 
 /// checks properties of the all element vs. bitops and sub/not
-macro_rules! all_neutral {
+macro_rules! bitop_sub_not_all {
     ($test:ty) => {
         #[quickcheck]
         fn bitand_all_neutral(x: $test) -> bool {
@@ -53,31 +56,31 @@ macro_rules! all_neutral {
             (&x & &a) == x && (&a & &x) == x
         }
         #[quickcheck]
-        fn bitor_all_neutral(x: $test) -> bool {
+        fn bitor_all_all(x: $test) -> bool {
             let a = Test::all();
             (&x | &a) == a && (&a | &x) == a
         }
         #[quickcheck]
-        fn bitxor_all_neutral(x: $test) -> bool {
+        fn bitxor_all_not(x: $test) -> bool {
             let a = Test::all();
             (&a ^ &x) == !&x && (&x ^ &a) == !&x
         }
         #[quickcheck]
-        fn sub_all_neutral(x: $test) -> bool {
+        fn sub_all_not(x: $test) -> bool {
             let a = Test::all();
             (&a - &x) == !&x
         }
         #[quickcheck]
-        fn bitand_sub(a: $test, b: $test) -> bool {
+        fn sub_bitand_not(a: $test, b: $test) -> bool {
             a.sub(&b) == a.bitand(&b.not())
         }
         #[quickcheck]
-        fn double_negate_neutral(a: $test, b: $test) -> bool {
+        fn not_not_neutral(a: $test, b: $test) -> bool {
             &a == &((&a).not()).not()
         }
 
         #[quickcheck]
-        fn all_is_all_consistent(a: $test) -> bool {
+        fn all_is_all(a: $test) -> bool {
             let r1 = a.is_all();
             let r2 = a == Test::all();
             r1 == r2
@@ -120,7 +123,7 @@ macro_rules! bitop_assign_consistent {
 }
 
 // checks that the set predicates is_disjoint, is_subset, is_empty, is_all etc. are consistent with the operations
-macro_rules! set_predicate_consistency {
+macro_rules! set_predicate_consistent {
     ($test:ty) => {
         #[quickcheck]
         fn is_disjoint_bitand_consistent(a: $test, b: $test) -> bool {

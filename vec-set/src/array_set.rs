@@ -1,8 +1,8 @@
-use crate::binary_merge::{EarlyOut, MergeStateMut, ShortcutMergeOperation};
+use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
 use crate::dedup::SortAndDedup;
 use crate::iterators::SliceIterator;
 use crate::merge_state::{
-    BoolOpMergeState, InPlaceMergeState, UnsafeInPlaceMergeState, VecMergeState,
+    BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState, VecMergeState,
 };
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -307,7 +307,7 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 }
 
 #[cfg(test)]
-mod Test {
+mod test {
     use super::*;
     use crate::test_macros::*;
     use quickcheck::*;
@@ -448,7 +448,7 @@ mod Test {
     }
 
     bitop_assign_consistent!(Test);
+    set_predicate_consistent!(Test);
     bitop_symmetry!(Test);
-    empty_neutral!(Test);
-    set_predicate_consistency!(Test);
+    bitop_empty!(Test);
 }

@@ -6,8 +6,8 @@ use std::mem::MaybeUninit;
 
 /// A contiguous chunk of memory that is logically divided into a source and a target part.
 ///
-/// This is using a Vec<T> `v` as storage, but allows an unitialized area inside the Vec!
-/// Everything between `t0` and `s1` is uninitialized and must not be dropped!
+/// This is using a `Vec<T>` as storage and divides it logically into a source and target part.
+/// You can take or drop elements from the source part, and append elements to the target part.
 pub struct FlipBuffer<T> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
     v: Vec<T>,
@@ -67,7 +67,7 @@ impl<T> FlipBuffer<T> {
     }
 
     /// Take at most `n` elements from `iter` to the target. This will make room for `gap` elements if there is no space
-    pub fn target_extend_from_iter<I: Iterator<Item=T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
+    pub fn extend_from_iter<I: Iterator<Item=T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
         if n > 0 {
             self.ensure_capacity(n, gap);
             for _ in 0..n {
@@ -80,16 +80,15 @@ impl<T> FlipBuffer<T> {
     }
 
     /// Push a single value to the target. This will make room for `gap` elements if there is no space
-    pub fn target_push(&mut self, value: T, gap: usize) {
+    pub fn push(&mut self, value: T, gap: usize) {
         // ensure we have space!
         self.ensure_capacity(1, gap);
         self.set(self.t1, value);
         self.t1 += 1;
     }
 
-    /// skip up to `n` elements from source without adding them to the target.
-    ///
-    /// they will be immediately dropped!
+    /// Skip up to `n` elements from source without adding them to the target.
+    /// They will be immediately dropped!
     pub fn skip(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         for i in 0..n {
@@ -99,8 +98,7 @@ impl<T> FlipBuffer<T> {
         self.s0 += n;
     }
 
-    /// take up to `n` elements from source to target.
-    ///
+    /// Take up to `n` elements from source to target.
     /// If n is larger than the size of the remaining source, this will only copy all remaining elements in source.
     pub fn take(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
@@ -226,7 +224,7 @@ mod tests {
         everything_dropped(&TestDrop::new(), 10, |a, b| {
             let mut res: FlipBuffer<Item> = a.into();
             for x in b.into_iter() {
-                res.target_push(x, 100);
+                res.push(x, 100);
             }
             res
         })

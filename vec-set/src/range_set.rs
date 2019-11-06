@@ -397,7 +397,7 @@ impl<'a, T> MergeStateMut<T> for InPlaceMergeState<T> {
     fn advance_b(&mut self, n: usize, copy: bool) -> EarlyOut {
         if copy {
             let capacity = self.b.as_slice().len();
-            self.a.target_extend_from_iter(&mut self.b, n, capacity);
+            self.a.extend_from_iter(&mut self.b, n, capacity);
         } else {
             for _ in 0..n {
                 let _ = self.b.next();
@@ -570,6 +570,6 @@ mod tests {
 
     bitop_assign_consistent!(Test);
     bitop_symmetry!(Test);
-    empty_neutral!(Test);
-    all_neutral!(Test);
+    bitop_empty!(Test);
+    bitop_sub_not_all!(Test);
 }

@@ -1,11 +1,23 @@
 use crate::binary_merge::{
-    EarlyOut, MergeOperation, MergeStateMut, MergeStateRead, ShortcutMergeOperation,
+    EarlyOut, MergeOperation, MergeStateRead, ShortcutMergeOperation,
 };
 use crate::iterators::SliceIterator;
 use flip_buffer::FlipBuffer;
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
+
+/// A typical write part for the merge state
+pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
+    /// Move n elements from a to r
+    fn move_a(&mut self, n: usize) -> EarlyOut;
+    /// Skip n elements in a
+    fn skip_a(&mut self, n: usize) -> EarlyOut;
+    /// Move n elements from b to r
+    fn move_b(&mut self, n: usize) -> EarlyOut;
+    /// Skip n elements in b
+    fn skip_b(&mut self, n: usize) -> EarlyOut;
+}
 
 pub(crate) struct UnsafeInPlaceMergeState<A, B> {
     a: FlipBuffer<A>,
@@ -62,7 +74,7 @@ impl<'a, T> MergeStateMut<T, T> for UnsafeInPlaceMergeState<T, T> {
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
         let capacity = self.b_slice().len();
-        self.a.target_extend_from_iter(&mut self.b, n, capacity);
+        self.a.extend_from_iter(&mut self.b, n, capacity);
         // for _ in 0..n {
         //     if let Some(elem) = self.b.next() {
         //         self.a.target_push(elem, capacity);

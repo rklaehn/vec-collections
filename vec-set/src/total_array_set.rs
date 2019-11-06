@@ -349,6 +349,6 @@ mod tests {
 
     bitop_assign_consistent!(Test);
     bitop_symmetry!(Test);
-    empty_neutral!(Test);
-    all_neutral!(Test);
+    bitop_empty!(Test);
+    bitop_sub_not_all!(Test);
 }
