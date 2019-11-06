@@ -1,5 +1,5 @@
 
-# Is-Impl &emsp; [![Build Status]][travis] [![Latest Version]][crates.io] [![Docs Badge]][docs.rs]
+# Vec-collections &emsp; [![Build Status]][travis] [![Latest Version]][crates.io] [![Docs Badge]][docs.rs]
 
 [Build Status]: https://api.travis-ci.org/rklaehn/vec-collections.svg?branch=master
 [travis]: https://travis-ci.org/rklaehn/vec-collections
@@ -12,5 +12,6 @@
 
 This is a port of [array based collections](https://github.com/rklaehn/abc) from Scala to Rust.
 
-# Motivation
+A straight port would have been pretty easy, but I have tried to make the port more rusty by offering in-place operations that do not allocate.
 
+This is also a bit of a nursery for things I am currently working on.
