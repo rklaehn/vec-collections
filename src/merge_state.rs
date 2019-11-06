@@ -291,7 +291,11 @@ impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
         self.r
     }
 
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
+        a: &'a [A],
+        b: &'a [B],
+        o: O,
+    ) -> Vec<R> {
         let t: Vec<R> = Vec::new();
         let mut state = VecMergeState::new(a, b, t);
         o.merge(&mut state);
@@ -333,7 +337,6 @@ impl<'a, T: Clone> MergeStateMut<T, T> for VecMergeState<'a, T, T, T> {
         Some(())
     }
 }
-
 
 /// A merge state where we build into a new vector
 pub(crate) struct UnsafeSliceMergeState<'a, T> {

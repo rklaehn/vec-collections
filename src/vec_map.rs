@@ -1,6 +1,6 @@
 use crate::binary_merge::MergeOperation;
 use crate::iterators::SliceIterator;
-use crate::merge_state::{MergeStateMut, VecMergeState, UnsafeInPlaceMergeState};
+use crate::merge_state::{MergeStateMut, UnsafeInPlaceMergeState, VecMergeState};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -42,16 +42,6 @@ impl<'a, K: Ord, V, I: MergeStateMut<(K, V), (K, V)>> MergeOperation<(K, V), (K,
         m.move_a(1);
         m.skip_b(1);
     }
-}
-
-pub enum LeftJoinArg<A, B> {
-    Left(A),
-    Both(A, B),
-}
-
-pub enum RightJoinArg<A, B> {
-    Both(A, B),
-    Right(B),
 }
 
 pub enum OuterJoinArg<A, B> {
@@ -127,7 +117,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
+impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, Option<&B>) -> R>
     MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
@@ -136,8 +126,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
     fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
-                let arg = LeftJoinArg::Left(a);
-                let res = (self.0)(arg);
+                let res = (self.0)(a, None);
                 m.r.push((k.clone(), res));
             }
         }
@@ -148,15 +137,13 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(LeftJoinArg<&A, &B>) -> R>
     fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                let arg = LeftJoinArg::Both(a, b);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                m.r.push((k.clone(), (self.0)(a, Some(b))));
             }
         }
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
+impl<'a, K: Ord + Clone, A, B, R, F: Fn(Option<&A>, &B) -> R>
     MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
@@ -168,18 +155,14 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(RightJoinArg<&A, &B>) -> R>
     fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
-                let arg = RightJoinArg::Right(b);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                m.r.push((k.clone(), (self.0)(None, b)));
             }
         }
     }
     fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                let arg = RightJoinArg::Both(a, b);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                m.r.push((k.clone(), (self.0)(Some(a), b)));
             }
         }
     }
@@ -304,7 +287,7 @@ impl<K: Ord + Clone, V: Clone> VecMap<K, V> {
         ))
     }
 
-    pub fn left_join<W: Clone, R, F: Fn(LeftJoinArg<&V, &W>) -> R>(
+    pub fn left_join<W: Clone, R, F: Fn(&V, Option<&W>) -> R>(
         &self,
         that: &VecMap<K, W>,
         f: F,
@@ -316,7 +299,7 @@ impl<K: Ord + Clone, V: Clone> VecMap<K, V> {
         ))
     }
 
-    pub fn right_join<W: Clone, R, F: Fn(RightJoinArg<&V, &W>) -> R>(
+    pub fn right_join<W: Clone, R, F: Fn(Option<&V>, &W) -> R>(
         &self,
         that: &VecMap<K, W>,
         f: F,

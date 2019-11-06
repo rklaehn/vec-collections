@@ -71,7 +71,7 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
 pub(crate) type EarlyOut = Option<()>;
 
-/// This is exactly the same as MergeOperation, except that it allows aborting the operation early. 
+/// This is exactly the same as MergeOperation, except that it allows aborting the operation early.
 /// In theory we could have just this operation with no runtime cost, since rust/LLVM will optimize away
 /// the EarlyOut when not used. But it is convenient to have two versions.
 pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {

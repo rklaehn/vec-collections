@@ -1,7 +1,5 @@
 // a set of non-overlapping ranges
-use crate::binary_merge::EarlyOut;
-use crate::binary_merge::MergeStateRead;
-use crate::binary_merge::ShortcutMergeOperation;
+use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
 use std::ops::{
