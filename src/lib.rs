@@ -19,25 +19,25 @@ mod flip_buffer;
 mod binary_merge;
 mod merge_state;
 
-mod vec_seq;
 mod total_vec_seq;
+mod vec_seq;
 
-mod vec_set;
 mod total_vec_set;
+mod vec_set;
 
-mod vec_map;
 mod total_vec_map;
+mod vec_map;
 
-mod range_set;
-mod sonic_reducer;
 mod dedup;
 mod iterators;
+mod range_set;
+mod sonic_reducer;
 
-pub use vec_seq::*;
-pub use vec_set::*;
-pub use vec_map::*;
-pub use total_vec_seq::*;
-pub use total_vec_set::*;
-pub use total_vec_map::*;
 pub use iterators::*;
 pub use range_set::*;
+pub use total_vec_map::*;
+pub use total_vec_seq::*;
+pub use total_vec_set::*;
+pub use vec_map::*;
+pub use vec_seq::*;
+pub use vec_set::*;

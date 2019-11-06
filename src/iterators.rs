@@ -37,6 +37,10 @@ impl<'a, T> SliceIterator<'a, T> {
 }
 
 /// An iterator that is guaranteed to be sorted according to the order of its elements
+///
+/// This implements Iterator, but in addition implements all the methods on Iterator that preserve the order.
+///
+/// It also provides additional methods to perform optimized operations on the iterators.
 pub struct SortedIter<I: Iterator>(Peekable<I>);
 
 macro_rules! borrowed_iter_from {
@@ -154,29 +158,44 @@ impl<K: Ord, I: Iterator<Item = K>> SortedIter<I> {
     pub fn take(self, n: usize) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.take(n))
     }
-    pub fn take_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> SortedIter<impl Iterator<Item = K>> {
+    pub fn take_while<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.take_while(predicate))
     }
     pub fn skip(self, n: usize) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.skip(n))
     }
-    pub fn skip_while<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> SortedIter<impl Iterator<Item = K>> {
+    pub fn skip_while<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.skip_while(predicate))
     }
-    pub fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> SortedIter<impl Iterator<Item = K>> {
+    pub fn filter<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.filter(predicate))
     }
     pub fn step_by(self, step: usize) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(self.0.step_by(step))
     }
-    pub fn intersection<J: Iterator<Item = K>>(self, that: SortedIter<J>) -> SortedIter<impl Iterator<Item = K>> {
+    pub fn intersection<J: Iterator<Item = K>>(
+        self,
+        that: SortedIter<J>,
+    ) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(Intersection {
             a: self,
             b: that,
             x: PhantomData,
         })
     }
-    pub fn union<J: Iterator<Item = K>>(self, that: SortedIter<J>) -> SortedIter<impl Iterator<Item = K>> {
+    pub fn union<J: Iterator<Item = K>>(
+        self,
+        that: SortedIter<J>,
+    ) -> SortedIter<impl Iterator<Item = K>> {
         SortedIter::new(Union {
             a: self,
             b: that,
@@ -396,6 +415,12 @@ where
     }
 }
 
+impl<'a, K: Clone + 'a, V: 'a, I: Iterator<Item = (&'a K, V)> + 'a> SortedPairIter<I> {
+    pub fn cloned_keys(self) -> SortedPairIter<impl Iterator<Item = (K, V)> + 'a> {
+        SortedPairIter::new(self.0.map(|(k, v)| (k.clone(), v)))
+    }
+}
+
 impl<K: Ord, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
     pub fn take(self, n: usize) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
         SortedPairIter::new(self.0.take(n))
@@ -415,13 +440,19 @@ impl<K: Ord, V, I: Iterator<Item = (K, V)>> SortedPairIter<I> {
     ) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
         SortedPairIter::new(self.0.skip_while(predicate))
     }
-    pub fn filter<P: FnMut(&I::Item) -> bool>(self, predicate: P) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
+    pub fn filter<P: FnMut(&I::Item) -> bool>(
+        self,
+        predicate: P,
+    ) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
         SortedPairIter::new(self.0.filter(predicate))
     }
     pub fn step_by(self, step: usize) -> SortedPairIter<impl Iterator<Item = (K, V)>> {
         SortedPairIter::new(self.0.step_by(step))
     }
-    pub fn map_values<W, F: (FnMut(V) -> W)>(self, mut f: F) -> SortedPairIter<impl Iterator<Item = (K, W)>> {
+    pub fn map_values<W, F: (FnMut(V) -> W)>(
+        self,
+        mut f: F,
+    ) -> SortedPairIter<impl Iterator<Item = (K, W)>> {
         SortedPairIter::new(self.0.map(move |(k, v)| (k, f(v))))
     }
     pub fn filter_map_values<W, F: (FnMut(V) -> Option<W>)>(
@@ -517,6 +548,17 @@ mod tests {
         // let z = b.take_while(|x| x.0 < 10);
         // let w = a.take(10).take(5);
         let r: Vec<_> = a.union(b).collect();
+        println!("{:?}", r);
+    }
+
+    #[test]
+    fn test_sorted_pair_iter_btreeset() {
+        let a: std::collections::BTreeMap<i32, i32> = (0..10).step_by(2).map(|k| (k, k)).collect();
+        let b: std::collections::BTreeMap<i32, i32> = (3..7).map(|k| (k, k * 2)).collect();
+        let a: SortedPairIter<_> = a.iter().into();
+        let b: SortedPairIter<_> = b.iter().into();
+        let r: std::collections::BTreeMap<_, _> =
+            a.outer_join(b, |a, b| (a, b)).cloned_keys().collect();
         println!("{:?}", r);
     }
 }

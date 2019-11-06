@@ -33,12 +33,15 @@ impl<T: Debug> Debug for InPlaceVecBuilder<T> {
 /// The target part is initially empty.
 impl<T> From<Vec<T>> for InPlaceVecBuilder<T> {
     fn from(value: Vec<T>) -> Self {
-        InPlaceVecBuilder { v: value, s0: 0, t1: 0 }
+        InPlaceVecBuilder {
+            v: value,
+            s0: 0,
+            t1: 0,
+        }
     }
 }
 
 impl<T> InPlaceVecBuilder<T> {
-
     /// The current target part as a slice
     pub fn target_slice(&self) -> &[T] {
         &self.v[..self.t1]
@@ -53,7 +56,7 @@ impl<T> InPlaceVecBuilder<T> {
     /// if `gap` is less than `capacity`, we will make exactly `capacity` space. But that can be inefficient
     /// when you know that you will need more room later. So typical usage is to provide the maximum you might
     /// need as `gap`.
-    /// 
+    ///
     /// Note that if we have `capacity` space, nothing will be done no matter what the value of `gap` is.
     fn ensure_capacity(&mut self, capacity: usize, gap: usize) {
         // ensure we have space!
@@ -68,14 +71,14 @@ impl<T> InPlaceVecBuilder<T> {
     }
 
     /// Take at most `n` elements from `iter` to the target. This will make room for `gap` elements if there is no space
-    pub fn extend_from_iter<I: Iterator<Item=T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
+    pub fn extend_from_iter<I: Iterator<Item = T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
         if n > 0 {
             self.ensure_capacity(n, gap);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
                     self.set(self.t1, value);
                     self.t1 += 1;
-                } 
+                }
             }
         }
     }

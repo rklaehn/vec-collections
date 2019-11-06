@@ -1,6 +1,6 @@
+use crate::binary_merge::MergeOperation;
 use crate::vec_map::VecMap;
 use crate::vec_map::VecMergeState;
-use crate::binary_merge::MergeOperation;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Index;
