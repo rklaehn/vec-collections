@@ -13,7 +13,7 @@ use std::ops::{Add, AddAssign};
 pub struct VecSeq<T>(Vec<T>);
 
 impl<T: Eq> VecSeq<T> {
-    fn as_total(self, default: T) -> TotalVecSeq<T> {
+    fn into_total(self, default: T) -> TotalVecSeq<T> {
         TotalVecSeq::new(self.0, default)
     }
 }
@@ -82,8 +82,8 @@ mod tests {
         let b: VecSeq<i64> = vec![1, 2, 3].into();
         let mut c = &a + &b;
         c += &b;
-        let at = a.clone().as_total(0);
-        let bt = b.clone().as_total(0);
+        let at = a.clone().into_total(0);
+        let bt = b.clone().into_total(0);
         let ct = at.operate(&bt);
         println!("{} {} {}", a, b, c);
         println!("{} {} {}", at, bt, ct);

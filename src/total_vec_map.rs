@@ -135,6 +135,8 @@ impl<K: Ord + Clone, V: Ord + Clone> TotalArrayMap<K, V> {
     }
 }
 
+/// not sure if I can even use fast_combine in rust
+#[allow(dead_code)]
 impl<K: Ord + Clone, V: Eq + Clone> TotalArrayMap<K, V> {
     pub(crate) fn fast_combine<F: Fn(&V, &V) -> V>(
         &self,

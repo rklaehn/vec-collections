@@ -55,27 +55,32 @@ macro_rules! bitop_sub_not_all {
             let a = Test::all();
             (&x & &a) == x && (&a & &x) == x
         }
+
         #[quickcheck]
         fn bitor_all_all(x: $test) -> bool {
             let a = Test::all();
             (&x | &a) == a && (&a | &x) == a
         }
+
         #[quickcheck]
         fn bitxor_all_not(x: $test) -> bool {
             let a = Test::all();
             (&a ^ &x) == !&x && (&x ^ &a) == !&x
         }
+
         #[quickcheck]
         fn sub_all_not(x: $test) -> bool {
             let a = Test::all();
             (&a - &x) == !&x
         }
+
         #[quickcheck]
         fn sub_bitand_not(a: $test, b: $test) -> bool {
             a.sub(&b) == a.bitand(&b.not())
         }
+
         #[quickcheck]
-        fn not_not_neutral(a: $test, b: $test) -> bool {
+        fn not_not_neutral(a: $test) -> bool {
             &a == &((&a).not()).not()
         }
 
