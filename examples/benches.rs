@@ -3,11 +3,36 @@ extern crate vec_collections;
 use std::collections::{BTreeSet, HashSet};
 use vec_collections::VecSet;
 
-type Element = i128;
+// #[macro_use]
+// extern crate lazy_static;
+// extern crate rand;
+// use rand::Rng;
+// type Element = Vec<u8>;
+
+// lazy_static! {
+//     static ref ELEMENTS: Vec<Element> = make_elements();
+// }
+
+// fn make_elements() -> Vec<Element> {
+//     let mut rng = rand::thread_rng();
+//     (0..100000).map(move |_| {
+//         // add zeros at the start
+//         let mut random_bytes: Vec<u8> = (0..990).map(|_| 0).collect();
+//         random_bytes.extend((0..10).map(|_| { rng.gen::<u8>() }));
+//         random_bytes
+//     }).collect()
+// }
+
+// fn element(x: usize) -> Element {
+//     ELEMENTS.get(x).unwrap().clone()
+// }
+
+type Element = u32;
 
 fn element(x: usize) -> Element {
     x as Element
 }
+
 
 struct TestData {
     params: String,

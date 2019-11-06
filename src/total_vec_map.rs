@@ -3,7 +3,7 @@ use crate::merge_state::VecMergeState;
 use crate::vec_map::VecMap;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::ops::Index;
+use std::ops::{Index, Add};
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq, Default)]
 pub struct TotalArrayMap<K, V>(VecMap<K, V>, V);

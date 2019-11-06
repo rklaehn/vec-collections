@@ -15,6 +15,8 @@ This is a port of [array based collections](https://github.com/rklaehn/abc) from
 A straight port would have been pretty easy, but I have tried to make the port more rusty by offering in-place operations that do not allocate.
 
 The core algorithm that is used for all operations is a minimum comparison merge algorithm that requires fast random access
-to the elements of a collection, which you of course have in case of a slice or a vec.
+to the elements of a collection, which you of course have in case of a slice or a vec. The minimum comparison merge algorithm
+will be useful as soon as the cost of a comparison is large compared to the cost of a copy, but you will still get very good
+performance in the case where the comparision is roughly the same cost as a copy.
 
 This is also a bit of a nursery for things I am currently working on.
