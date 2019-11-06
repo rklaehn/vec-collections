@@ -3,7 +3,11 @@ extern crate vec_collections;
 use std::collections::{BTreeSet, HashSet};
 use vec_collections::VecSet;
 
-type Element = i32;
+type Element = i128;
+
+fn element(x: usize) -> Element {
+    x as Element
+}
 
 struct TestData {
     params: String,
@@ -12,19 +16,19 @@ struct TestData {
 }
 
 impl TestData {
-    fn interleaved(n: Element) -> TestData {
+    fn interleaved(n: usize) -> TestData {
         TestData {
             params: format!("interleaved {}", n),
-            a: (0..n).map(|x| 2 * x).collect(),
-            b: (0..n).map(|x| 2 * x + 1).collect(),
+            a: (0..n).map(|x| element(2 * x)).collect(),
+            b: (0..n).map(|x| element(2 * x + 1)).collect(),
         }
     }
 
-    fn non_overlapping(n: Element) -> TestData {
+    fn non_overlapping(n: usize) -> TestData {
         TestData {
             params: format!("non_overlapping {}", n),
-            a: (0..n).map(|x| 2 * x).collect(),
-            b: (0..n).map(|x| 2 * x + 2 * n).collect(),
+            a: (0..n).map(|x| element(2 * x)).collect(),
+            b: (0..n).map(|x| element(2 * x + 2 * n)).collect(),
         }
     }
 }
@@ -109,21 +113,21 @@ fn is_disjoint_hashset(data: &TestData) {
     let dt = std::time::Instant::now() - t0;
     println!("is_disjoint hashset {} {} {:?}", _r, data.params, dt);
 }
-fn creation_arrayset(name: &str, data: &Vec<i32>) {
+fn creation_arrayset(name: &str, data: &Vec<Element>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
     let a: VecSet<Element> = elems.into_iter().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation vecset {} {} {:?}", a.len(), name, dt);
 }
-fn creation_btreeset(name: &str, data: &Vec<i32>) {
+fn creation_btreeset(name: &str, data: &Vec<Element>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
     let a: BTreeSet<Element> = elems.into_iter().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation btreeset {} {} {:?}", a.len(), name, dt);
 }
-fn creation_hashset(name: &str, data: &Vec<i32>) {
+fn creation_hashset(name: &str, data: &Vec<Element>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
     let a: HashSet<Element> = elems.into_iter().collect();
@@ -135,9 +139,9 @@ fn main() {
 
     let non_overlapping = TestData::non_overlapping(10000);
 
-    let mut x: Vec<i32> = Vec::new();
+    let mut x: Vec<Element> = Vec::new();
     for i in 0..1000000 {
-        x.push(i * 3 % 100000);
+        x.push(element(i * 3 % 100000));
     }
 
     union_arrayset(&interleaved);
