@@ -337,104 +337,96 @@ impl<'a, T: Clone> MergeStateMut<T, T> for VecMergeState<'a, T, T, T> {
 }
 
 /// A merge state where we build into a new vector
-pub(crate) struct UnsafeSliceMergeState<'a, T> {
-    a: &'a [T],
-    b: &'a [T],
+pub(crate) struct UnsafeSliceMergeState<T> {
+    a: *mut T,
+    an: usize,
+    b: *mut T,
+    bn: usize,
     r: *mut T,
-    r0: usize,
-    r1: usize,
+    rn: usize,
 }
 
-/// experimental and not yet done at all
-#[allow(dead_code)]
-impl<'a, T> UnsafeSliceMergeState<'a, T> {
-    fn merge0<O: ShortcutMergeOperation<T, T, Self>>(
-        a: &'a [T],
-        b: &'a [T],
-        r: *mut T,
-        o: O,
-    ) -> usize {
-        let required = a.len() + b.len();
-        let mut state: UnsafeSliceMergeState<'a, T> = UnsafeSliceMergeState {
-            a,
-            b,
-            r,
-            r0: 0,
-            r1: required,
-        };
-        o.merge(&mut state);
-        debug_assert!(state.r0 == state.r1);
-        state.r0
-    }
-
-    fn merge<O: ShortcutMergeOperation<T, T, Self>>(
-        mut a: Vec<T>,
-        mut b: Vec<T>,
-        r: &'a mut Vec<T>,
+impl<T> UnsafeSliceMergeState<T> {
+    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(
+        v: &mut Vec<T>,
+        an: usize,
+        bn: usize,
         o: O,
     ) {
-        let required = a.len() + b.len();
-        let base = r.len();
-        r.reserve(required);
-        let cap = unsafe {
-            // we copy the values into nomansland after the end of r without caring in any way about dropping etc.
-            let sa = std::slice::from_raw_parts(a.as_ptr(), a.len());
-            let sb = std::slice::from_raw_parts(b.as_ptr(), b.len());
-            let cap = UnsafeSliceMergeState::merge0(sa, sb, r.as_mut_ptr().add(base), o);
-            // truncate a without dropping
-            a.set_len(0);
-            // truncate b without dropping
-            b.set_len(0);
-            // enlarge r to where we know the elements are
-            r.set_len(base + required);
-            // return cap
-            cap
-        };
-        // drop the elements that have been discarded
-        r.truncate(base + cap);
+        assert!(an + bn <= v.len());
+        let len = v.len();
+        let base = len - an - bn;
+        let rn = an + bn;
+        v.reserve(an + bn);
+        unsafe {
+            v.set_len(base);
+            let a = v.as_mut_ptr().add(base);
+            let b = v.as_mut_ptr().add(base + an);
+            let r = v.as_mut_ptr().add(base + an + bn);
+            let mut state = Self {
+                a,
+                an,
+                b,
+                bn,
+                r,
+                rn,
+            };
+            o.merge(&mut state);
+            let copied = rn - state.rn;
+            std::ptr::copy_nonoverlapping(r, a, copied);
+            v.set_len(base + copied);
+        }
     }
 }
 
-impl<'a, T> MergeStateRead<T, T> for UnsafeSliceMergeState<'a, T> {
+impl<T> MergeStateRead<T, T> for UnsafeSliceMergeState<T> {
     fn a_slice(&self) -> &[T] {
-        self.a
+        unsafe { std::slice::from_raw_parts(self.a, self.an) }
     }
     fn b_slice(&self) -> &[T] {
-        self.b
+        unsafe { std::slice::from_raw_parts(self.b, self.bn) }
     }
 }
 
-impl<'a, T> MergeStateMut<T, T> for UnsafeSliceMergeState<'a, T> {
+impl<T> MergeStateMut<T, T> for UnsafeSliceMergeState<T> {
     fn move_a(&mut self, n: usize) -> EarlyOut {
         unsafe {
-            std::ptr::copy_nonoverlapping(self.a.as_ptr(), self.r.add(self.r0), n);
-            self.a = &self.a[n..];
-            self.r0 += n;
+            std::ptr::copy_nonoverlapping(self.a, self.r, n);
+            self.a = self.a.add(n);
+            self.r = self.r.add(n);
         }
+        self.an -= n;
+        self.rn -= n;
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
         unsafe {
-            std::ptr::copy_nonoverlapping(self.b.as_ptr(), self.r.add(self.r0), n);
-            self.b = &self.b[n..];
-            self.r0 += n;
+            std::ptr::copy_nonoverlapping(self.b, self.r, n);
+            self.b = self.b.add(n);
+            self.r = self.r.add(n);
         }
+        self.bn -= n;
+        self.rn -= n;
         Some(())
     }
     fn skip_a(&mut self, n: usize) -> EarlyOut {
         unsafe {
-            self.r1 -= n;
-            std::ptr::copy_nonoverlapping(self.a.as_ptr(), self.r.add(self.r1), n);
-            self.a = &self.a[n..];
+            for i in 0..n {
+                std::ptr::drop_in_place(self.a.add(i));
+            }
+            self.a = self.a.add(n);
         }
+        self.an -= n;
         Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         unsafe {
-            self.r1 -= n;
-            std::ptr::copy_nonoverlapping(self.b.as_ptr(), self.r.add(self.r1), n);
-            self.b = &self.b[n..];
+            for i in 0..n {
+                std::ptr::drop_in_place(self.b.add(i));
+            }
+            self.b = self.b.add(n);
         }
+        self.bn -= n;
         Some(())
     }
 }

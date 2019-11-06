@@ -33,7 +33,6 @@ fn element(x: usize) -> Element {
     x as Element
 }
 
-
 struct TestData {
     params: String,
     a: Vec<Element>,

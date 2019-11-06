@@ -1,7 +1,8 @@
 use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
 use crate::dedup::SortAndDedup;
 use crate::merge_state::{
-    BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState, VecMergeState,
+    BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState,
+    UnsafeSliceMergeState, VecMergeState,
 };
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -453,4 +454,12 @@ mod test {
     set_predicate_consistent!(Test);
     bitop_symmetry!(Test);
     bitop_empty!(Test);
+
+    #[test]
+    fn full_in_place_merge() {
+        let mut v = vec![1, 3, 5, 7, 2, 3, 7, 8];
+        UnsafeSliceMergeState::merge(&mut v, 4, 4, SetXorOp);
+        v.shrink_to_fit();
+        println!("{:?} {}", v, v.capacity());
+    }
 }

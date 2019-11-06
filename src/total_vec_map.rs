@@ -3,7 +3,7 @@ use crate::merge_state::VecMergeState;
 use crate::vec_map::VecMap;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::ops::{Index, Add};
+use std::ops::Index;
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq, Default)]
 pub struct TotalArrayMap<K, V>(VecMap<K, V>, V);
@@ -27,11 +27,11 @@ impl<K, V> TotalArrayMap<K, V> {
     }
 }
 
-struct CombineOp<'a, F, V> {
+struct CombineOp<F, V> {
     f: F,
-    a_default: &'a V,
-    b_default: &'a V,
-    r_default: &'a V,
+    a_default: V,
+    b_default: V,
+    r_default: V,
 }
 
 /// a fast combine op is an op where we know that the default for both a and b is the neutral element of the operation
@@ -43,7 +43,7 @@ struct FastCombineOp<'a, F, V> {
 type PairMergeState<'a, K, V> = VecMergeState<'a, (K, V), (K, V), (K, V)>;
 
 impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
-    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for CombineOp<'a, F, V>
+    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for CombineOp<F, &'a V>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
