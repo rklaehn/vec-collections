@@ -1,5 +1,5 @@
 use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
-use crate::dedup::SortAndDedup;
+use crate::dedup::SortAndDedup2;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState,
     UnsafeSliceMergeState, VecMergeState,
@@ -230,7 +230,7 @@ impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
 impl<T: Ord> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
-        let mut agg = SortAndDedup::<T>::new();
+        let mut agg = SortAndDedup2::<T>::new();
         for x in iter {
             agg.push(x);
         }

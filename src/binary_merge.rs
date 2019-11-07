@@ -39,7 +39,7 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
             let am: usize = an / 2;
             // pick the center element of a and find the corresponding one in b using binary search
             let a = &m.a_slice()[am];
-            match m.b_slice()[0..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
+            match m.b_slice()[..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
                 Result::Ok(bm) => {
                     // same elements. bm is the index corresponding to am
                     // merge everything below am with everything below the found element bm
@@ -94,7 +94,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
             let am: usize = an / 2;
             // pick the center element of a and find the corresponding one in b using binary search
             let a = &m.a_slice()[am];
-            match m.b_slice()[0..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
+            match m.b_slice()[..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
                 Result::Ok(bm) => {
                     // same elements. bm is the index corresponding to am
                     // merge everything below am with everything below the found element bm

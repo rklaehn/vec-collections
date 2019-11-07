@@ -13,6 +13,7 @@ homepage = "https://github.com/rklaehn"
 
 [dependencies]
 alga = "0.9"
+sorted-iter = "0.1.3"
 
 [dev-dependencies]
 quickcheck = "0.8"

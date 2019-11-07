@@ -78,6 +78,51 @@ impl<T: Ord> SortAndDedup<T> {
     }
 }
 
+/// an aggregator to incrementally sort and deduplicate unsorted elements
+pub(crate) struct SortAndDedup2<T> {
+    /// partially sorted and deduplicated data elements
+    data: Vec<T>,
+    /// total number of unsorted elements that have been added
+    count: usize,
+    /// number of sorted elements
+    sorted: usize,
+}
+
+impl<T: Ord> SortAndDedup2<T> {
+    pub fn new() -> Self {
+        Self {
+            data: Vec::new(),
+            sorted: 0,
+            count: 0,
+        }
+    }
+
+    pub fn result(self) -> Vec<T> {
+        let mut res = self.data;
+        res.sort();
+        res.dedup();
+        res
+    }
+
+    pub fn push(&mut self, elem: T) {
+        self.data.push(elem);
+        self.count += 1;
+        let level = self.count.trailing_zeros();
+        if level >= CHUNK_BITS {
+            let sorted = self.sorted;
+            let unsorted = self.data.len() - sorted;
+            if unsorted > sorted {
+                // this takes advantage of the fact that timsort, which is the stable sort in rust,
+                // is very good for already partially sorted data. Using an unstable sort leads to
+                // significantly worse performance here.
+                self.data.sort();
+                self.data.dedup();
+                self.sorted = self.data.len();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

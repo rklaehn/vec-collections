@@ -165,7 +165,7 @@ fn main() {
 
     let mut x: Vec<Element> = Vec::new();
     for i in 0..1000000 {
-        x.push(element(i * 3 % 100000));
+        x.push(element(i * 3 % 10000));
     }
 
     union_arrayset(&interleaved);
