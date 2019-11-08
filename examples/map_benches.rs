@@ -32,10 +32,12 @@ fn creation_hashmap(name: &str, data: &Vec<(Element, Element)>) {
 fn main() {
     let mut x: Vec<(Element, Element)> = Vec::new();
     for i in 0..1000000 {
-        x.push((element(i * 3 % 10000), element(i)));
+        x.push((element(i * 3 % 100000), element(i)));
     }
 
-    creation_vecmap("mixed", &x);
-    creation_btreemap("mixed", &x);
-    creation_hashmap("mixed", &x);
+    for _ in 0..10 {
+        creation_vecmap("mixed", &x);
+        creation_btreemap("mixed", &x);
+        creation_hashmap("mixed", &x);
+    }
 }

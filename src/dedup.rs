@@ -1,25 +1,28 @@
+use std::cmp::{min, Ordering};
+
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
 ///
 /// there is an unstable library feature called slice.partition_dedup which is
 /// roughly similar: https://github.com/rust-lang/rust/issues/54279
+///
+/// the library feature would be preferable since it is unsafe and thus has no bounds checks.
 pub fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Keep) -> usize {
-    if !d.is_empty() {
-        let mut j = 0;
-        for i in 1..d.len() {
-            if !same_bucket(&d[i], &d[j]) {
-                j += 1;
-            } else if keep != Keep::Last {
-                d.swap(i, j);
-            }
+    if d.is_empty() {
+        return 0;
+    }
+    let mut j = 0;
+    for i in 1..d.len() {
+        if !same_bucket(&d[i], &d[j]) {
+            j += 1;
             if i != j {
                 d.swap(i, j);
             }
+        } else if keep == Keep::Last {
+            d.swap(i, j);
         }
-        j + 1
-    } else {
-        0
     }
+    j + 1
 }
 
 fn dedup<T: Eq>(d: &mut [T], keep: Keep) -> usize {
@@ -76,7 +79,7 @@ where
     F: Fn(&T) -> &K,
 {
     let mut agg: SortAndDedup<T, _> = SortAndDedup {
-        data: Vec::with_capacity(iter.size_hint().0),
+        data: Vec::with_capacity(min(iter.size_hint().0, 16)),
         count: 0,
         sorted: 0,
         cmp: |a: &T, b: &T| key(a).cmp(&key(b)),
@@ -90,18 +93,14 @@ where
 
 impl<T, F> SortAndDedup<T, F>
 where
-    F: Fn(&T, &T) -> std::cmp::Ordering,
+    F: Fn(&T, &T) -> Ordering,
 {
     fn sort_and_dedup(&mut self) {
         if self.sorted < self.data.len() {
             let cmp = &self.cmp;
             let slice = self.data.as_mut_slice();
             slice.sort_by(cmp);
-            let unique = dedup_by(
-                slice,
-                |a, b| cmp(a, b) == std::cmp::Ordering::Equal,
-                self.keep,
-            );
+            let unique = dedup_by(slice, |a, b| cmp(a, b) == Ordering::Equal, self.keep);
             self.data.truncate(unique);
             self.sorted = self.data.len();
         }
@@ -116,15 +115,33 @@ where
     fn push(&mut self, elem: T) {
         self.count += 1;
         if self.sorted == self.data.len() {
-            if let Some(last) = self.data.last() {
-                if (self.cmp)(last, &elem) == std::cmp::Ordering::Less {
-                    self.sorted += 1;
+            if let Some(last) = self.data.last_mut() {
+                match (self.cmp)(last, &elem) {
+                    Ordering::Less => {
+                        // remain sorted
+                        self.sorted += 1;
+                        self.data.push(elem);
+                    }
+                    Ordering::Equal => {
+                        // remain sorted, just replace the end if needed
+                        if self.keep == Keep::Last {
+                            *last = elem;
+                        }
+                    }
+                    Ordering::Greater => {
+                        // unsorted
+                        self.data.push(elem);
+                    }
                 }
             } else {
+                // empty is always sorted
+                self.data.push(elem);
                 self.sorted += 1;
             }
+        } else {
+            self.data.push(elem);
+            self.sorted += 1;
         }
-        self.data.push(elem);
         let level = self.count.trailing_zeros();
         if level >= CHUNK_BITS {
             let sorted = self.sorted;
