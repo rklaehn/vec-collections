@@ -18,8 +18,8 @@ pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
 }
 
 pub(crate) struct UnsafeInPlaceMergeState<A, B> {
-    a: InPlaceVecBuilder<A>,
-    b: std::vec::IntoIter<B>,
+    pub a: InPlaceVecBuilder<A>,
+    pub b: std::vec::IntoIter<B>,
 }
 
 impl<A, B> UnsafeInPlaceMergeState<A, B> {
@@ -117,7 +117,7 @@ impl<'a, T> InPlaceMergeState<'a, T> {
 }
 
 impl<'a, T: Clone + Default + Ord> InPlaceMergeState<'a, T> {
-    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
         let mut t: Vec<T> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = InPlaceMergeState::new(t, b);

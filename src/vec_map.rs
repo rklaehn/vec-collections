@@ -1,4 +1,5 @@
 use crate::binary_merge::MergeOperation;
+use crate::dedup::{sort_and_dedup_by_key, Keep};
 use crate::iterators::SliceIterator;
 use crate::merge_state::{MergeStateMut, UnsafeInPlaceMergeState, VecMergeState};
 use std::borrow::Borrow;
@@ -21,6 +22,28 @@ impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
         f.debug_map()
             .entries(self.0.iter().map(|(k, v)| (k, v)))
             .finish()
+    }
+}
+
+struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
+
+impl<K: Ord, V, F: Fn(V, V) -> V>
+    MergeOperation<(K, V), (K, V), UnsafeInPlaceMergeState<(K, V), (K, V)>> for CombineOp<F, K>
+{
+    fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
+        a.0.cmp(&b.0)
+    }
+    fn from_a(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
+        m.move_a(n);
+    }
+    fn from_b(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
+        m.move_b(n);
+    }
+    fn collision(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>) {
+        if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
+            let r = (self.0)(av, bv);
+            m.a.push((ak, r), m.b.as_slice().len());
+        }
     }
 }
 
@@ -63,9 +86,11 @@ type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
 
 impl<K: Ord, V> FromIterator<(K, V)> for VecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        // TODO: make better from_iter
-        let temp: BTreeMap<K, V> = iter.into_iter().collect();
-        temp.into()
+        VecMap(sort_and_dedup_by_key(
+            iter.into_iter(),
+            |(k, _)| k,
+            Keep::Last,
+        ))
     }
 }
 
@@ -207,7 +232,7 @@ impl<K, V> VecMap<K, V> {
         self.0.retain(|entry| f((&entry.0, &entry.1)))
     }
 
-    pub(crate) fn iter(&self) -> SliceIterator<(K, V)> {
+    pub(crate) fn slice_iter(&self) -> SliceIterator<(K, V)> {
         SliceIterator(self.0.as_slice())
     }
 
@@ -230,9 +255,14 @@ impl<K, V> VecMap<K, V> {
 }
 
 impl<K: Ord, V> VecMap<K, V> {
-    fn merge_with(&mut self, rhs: VecMap<K, V>) {
+    pub fn merge_with(&mut self, rhs: VecMap<K, V>) {
         UnsafeInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
+
+    pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<K, V>, f: F) {
+        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
+    }
+
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,

@@ -1,5 +1,6 @@
 use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
-use crate::dedup::SortAndDedup2;
+use crate::dedup::sort_and_dedup;
+use crate::iterators::SortedIter;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState,
     UnsafeSliceMergeState, VecMergeState,
@@ -113,8 +114,9 @@ impl<T> VecSet<T> {
     pub fn empty() -> Self {
         Self(Vec::new())
     }
-    pub fn iter(&self) -> std::slice::Iter<T> {
-        self.0.iter()
+    /// An iterator that returns the items of this vec set in sorted order
+    pub fn iter(&self) -> SortedIter<std::slice::Iter<T>> {
+        SortedIter::new(self.0.iter())
     }
     pub fn retain<F: FnMut(&T) -> bool>(&mut self, f: F) {
         self.0.retain(f)
@@ -162,13 +164,13 @@ impl<T: Ord + Clone> BitAnd for &VecSet<T> {
     }
 }
 
-impl<T: Ord> BitAnd for VecSet<T> {
-    type Output = VecSet<T>;
-    fn bitand(mut self, that: Self) -> Self::Output {
-        self &= that;
-        self
-    }
-}
+// impl<T: Ord> BitAnd for VecSet<T> {
+//     type Output = VecSet<T>;
+//     fn bitand(mut self, that: Self) -> Self::Output {
+//         self &= that;
+//         self
+//     }
+// }
 
 impl<T: Ord + Clone> BitOr for &VecSet<T> {
     type Output = VecSet<T>;
@@ -177,13 +179,13 @@ impl<T: Ord + Clone> BitOr for &VecSet<T> {
     }
 }
 
-impl<T: Ord> BitOr for VecSet<T> {
-    type Output = VecSet<T>;
-    fn bitor(mut self, that: Self) -> Self::Output {
-        self |= that;
-        self
-    }
-}
+// impl<T: Ord> BitOr for VecSet<T> {
+//     type Output = VecSet<T>;
+//     fn bitor(mut self, that: Self) -> Self::Output {
+//         self |= that;
+//         self
+//     }
+// }
 
 impl<T: Ord + Clone> BitXor for &VecSet<T> {
     type Output = VecSet<T>;
@@ -192,13 +194,13 @@ impl<T: Ord + Clone> BitXor for &VecSet<T> {
     }
 }
 
-impl<T: Ord> BitXor for VecSet<T> {
-    type Output = VecSet<T>;
-    fn bitxor(mut self, that: Self) -> Self::Output {
-        self ^= that;
-        self
-    }
-}
+// impl<T: Ord> BitXor for VecSet<T> {
+//     type Output = VecSet<T>;
+//     fn bitxor(mut self, that: Self) -> Self::Output {
+//         self ^= that;
+//         self
+//     }
+// }
 
 impl<T: Ord + Clone> Sub for &VecSet<T> {
     type Output = VecSet<T>;
@@ -207,13 +209,13 @@ impl<T: Ord + Clone> Sub for &VecSet<T> {
     }
 }
 
-impl<T: Ord> Sub for VecSet<T> {
-    type Output = VecSet<T>;
-    fn sub(mut self, that: Self) -> Self::Output {
-        self -= that;
-        self
-    }
-}
+// impl<T: Ord> Sub for VecSet<T> {
+//     type Output = VecSet<T>;
+//     fn sub(mut self, that: Self) -> Self::Output {
+//         self -= that;
+//         self
+//     }
+// }
 
 impl<T: Ord> From<Vec<T>> for VecSet<T> {
     fn from(vec: Vec<T>) -> Self {
@@ -230,11 +232,7 @@ impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
 impl<T: Ord> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
-        let mut agg = SortAndDedup2::<T>::new();
-        for x in iter {
-            agg.push(x);
-        }
-        Self::from_vec(agg.result())
+        Self::from_vec(sort_and_dedup(iter))
     }
 }
 
@@ -307,7 +305,7 @@ impl<T: Ord> VecSet<T> {
 
 // cargo asm vec_set::array_set::union_u32
 pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
-    InPlaceMergeState::merge(a, b, SetUnionOp)
+    InPlaceMergeState::merge_shortcut(a, b, SetUnionOp)
 }
 
 #[cfg(test)]

@@ -333,7 +333,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "sorted-iter"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
@@ -374,7 +374,7 @@ dependencies = [
  "quickcheck 0.8.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "quickcheck_macros 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "sorted-iter 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sorted-iter 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "testdrop 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -444,7 +444,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum rdrand 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
 "checksum regex 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "dc220bd33bdce8f093101afe22a037b8eb0e5af33592e6a9caafff0d4cb81cbd"
 "checksum regex-syntax 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)" = "11a7e20d1cce64ef2fed88b66d347f88bd9babb82845b2b858f3edbf59a4f716"
-"checksum sorted-iter 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "83e7f446b6590049032df5b26241299c05d9e33342624b2b834800079f805294"
+"checksum sorted-iter 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)" = "af32b531d288914c724fbf67310d8626c202f4c7dbab5dd44cf9ac2181a501bb"
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 "checksum testdrop 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3d39ee32a48eb5325bd3927d4533ac58344af21def4a43ddfc3734c43aebbeae"
 "checksum thread_local 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)" = "c6b53e329000edc2b34dbe8545fd20e55a333362d0a321909685a19bd28c3f1b"

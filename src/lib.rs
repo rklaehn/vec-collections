@@ -7,8 +7,10 @@ extern crate quickcheck;
 extern crate quickcheck_macros;
 
 #[cfg(test)]
-#[macro_use]
 extern crate maplit;
+
+extern crate sorted_iter;
+pub use sorted_iter::{SortedIteratorExt, SortedPairIteratorExt};
 
 #[cfg(test)]
 #[macro_use]

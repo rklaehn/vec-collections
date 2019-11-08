@@ -2,13 +2,15 @@
 /// returns the number of unique elements.
 ///
 /// there is an unstable library feature called slice.partition_dedup which is
-/// identical: https://github.com/rust-lang/rust/issues/54279
-pub fn dedup<T: Eq>(d: &mut [T]) -> usize {
+/// roughly similar: https://github.com/rust-lang/rust/issues/54279
+pub fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Keep) -> usize {
     if !d.is_empty() {
         let mut j = 0;
         for i in 1..d.len() {
-            if d[i] != d[j] {
+            if !same_bucket(&d[i], &d[j]) {
                 j += 1;
+            } else if keep != Keep::Last {
+                d.swap(i, j);
             }
             if i != j {
                 d.swap(i, j);
@@ -20,104 +22,115 @@ pub fn dedup<T: Eq>(d: &mut [T]) -> usize {
     }
 }
 
-/// an aggregator to incrementally sort and deduplicate unsorted elements
-pub(crate) struct SortAndDedup<T> {
-    /// sorted slices
-    slices: Vec<(usize, u32)>,
-    /// partially sorted and deduplicated data elements
-    data: Vec<T>,
-    /// total number of unsorted elements that have been added
-    count: usize,
+fn dedup<T: Eq>(d: &mut [T], keep: Keep) -> usize {
+    dedup_by(d, T::eq, keep)
 }
 
 /// size of a chunk for dedup and sort. After we have a full chunk we will sort it in.
 const CHUNK_BITS: u32 = 3;
 
-impl<T: Ord> SortAndDedup<T> {
-    pub fn new() -> Self {
-        Self {
-            slices: Vec::new(),
-            data: Vec::new(),
-            count: 0,
-        }
-    }
-
-    fn add(&mut self, level: u32) -> usize {
-        let mut total = 0;
-        while let Some((s, l)) = self.slices.last() {
-            if *l > level {
-                break;
-            } else {
-                total += s;
-                self.slices.pop();
-            }
-        }
-        total
-    }
-
-    pub fn result(self) -> Vec<T> {
-        let mut res = self.data;
-        res.sort();
-        res.dedup();
-        res
-    }
-
-    pub fn push(&mut self, elem: T) {
-        self.data.push(elem);
-        self.count += 1;
-        let level = self.count.trailing_zeros();
-        if level >= CHUNK_BITS {
-            let to_sort = self.add(level) + (1 << CHUNK_BITS);
-            let i1 = self.data.len();
-            let i0 = i1 - to_sort;
-            let slice = &mut self.data[i0..i1];
-            slice.sort();
-            let remaining = dedup(slice);
-            self.data.truncate(i0 + remaining);
-        }
-    }
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Keep {
+    First,
+    Last,
 }
 
 /// an aggregator to incrementally sort and deduplicate unsorted elements
-pub(crate) struct SortAndDedup2<T> {
+///
+/// this is a compromise between sorting and deduping at the end, which can have a lot of
+/// temporary memory usage if you feed it with lots of duplicate elements, and sorting
+/// on each insertion, which is expensive for a flat data structure due to all the memory
+/// movements.
+struct SortAndDedup<T, F> {
     /// partially sorted and deduplicated data elements
     data: Vec<T>,
-    /// total number of unsorted elements that have been added
-    count: usize,
     /// number of sorted elements
     sorted: usize,
+    /// comparison
+    cmp: F,
+
+    /// total number of unsorted elements that have been added
+    count: usize,
+    /// which element to keep in case of duplicates
+    keep: Keep,
 }
 
-impl<T: Ord> SortAndDedup2<T> {
-    pub fn new() -> Self {
-        Self {
-            data: Vec::new(),
-            sorted: 0,
-            count: 0,
+pub fn sort_and_dedup<T: Ord, I: Iterator<Item = T>>(iter: I) -> Vec<T> {
+    let mut agg: SortAndDedup<T, _> = SortAndDedup {
+        data: Vec::with_capacity(iter.size_hint().0),
+        count: 0,
+        sorted: 0,
+        cmp: |a: &T, b: &T| a.cmp(b),
+        keep: Keep::First,
+    };
+    for x in iter {
+        agg.push(x);
+    }
+    agg.into_vec()
+}
+
+pub fn sort_and_dedup_by_key<T, K, I, F>(iter: I, key: F, keep: Keep) -> Vec<T>
+where
+    K: Ord,
+    I: Iterator<Item = T>,
+    F: Fn(&T) -> &K,
+{
+    let mut agg: SortAndDedup<T, _> = SortAndDedup {
+        data: Vec::with_capacity(iter.size_hint().0),
+        count: 0,
+        sorted: 0,
+        cmp: |a: &T, b: &T| key(a).cmp(&key(b)),
+        keep,
+    };
+    for x in iter {
+        agg.push(x);
+    }
+    agg.into_vec()
+}
+
+impl<T, F> SortAndDedup<T, F>
+where
+    F: Fn(&T, &T) -> std::cmp::Ordering,
+{
+    fn sort_and_dedup(&mut self) {
+        if self.sorted < self.data.len() {
+            let cmp = &self.cmp;
+            let slice = self.data.as_mut_slice();
+            slice.sort_by(cmp);
+            let unique = dedup_by(
+                slice,
+                |a, b| cmp(a, b) == std::cmp::Ordering::Equal,
+                self.keep,
+            );
+            self.data.truncate(unique);
+            self.sorted = self.data.len();
         }
     }
 
-    pub fn result(self) -> Vec<T> {
-        let mut res = self.data;
-        res.sort();
-        res.dedup();
-        res
+    fn into_vec(self) -> Vec<T> {
+        let mut res = self;
+        res.sort_and_dedup();
+        res.data
     }
 
-    pub fn push(&mut self, elem: T) {
-        self.data.push(elem);
+    fn push(&mut self, elem: T) {
         self.count += 1;
+        if self.sorted == self.data.len() {
+            if let Some(last) = self.data.last() {
+                if (self.cmp)(last, &elem) == std::cmp::Ordering::Less {
+                    self.sorted += 1;
+                }
+            } else {
+                self.sorted += 1;
+            }
+        }
+        self.data.push(elem);
         let level = self.count.trailing_zeros();
         if level >= CHUNK_BITS {
             let sorted = self.sorted;
             let unsorted = self.data.len() - sorted;
             if unsorted > sorted {
-                // this takes advantage of the fact that timsort, which is the stable sort in rust,
-                // is very good for already partially sorted data. Using an unstable sort leads to
-                // significantly worse performance here.
-                self.data.sort();
-                self.data.dedup();
-                self.sorted = self.data.len();
+                self.sort_and_dedup();
             }
         }
     }
@@ -126,30 +139,57 @@ impl<T: Ord> SortAndDedup2<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck_macros::quickcheck;
+    use std::collections::*;
+    use std::fmt::Debug;
+
+    /// just a helper to get good output when a check fails
+    fn unary_op<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {
+        let res = expected == actual;
+        if !res {
+            println!("x:{:?} expected:{:?} actual:{:?}", x, expected, actual);
+        }
+        res
+    }
 
     #[quickcheck]
-    fn sort_and_dedup_check(elems: Vec<i32>) -> bool {
-        let mut expected = elems.clone();
-        expected.sort();
-        expected.dedup();
-        let mut agg = SortAndDedup::<i32>::new();
-        for elem in elems {
-            agg.push(elem);
-        }
-        let actual = agg.result();
+    fn sort_and_dedup_check(x: Vec<i32>) -> bool {
+        let expected: Vec<i32> = x
+            .iter()
+            .cloned()
+            .collect::<BTreeSet<i32>>()
+            .into_iter()
+            .collect();
+        let actual = sort_and_dedup(x.into_iter());
         expected == actual
     }
 
     #[quickcheck]
-    fn dedup_check(x: Vec<i32>) -> bool {
-        let mut y = x;
-        y.sort();
-        let mut expected = y.clone();
-        expected.dedup();
-        let expected = expected.as_slice();
-        let actual = y.as_mut_slice();
-        let n = dedup(actual);
-        let actual = &actual[0..n];
-        expected == actual
+    fn dsort_and_dedup_by_check(x: Vec<(i32, i32)>) -> bool {
+        // TODO: make the keep_last work!
+        let expected: Vec<(i32, i32)> = x
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeMap<i32, i32>>()
+            .into_iter()
+            .collect();
+        let actual = sort_and_dedup_by_key(x.iter().cloned(), |x| &x.0, Keep::Last);
+        unary_op(x, expected, actual)
+    }
+
+    #[test]
+    fn sort_and_dedup_by_test() {
+        let v: Vec<(i32, i32)> = vec![(0, 1), (0, 2), (0, 3), (1, 1), (1, 2)];
+        let keep_first = sort_and_dedup_by_key(v.clone().into_iter(), |x| &x.0, Keep::First);
+        let keep_last = sort_and_dedup_by_key(v.clone().into_iter(), |x| &x.0, Keep::Last);
+        assert_eq!(keep_first, vec![(0, 1), (1, 1)]);
+        assert_eq!(keep_last, vec![(0, 3), (1, 2)]);
+        let expected: Vec<(i32, i32)> = v
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeMap<i32, i32>>()
+            .into_iter()
+            .collect();
+        println!("{:?} {:?} {:?}", keep_first, keep_last, expected)
     }
 }

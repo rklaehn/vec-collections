@@ -158,7 +158,7 @@ impl<K: Clone, V: Eq> TotalArrayMap<K, V> {
         let default = f(&self.1);
         let elements: Vec<(K, W)> = self
             .0
-            .iter()
+            .slice_iter()
             .filter_map(|entry| {
                 let w = f(&entry.1);
                 if w != default {
