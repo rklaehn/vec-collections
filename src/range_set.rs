@@ -2,7 +2,16 @@
 //!
 //! A set of non-overlapping ranges
 //!
-//! A data structure to represent a set of non-overlapping ranges of element type `T: Ord`. It uses a `Vec<T>` 
+//! ```
+//! # use vec_collections::RangeSet;
+//! let mut a: RangeSet<i32> = RangeSet::from(10..);
+//! let b: RangeSet<i32> = RangeSet::from(1..5);
+//!
+//! a |= b;
+//! let r = !a;
+//! ```
+//!
+//! A data structure to represent a set of non-overlapping ranges of element type `T: Ord`. It uses a `Vec<T>`
 //! of sorted boundaries internally.
 //!
 //! It can represent not just finite ranges but also half-open and open ranges. Because it can represent infinite
@@ -17,35 +26,35 @@
 //!
 //! In addition to the fast set operations that produce a new range set, it also supports the equivalent
 //! in-place operations.
-//! 
+//!
 //! # Complexity
-//! 
+//!
 //! Complexity is given separately for the number of comparisons and the number of copies, since sometimes you have
 //! a comparison operation that is basically free (any of the primitive types), whereas sometimes you have a comparison
 //! operation that is many orders of magnitude more expensive than a copy (long strings, arbitrary precision integers, ...)
-//! 
+//!
 //! ## Number of comparisons
-//! 
-//! |operation    | best      | worst     | remark 
+//!
+//! |operation    | best      | worst     | remark
 //! |-------------|-----------|-----------|--------
-//! |negation     | 1         | 1         | 
-//! |union        | O(log(N)) | O(N)      | binary merge
+//! |negation     | 1         | 1         |
+//! |union        | O(log(N)) | O(N)      | [binary merge]
 //! |intersection | O(log(N)) | O(N)      | binary merge
 //! |difference   | O(log(N)) | O(N)      | binary merge
 //! |xor          | O(log(N)) | O(N)      | binary merge
 //! |membership   | O(log(N)) | O(log(N)) | binary search
 //! |is_disjoint  | O(log(N)) | O(N)      | binary merge with cutoff
 //! |is_subset    | O(log(N)) | O(N)      | binary merge with cutoff
-//! 
+//!
 //! ## Number of copies
-//! 
+//!
 //! For creating new sets, obviously there needs to be at least one copy for each element of the result set, so the
 //! complexity is always O(N). For in-place operations it gets more interesting. In case the number of elements of
 //! the result being identical to the number of existing elements, there will be no copies and no allocations.
-//! 
+//!
 //! E.g. if the result just has some of the ranges of the left hand side extended or truncated, but the same number of boundaries,
 //! there will be no allocations and no copies except for the changed boundaries themselves.
-//! 
+//!
 //! If the result has fewer boundaries than then lhs, there will be some copying but no allocations. Only if the result
 //! is larger than the capacity of the underlying vector of the lhs will there be allocations.
 //!
@@ -56,25 +65,21 @@
 //! |intersection | 1         | O(N)      |
 //! |difference   | 1         | O(N)      |
 //! |xor          | 1         | O(N)      |
-//! 
+//!
+//! # Testing
+//!
+//! Testing is done by some simple smoke tests as well as quickcheck tests of the algebraic properties of the boolean operations.
+//!
+//! [binary merge]: http://blog.klaehn.org
 use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::{
-    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
-    Sub, SubAssign,
+    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Bound, Not, Range, RangeBounds,
+    RangeFrom, RangeTo, Sub, SubAssign,
 };
 
-///
-/// A set of non-overlapping ranges
-/// 
-/// ```
-/// # use vec_collections::RangeSet;
-/// let mut x: RangeSet<i32> = (0..1000).into();
-/// x |= (2000..3000).into();
-/// x |= (4000..5000).into();
-/// x &= RangeSet.
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangeSet<T> {
     below_all: bool,
