@@ -231,8 +231,7 @@ impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
 
 impl<T: Ord> FromIterator<T> for VecSet<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let iter = iter.into_iter();
-        Self::from_vec(sort_and_dedup(iter))
+        Self::from_vec(sort_and_dedup(iter.into_iter()))
     }
 }
 

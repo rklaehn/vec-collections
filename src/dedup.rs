@@ -51,7 +51,6 @@ struct SortAndDedup<T, F> {
     sorted: usize,
     /// comparison
     cmp: F,
-
     /// total number of unsorted elements that have been added
     count: usize,
     /// which element to keep in case of duplicates
@@ -134,13 +133,13 @@ where
                     }
                 }
             } else {
-                // empty is always sorted
+                // single element is always sorted
                 self.data.push(elem);
                 self.sorted += 1;
             }
         } else {
+            // not sorted
             self.data.push(elem);
-            self.sorted += 1;
         }
         let level = self.count.trailing_zeros();
         if level >= CHUNK_BITS {

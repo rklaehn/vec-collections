@@ -1,4 +1,62 @@
-// a set of non-overlapping ranges
+//! # About
+//!
+//! A set of non-overlapping ranges
+//!
+//! A data structure to represent a set of non-overlapping ranges of element type `T: Ord`. It uses a `Vec<T>` 
+//! of sorted boundaries internally.
+//!
+//! It can represent not just finite ranges but also half-open and open ranges. Because it can represent infinite
+//! ranges, it can also represent the set of all elements, and therefore a full boolean algebra including negation.
+//!
+//! It does not put any constraints on the element type for requriring an `Ord` instance. However, since it internally
+//! uses an encoding similar to [std::ops::Range](https://doc.rust-lang.org/std/ops/struct.Range.html) with half-open
+//! ranges, it can only represent single values for types that have a defined successor, such as integers. Adjacent ranges
+//! will be merged.
+//!
+//! It provides very fast operations for set operations (&, |, ^) as well as for intersection tests (is_disjoint, is_subset).
+//!
+//! In addition to the fast set operations that produce a new range set, it also supports the equivalent
+//! in-place operations.
+//! 
+//! # Complexity
+//! 
+//! Complexity is given separately for the number of comparisons and the number of copies, since sometimes you have
+//! a comparison operation that is basically free (any of the primitive types), whereas sometimes you have a comparison
+//! operation that is many orders of magnitude more expensive than a copy (long strings, arbitrary precision integers, ...)
+//! 
+//! ## Number of comparisons
+//! 
+//! |operation    | best      | worst     | remark 
+//! |-------------|-----------|-----------|--------
+//! |negation     | 1         | 1         | 
+//! |union        | O(log(N)) | O(N)      | binary merge
+//! |intersection | O(log(N)) | O(N)      | binary merge
+//! |difference   | O(log(N)) | O(N)      | binary merge
+//! |xor          | O(log(N)) | O(N)      | binary merge
+//! |membership   | O(log(N)) | O(log(N)) | binary search
+//! |is_disjoint  | O(log(N)) | O(N)      | binary merge with cutoff
+//! |is_subset    | O(log(N)) | O(N)      | binary merge with cutoff
+//! 
+//! ## Number of copies
+//! 
+//! For creating new sets, obviously there needs to be at least one copy for each element of the result set, so the
+//! complexity is always O(N). For in-place operations it gets more interesting. In case the number of elements of
+//! the result being identical to the number of existing elements, there will be no copies and no allocations.
+//! 
+//! E.g. if the result just has some of the ranges of the left hand side extended or truncated, but the same number of boundaries,
+//! there will be no allocations and no copies except for the changed boundaries themselves.
+//! 
+//! If the result has fewer boundaries than then lhs, there will be some copying but no allocations. Only if the result
+//! is larger than the capacity of the underlying vector of the lhs will there be allocations.
+//!
+//! |operation    | best      | worst     |
+//! |-------------|-----------|-----------|
+//! |negation     | 1         | 1         |
+//! |union        | 1         | O(N)      |
+//! |intersection | 1         | O(N)      |
+//! |difference   | 1         | O(N)      |
+//! |xor          | 1         | O(N)      |
+//! 
 use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
@@ -7,6 +65,16 @@ use std::ops::{
     Sub, SubAssign,
 };
 
+///
+/// A set of non-overlapping ranges
+/// 
+/// ```
+/// # use vec_collections::RangeSet;
+/// let mut x: RangeSet<i32> = (0..1000).into();
+/// x |= (2000..3000).into();
+/// x |= (4000..5000).into();
+/// x &= RangeSet.
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangeSet<T> {
     below_all: bool,
@@ -21,7 +89,7 @@ impl<T> RangeSet<T> {
             boundaries,
         }
     }
-    fn from_range_to(a: T) -> Self {
+    fn from_range_until(a: T) -> Self {
         Self::new(true, vec![a])
     }
     fn from_range_from(a: T) -> Self {
@@ -79,7 +147,7 @@ impl<T: Ord> From<RangeFrom<T>> for RangeSet<T> {
 
 impl<T: Ord> From<RangeTo<T>> for RangeSet<T> {
     fn from(value: RangeTo<T>) -> Self {
-        Self::from_range_to(value.end)
+        Self::from_range_until(value.end)
     }
 }
 

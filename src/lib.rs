@@ -33,7 +33,7 @@ mod vec_map;
 
 mod dedup;
 mod iterators;
-mod range_set;
+pub mod range_set;
 
 #[allow(dead_code)]
 mod sonic_reducer;
