@@ -281,6 +281,15 @@ mod tests {
         }
     }
 
+    /// just a helper to get good output when a check fails
+    fn print_on_failure_unary<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {
+        let res = expected == actual;
+        if !res {
+            println!("x:{:?} expected:{:?} actual:{:?}", x, expected, actual);
+        }
+        res
+    }
+
     fn binary_op(a: &Test, b: &Test, r: &Test, op: impl Fn(bool, bool) -> bool) -> bool {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
         samples.extend(a.elements.as_slice().iter().cloned());

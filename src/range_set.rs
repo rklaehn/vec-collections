@@ -553,54 +553,101 @@ impl<'a, T: Ord, M: MergeStateMut<T>> ShortcutMergeOperation<T, T, M> for XorOp 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_macros::*;
+    use num_traits::PrimInt;
     use quickcheck::*;
     use std::collections::BTreeSet;
+    use std::fmt::Debug;
     use std::ops::Range;
 
-    type Elem = i32;
-    type Ref = (Vec<Range<Elem>>, bool);
-    type Test = RangeSet<i32>;
+    ///
+    /// A support trait for testing any kind of collection.
+    ///
+    /// Almost anything can be viewed as a collection. E.g. an integer can be viewed as a collection of bit offsets at which it has
+    /// a boolean value.
+    ///
+    trait TestSamples<K, V> {
+        /// produces "interesting" sample points to test a property for.
+        fn samples(&self, res: &mut BTreeSet<K>);
 
-    fn union_contains(x: &Ref, elem: &Elem) -> bool {
-        let (ranges, below_all) = x;
-        ranges.iter().any(|range| range.contains(&elem)) ^ below_all
+        /// gets the value of the collection at position k
+        fn at(&self, k: K) -> V;
     }
 
-    fn intersection_contains(x: &Ref, elem: &Elem) -> bool {
-        let (ranges, below_all) = x;
-        ranges.iter().all(|range| range.contains(&elem)) ^ below_all
-    }
-
-    fn sample(x: &Ref) -> Vec<Elem> {
-        let (ranges, _) = x;
-        let mut res: Vec<Elem> = Vec::new();
-        res.push(std::i32::MIN);
-        for range in ranges {
-            res.push(range.start);
-            res.push(range.start + 1);
-            res.push(range.end - 1);
-            res.push(range.end);
+    /// A range set can be seen as a set of elements, even though it does not actually contain the elements
+    impl<E: PrimInt> TestSamples<E, bool> for RangeSet<E> {
+        fn samples(&self, res: &mut BTreeSet<E>) {
+            res.insert(E::min_value());
+            for x in self.boundaries.iter().cloned() {
+                res.insert(x - E::one());
+                res.insert(x);
+                res.insert(x + E::one());
+            }
+            res.insert(E::max_value());
         }
-        res.sort();
-        res.dedup();
-        res
+
+        fn at(&self, elem: E) -> bool {
+            self.contains(&elem)
+        }
     }
 
-    fn to_test(r: &Ref) -> Test {
-        let (ranges, below_all) = r;
-        let mut res = RangeSet::empty();
-        for range in ranges {
-            res = res.bitor(&RangeSet::from_range(range.clone()));
-            let mut res2 = res.clone();
-            res2 |= RangeSet::from_range(range.clone());
-            assert_eq!(res, res2);
-        }
-        if *below_all {
-            res = !res;
-        }
-        res
+    fn unary_element_test<C, K, V>(a: C, r: C, op: impl Fn(V) -> V) -> bool
+    where
+        C: TestSamples<K, V> + Debug,
+        K: Ord + Clone + Debug,
+        V: Eq + Debug,
+    {
+        let mut s: BTreeSet<K> = BTreeSet::new();
+        a.samples(&mut s);
+        r.samples(&mut s);
+        s.into_iter().all(|key| {
+            let value = a.at(key.clone());
+            let actual = op(value);
+            let expected = r.at(key.clone());
+            if expected != actual {
+                println!(
+                    "expected!=actual at: {:?}. {:?}!={:?}",
+                    key, expected, actual
+                );
+                println!("a: {:?}", a);
+                println!("r: {:?}", r);
+                false
+            } else {
+                true
+            }
+        })
     }
+
+    fn binary_element_test<C, K, V>(a: C, b: C, r: C, op: impl Fn(V, V) -> V) -> bool
+    where
+        C: TestSamples<K, V> + Debug,
+        K: Ord + Clone + Debug,
+        V: Eq + Debug,
+    {
+        let mut s: BTreeSet<K> = BTreeSet::new();
+        a.samples(&mut s);
+        b.samples(&mut s);
+        r.samples(&mut s);
+        s.into_iter().all(|key| {
+            let a_value = a.at(key.clone());
+            let b_value = b.at(key.clone());
+            let actual = op(a_value, b_value);
+            let expected = r.at(key.clone());
+            if expected != actual {
+                println!(
+                    "expected!=actual at: {:?}. {:?}!={:?}",
+                    key, expected, actual
+                );
+                println!("a: {:?}", a);
+                println!("b: {:?}", b);
+                println!("r: {:?}", r);
+                false
+            } else {
+                true
+            }
+        })
+    }
+
+    type Test = RangeSet<i64>;
 
     #[test]
     fn smoke_test() {
@@ -637,6 +684,31 @@ mod tests {
             boundaries.dedup();
             Self::new(below_all, boundaries)
         }
+    }
+
+    #[quickcheck]
+    fn negation_check(a: RangeSet<i64>) -> bool {
+        unary_element_test(a.clone(), !a, |x| !x)
+    }
+
+    #[quickcheck]
+    fn union_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
+        binary_element_test(a.clone(), b.clone(), &a | &b, |a, b| a | b)
+    }
+
+    #[quickcheck]
+    fn intersection_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
+        binary_element_test(a.clone(), b.clone(), &a & &b, |a, b| a & b)
+    }
+
+    #[quickcheck]
+    fn xor_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
+        binary_element_test(a.clone(), b.clone(), &a ^ &b, |a, b| a ^ b)
+    }
+
+    #[quickcheck]
+    fn difference_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
+        binary_element_test(a.clone(), b.clone(), &a - &b, |a, b| a & !b)
     }
 
     bitop_assign_consistent!(Test);
