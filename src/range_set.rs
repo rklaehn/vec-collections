@@ -76,6 +76,7 @@ use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::ops::Bound;
+use std::ops::RangeBounds;
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
     Sub, SubAssign,
@@ -90,16 +91,16 @@ pub struct RangeSet<T> {
 impl<T: Debug> Debug for RangeSet<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "RangeSet{{")?;
-        for (i,(l,u)) in self.iter().enumerate() {
+        for (i, (l, u)) in self.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            match (l,u) {
+            match (l, u) {
                 (Bound::Unbounded, Bound::Unbounded) => write!(f, ".."),
                 (Bound::Unbounded, Bound::Excluded(b)) => write!(f, "..{:?}", b),
                 (Bound::Included(a), Bound::Unbounded) => write!(f, "{:?}..", a),
                 (Bound::Included(a), Bound::Excluded(b)) => write!(f, "{:?}..{:?}", a, b),
-                _ => write!(f, "")
+                _ => write!(f, ""),
             }?;
         }
         write!(f, "}}")
@@ -112,16 +113,24 @@ impl<'a, T> Iterator for Iter<'a, T> {
     type Item = (Bound<&'a T>, Bound<&'a T>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.0 {
-            let end = self.1.get(0).map_or(Bound::Unbounded, Bound::Excluded);
-            self.0 = false;
-            self.1 = &self.1[1..];
-            Some((Bound::Unbounded, end))
-        } else if !self.1.is_empty() {
-            let start = self.1.get(0).map_or(Bound::Unbounded, Bound::Included);
-            let end = self.1.get(1).map_or(Bound::Unbounded, Bound::Excluded);
-            self.1 = &self.1[std::cmp::min(self.1.len(), 2)..];
-            Some((start, end))
+        let (ul, bounds) = (self.0, self.1);
+        if !bounds.is_empty() || ul {
+            Some(if ul {
+                self.0 = false;
+                match bounds.split_first() {
+                    None => (Bound::Unbounded, Bound::Unbounded),
+                    Some((b, bs)) => {
+                        self.1 = bs;
+                        (Bound::Unbounded, Bound::Excluded(b))
+                    }
+                }
+            } else if bounds.len() == 1 {
+                self.1 = &bounds[1..];
+                (Bound::Included(&bounds[0]), Bound::Unbounded)
+            } else {
+                self.1 = &bounds[2..];
+                (Bound::Included(&bounds[0]), Bound::Excluded(&bounds[1]))
+            })
         } else {
             None
         }
@@ -159,6 +168,21 @@ impl<T> RangeSet<T> {
     }
     pub fn is_all(&self) -> bool {
         self.below_all && self.boundaries.is_empty()
+    }
+}
+
+impl<T: Ord + Clone> RangeSet<T> {
+    fn from_range_bounds<R: RangeBounds<T>>(r: R) -> std::result::Result<Self, ()> {
+        match (r.start_bound(), r.end_bound()) {
+            (Bound::Unbounded, Bound::Unbounded) => Ok(Self::all()),
+            (Bound::Unbounded, Bound::Excluded(b)) => Ok(Self::from_range_until(b.clone())),
+            (Bound::Included(a), Bound::Unbounded) => Ok(Self::from_range_from(a.clone())),
+            (Bound::Included(a), Bound::Excluded(b)) => Ok(Self::from_range(Range {
+                start: a.clone(),
+                end: b.clone(),
+            })),
+            _ => Err(()),
+        }
     }
 }
 
@@ -653,7 +677,6 @@ mod tests {
 
         let r: Test = x.bitor(&z);
 
-
         println!("{:?} {:?} {:?} {:?}", x, y, z, r);
 
         let r2: Test = x.bitand(&y);
@@ -664,6 +687,15 @@ mod tests {
         println!("{:?}", r2);
         println!("{:?}", r3);
         println!("{:?} {:?}", r4, r5);
+    }
+
+    #[quickcheck]
+    fn ranges_consistent(a: Test) -> bool {
+        let mut b = Test::empty();
+        for e in a.iter() {
+            b |= Test::from_range_bounds(e).unwrap();
+        }
+        a == b
     }
 
     #[quickcheck]
