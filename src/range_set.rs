@@ -73,17 +73,59 @@
 //! [binary merge]: http://blog.klaehn.org
 use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
-use std::borrow::Borrow;
 use std::cmp::Ordering;
+use std::fmt::Debug;
+use std::ops::Bound;
 use std::ops::{
-    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Bound, Not, Range, RangeBounds,
-    RangeFrom, RangeTo, Sub, SubAssign,
+    BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
+    Sub, SubAssign,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RangeSet<T> {
     below_all: bool,
     boundaries: Vec<T>,
+}
+
+impl<T: Debug> Debug for RangeSet<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RangeSet{{")?;
+        for (i,(l,u)) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            match (l,u) {
+                (Bound::Unbounded, Bound::Unbounded) => write!(f, ".."),
+                (Bound::Unbounded, Bound::Excluded(b)) => write!(f, "..{:?}", b),
+                (Bound::Included(a), Bound::Unbounded) => write!(f, "{:?}..", a),
+                (Bound::Included(a), Bound::Excluded(b)) => write!(f, "{:?}..{:?}", a, b),
+                _ => write!(f, "")
+            }?;
+        }
+        write!(f, "}}")
+    }
+}
+
+pub struct Iter<'a, T>(bool, &'a [T]);
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = (Bound<&'a T>, Bound<&'a T>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0 {
+            let end = self.1.get(0).map_or(Bound::Unbounded, Bound::Excluded);
+            self.0 = false;
+            self.1 = &self.1[1..];
+            Some((Bound::Unbounded, end))
+        } else if !self.1.is_empty() {
+            let start = self.1.get(0).map_or(Bound::Unbounded, Bound::Included);
+            let end = self.1.get(1).map_or(Bound::Unbounded, Bound::Excluded);
+            self.1 = &self.1[std::cmp::min(self.1.len(), 2)..];
+            Some((start, end))
+        } else {
+            None
+        }
+    }
 }
 
 impl<T> RangeSet<T> {
@@ -93,6 +135,9 @@ impl<T> RangeSet<T> {
             below_all,
             boundaries,
         }
+    }
+    fn iter(&self) -> Iter<T> {
+        Iter(self.below_all, self.boundaries.as_slice())
     }
     fn from_range_until(a: T) -> Self {
         Self::new(true, vec![a])
@@ -127,7 +172,11 @@ impl<T: Ord> RangeSet<T> {
     }
 
     pub fn is_disjoint(&self, that: &Self) -> bool {
-        !((self.below_all & that.below_all) || BoolMergeState::merge(self, that, IntersectionOp))
+        !BoolMergeState::merge(self, that, IntersectionOp)
+    }
+
+    pub fn is_subset(&self, that: &Self) -> bool {
+        !BoolMergeState::merge(&self, &that, DiffOp)
     }
 
     pub fn contains(&self, value: &T) -> bool {
@@ -553,24 +602,20 @@ impl<'a, T: Ord, M: MergeStateMut<T>> ShortcutMergeOperation<T, T, M> for XorOp 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::obey::*;
     use num_traits::PrimInt;
     use quickcheck::*;
     use std::collections::BTreeSet;
-    use std::fmt::Debug;
-    use std::ops::Range;
 
-    ///
-    /// A support trait for testing any kind of collection.
-    ///
-    /// Almost anything can be viewed as a collection. E.g. an integer can be viewed as a collection of bit offsets at which it has
-    /// a boolean value.
-    ///
-    trait TestSamples<K, V> {
-        /// produces "interesting" sample points to test a property for.
-        fn samples(&self, res: &mut BTreeSet<K>);
-
-        /// gets the value of the collection at position k
-        fn at(&self, k: K) -> V;
+    impl<T: Arbitrary + Ord> Arbitrary for RangeSet<T> {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            let mut boundaries: Vec<T> = Arbitrary::arbitrary(g);
+            let below_all: bool = Arbitrary::arbitrary(g);
+            // boundaries.truncate(2);
+            boundaries.sort();
+            boundaries.dedup();
+            Self::new(below_all, boundaries)
+        }
     }
 
     /// A range set can be seen as a set of elements, even though it does not actually contain the elements
@@ -589,64 +634,6 @@ mod tests {
             self.contains(&elem)
         }
     }
-
-    fn unary_element_test<C, K, V>(a: C, r: C, op: impl Fn(V) -> V) -> bool
-    where
-        C: TestSamples<K, V> + Debug,
-        K: Ord + Clone + Debug,
-        V: Eq + Debug,
-    {
-        let mut s: BTreeSet<K> = BTreeSet::new();
-        a.samples(&mut s);
-        r.samples(&mut s);
-        s.into_iter().all(|key| {
-            let value = a.at(key.clone());
-            let actual = op(value);
-            let expected = r.at(key.clone());
-            if expected != actual {
-                println!(
-                    "expected!=actual at: {:?}. {:?}!={:?}",
-                    key, expected, actual
-                );
-                println!("a: {:?}", a);
-                println!("r: {:?}", r);
-                false
-            } else {
-                true
-            }
-        })
-    }
-
-    fn binary_element_test<C, K, V>(a: C, b: C, r: C, op: impl Fn(V, V) -> V) -> bool
-    where
-        C: TestSamples<K, V> + Debug,
-        K: Ord + Clone + Debug,
-        V: Eq + Debug,
-    {
-        let mut s: BTreeSet<K> = BTreeSet::new();
-        a.samples(&mut s);
-        b.samples(&mut s);
-        r.samples(&mut s);
-        s.into_iter().all(|key| {
-            let a_value = a.at(key.clone());
-            let b_value = b.at(key.clone());
-            let actual = op(a_value, b_value);
-            let expected = r.at(key.clone());
-            if expected != actual {
-                println!(
-                    "expected!=actual at: {:?}. {:?}!={:?}",
-                    key, expected, actual
-                );
-                println!("a: {:?}", a);
-                println!("b: {:?}", b);
-                println!("r: {:?}", r);
-                false
-            } else {
-                true
-            }
-        })
-    }
-
     type Test = RangeSet<i64>;
 
     #[test]
@@ -664,7 +651,11 @@ mod tests {
         let y: Test = Test::from(..10);
         let z: Test = Test::from(20..);
 
-        let r: Test = x.bitor(&y);
+        let r: Test = x.bitor(&z);
+
+
+        println!("{:?} {:?} {:?} {:?}", x, y, z, r);
+
         let r2: Test = x.bitand(&y);
         let r3: Test = x.bitxor(&y);
         let r4 = y.is_disjoint(&z);
@@ -675,40 +666,39 @@ mod tests {
         println!("{:?} {:?}", r4, r5);
     }
 
-    impl<T: Arbitrary + Ord> Arbitrary for RangeSet<T> {
-        fn arbitrary<G: Gen>(g: &mut G) -> Self {
-            let mut boundaries: Vec<T> = Arbitrary::arbitrary(g);
-            let below_all: bool = Arbitrary::arbitrary(g);
-            // boundaries.truncate(2);
-            boundaries.sort();
-            boundaries.dedup();
-            Self::new(below_all, boundaries)
-        }
+    #[quickcheck]
+    fn is_disjoint_sample(a: Test, b: Test) -> bool {
+        binary_property_test(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
+    }
+
+    #[quickcheck]
+    fn is_subset_sample(a: Test, b: Test) -> bool {
+        binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b)
     }
 
     #[quickcheck]
     fn negation_check(a: RangeSet<i64>) -> bool {
-        unary_element_test(a.clone(), !a, |x| !x)
+        unary_element_test(&a, !a.clone(), |x| !x)
     }
 
     #[quickcheck]
     fn union_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
-        binary_element_test(a.clone(), b.clone(), &a | &b, |a, b| a | b)
+        binary_element_test(&a, &b, &a | &b, |a, b| a | b)
     }
 
     #[quickcheck]
     fn intersection_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
-        binary_element_test(a.clone(), b.clone(), &a & &b, |a, b| a & b)
+        binary_element_test(&a, &b, &a & &b, |a, b| a & b)
     }
 
     #[quickcheck]
     fn xor_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
-        binary_element_test(a.clone(), b.clone(), &a ^ &b, |a, b| a ^ b)
+        binary_element_test(&a, &b, &a ^ &b, |a, b| a ^ b)
     }
 
     #[quickcheck]
     fn difference_check(a: RangeSet<i64>, b: RangeSet<i64>) -> bool {
-        binary_element_test(a.clone(), b.clone(), &a - &b, |a, b| a & !b)
+        binary_element_test(&a, &b, &a - &b, |a, b| a & !b)
     }
 
     bitop_assign_consistent!(Test);

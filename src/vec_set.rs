@@ -310,6 +310,8 @@ pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::obey::*;
+    use num_traits::PrimInt;
     use quickcheck::*;
     use std::collections::BTreeSet;
 
@@ -319,34 +321,19 @@ mod test {
         }
     }
 
-    fn binary_op(a: &Test, b: &Test, r: &Test, op: impl Fn(bool, bool) -> bool) -> bool {
-        let mut samples: Reference = BTreeSet::new();
-        samples.extend(a.as_slice().iter().cloned());
-        samples.extend(b.as_slice().iter().cloned());
-        samples.insert(std::i64::MIN);
-        samples
-            .iter()
-            .all(|e| op(a.contains(e), b.contains(e)) == r.contains(e))
-    }
+    impl<E: PrimInt> TestSamples<E, bool> for VecSet<E> {
+        fn samples(&self, res: &mut BTreeSet<E>) {
+            res.insert(E::min_value());
+            for x in self.0.iter().cloned() {
+                res.insert(x - E::one());
+                res.insert(x);
+                res.insert(x + E::one());
+            }
+            res.insert(E::max_value());
+        }
 
-    fn binary_property(a: &Test, b: &Test, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
-        let mut samples: Reference = BTreeSet::new();
-        samples.extend(a.as_slice().iter().cloned());
-        samples.extend(b.as_slice().iter().cloned());
-        samples.insert(std::i64::MIN);
-        if r {
-            samples.iter().all(|e| {
-                let expected = op(a.contains(e), b.contains(e));
-                if !expected {
-                    println!(
-                        "{:?} is false at {:?}\na {:?}\nb {:?}\nr {:?}",
-                        expected, e, a, b, r
-                    );
-                }
-                expected
-            })
-        } else {
-            samples.iter().any(|e| !op(a.contains(e), b.contains(e)))
+        fn at(&self, elem: E) -> bool {
+            self.contains(&elem)
         }
     }
 
@@ -356,27 +343,27 @@ mod test {
     quickcheck! {
 
         fn is_disjoint_sample(a: Test, b: Test) -> bool {
-            binary_property(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
+            binary_property_test(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
         }
 
         fn is_subset_sample(a: Test, b: Test) -> bool {
-            binary_property(&a, &b, a.is_subset(&b), |a, b| !a | b)
+            binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b)
         }
 
         fn union_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(&a | &b), |a, b| a | b)
+            binary_element_test(&a, &b, &a | &b, |a, b| a | b)
         }
 
         fn intersection_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(&a & &b), |a, b| a & b)
+            binary_element_test(&a, &b, &a & &b, |a, b| a & b)
         }
 
         fn xor_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(&a ^ &b), |a, b| a ^ b)
+            binary_element_test(&a, &b, &a ^ &b, |a, b| a ^ b)
         }
 
         fn diff_sample(a: Test, b: Test) -> bool {
-            binary_op(&a, &b, &(&a - &b), |a, b| a & !b)
+            binary_element_test(&a, &b, &a - &b, |a, b| a & !b)
         }
 
         fn union(a: Reference, b: Reference) -> bool {

@@ -33,6 +33,10 @@ mod vec_map;
 
 mod dedup;
 mod iterators;
+
+#[cfg(test)]
+mod obey;
+
 pub mod range_set;
 
 #[allow(dead_code)]
