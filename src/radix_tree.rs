@@ -1,31 +1,81 @@
 use num_traits::Zero;
-use serde::ser::{Serialize, SerializeSeq, Serializer};
+use serde::de::Deserialize;
+use serde::de::DeserializeOwned;
+use serde::de::Deserializer;
+use serde::ser::{Serialize, Serializer};
 use sorted_iter::*;
 use std::collections::BTreeMap;
 use std::ops::{Add, Sub};
 
 #[derive(Clone, Debug)]
-pub struct TagTree<K, V> {
+pub struct TagTree<K: Ord, V> {
     value: Option<V>,
     children: BTreeMap<K, Self>,
 }
 
-impl<K: Ord + Serialize, V: Serialize> Serialize for TagTree<K, V> {
+impl<K: Ord + Clone + Serialize, V: Clone + Serialize> Serialize for TagTree<K, V> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match (&self.value, !self.children.is_empty()) {
-            (Some(v), true) => {
-                let mut seq = serializer.serialize_seq(None)?;
-                seq.serialize_element(v)?;
-                seq.serialize_element(&self.children)?;
-                seq.end()
+        let x: SerdeHelper<K, V> = self.clone().into();
+        x.serialize(serializer)
+    }
+}
+
+impl<'de, K: Ord, V> Deserialize<'de> for TagTree<K, V> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let x: SerdeHelper<K, V> = SerdeHelper::<K, V>::deserialize(deserializer)?;
+        Ok(x.into())
+    }
+}
+
+enum SerdeHelper<K: Ord, V> {
+    Empty,
+    Value((V,)),
+    Children(BTreeMap<K, TagTree<K, V>>),
+    Both((V, BTreeMap<K, TagTree<K, V>>)),
+}
+
+impl<K: Ord + Clone + Serialize, V: Clone + Serialize> Serialize for SerdeHelper<K, V> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SerdeHelper::Empty => ().serialize(serializer),
+            SerdeHelper::Value(x) => x.serialize(serializer),
+            SerdeHelper::Children(x) => x.serialize(serializer),
+            SerdeHelper::Both(x) => x.serialize(serializer),
+        }
+    }
+}
+
+impl<'de, K: Ord, V> Deserialize<'de> for SerdeHelper<K, V> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        unimplemented!()
+    }
+}
+
+impl<K: Ord, V> From<TagTree<K, V>> for SerdeHelper<K, V> {
+    fn from(value: TagTree<K, V>) -> Self {
+        if let Some(v) = value.value {
+            if value.children.is_empty() {
+                Self::Value((v,))
+            } else {
+                Self::Both((v, value.children))
             }
-            (None, true) => serializer.collect_map(self.children.iter()),
-            (Some(v), false) => {
-                let mut seq = serializer.serialize_seq(None)?;
-                seq.serialize_element(v)?;
-                seq.end()
+        } else {
+            if value.children.is_empty() {
+                Self::Empty
+            } else {
+                Self::Children(value.children)
             }
-            (None, false) => serializer.serialize_unit(),
+        }
+    }
+}
+
+impl<K: Ord, V> From<SerdeHelper<K, V>> for TagTree<K, V> {
+    fn from(value: SerdeHelper<K, V>) -> Self {
+        match value {
+            SerdeHelper::Empty => Self::default(),
+            SerdeHelper::Value((v,)) => Self::new(Some(v), Default::default()),
+            SerdeHelper::Children(c) => Self::new(Default::default(), c),
+            SerdeHelper::Both((v, c)) => Self::new(Some(v), c),
         }
     }
 }
