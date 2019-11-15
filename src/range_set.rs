@@ -15,7 +15,7 @@
 //! of sorted boundaries internally.
 //!
 //! It can represent not just finite ranges but also half-open and open ranges. Because it can represent infinite
-//! ranges, it can also represent the set of all elements, and therefore a full boolean algebra including negation.
+//! ranges, it can also represent the set of all elements, and therefore all boolean operations including negation.
 //!
 //! It does not put any constraints on the element type for requriring an `Ord` instance. However, since it internally
 //! uses an encoding similar to [std::ops::Range](https://doc.rust-lang.org/std/ops/struct.Range.html) with half-open
@@ -75,8 +75,8 @@ use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::ops::Bound;
-use std::ops::RangeBounds;
+use std::ops::{Bound, RangeBounds};
+use std::ops::Bound::*;
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
     Sub, SubAssign,
@@ -96,10 +96,10 @@ impl<T: Debug> Debug for RangeSet<T> {
                 write!(f, ", ")?;
             }
             match (l, u) {
-                (Bound::Unbounded, Bound::Unbounded) => write!(f, ".."),
-                (Bound::Unbounded, Bound::Excluded(b)) => write!(f, "..{:?}", b),
-                (Bound::Included(a), Bound::Unbounded) => write!(f, "{:?}..", a),
-                (Bound::Included(a), Bound::Excluded(b)) => write!(f, "{:?}..{:?}", a, b),
+                (Unbounded, Unbounded) => write!(f, ".."),
+                (Unbounded, Excluded(b)) => write!(f, "..{:?}", b),
+                (Included(a), Unbounded) => write!(f, "{:?}..", a),
+                (Included(a), Excluded(b)) => write!(f, "{:?}..{:?}", a, b),
                 _ => write!(f, ""),
             }?;
         }
@@ -118,18 +118,18 @@ impl<'a, T> Iterator for Iter<'a, T> {
             Some(if ul {
                 self.0 = false;
                 match bounds.split_first() {
-                    None => (Bound::Unbounded, Bound::Unbounded),
+                    None => (Unbounded, Unbounded),
                     Some((b, bs)) => {
                         self.1 = bs;
-                        (Bound::Unbounded, Bound::Excluded(b))
+                        (Unbounded, Excluded(b))
                     }
                 }
             } else if bounds.len() == 1 {
                 self.1 = &bounds[1..];
-                (Bound::Included(&bounds[0]), Bound::Unbounded)
+                (Included(&bounds[0]), Unbounded)
             } else {
                 self.1 = &bounds[2..];
-                (Bound::Included(&bounds[0]), Bound::Excluded(&bounds[1]))
+                (Included(&bounds[0]), Excluded(&bounds[1]))
             })
         } else {
             None

@@ -1,6 +1,7 @@
 //! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
+use std::cell::RefCell;
 use std::fmt::Debug;
 
 /// A contiguous chunk of memory that is logically divided into a source and a target part.
@@ -81,8 +82,7 @@ impl<T> InPlaceVecBuilder<T> {
             self.ensure_capacity(n, gap);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
-                    self.set(self.t1, value);
-                    self.t1 += 1;
+                    self.push_unsafe(value)
                 }
             }
         }
@@ -92,7 +92,11 @@ impl<T> InPlaceVecBuilder<T> {
     pub fn push(&mut self, value: T, gap: usize) {
         // ensure we have space!
         self.ensure_capacity(1, gap);
-        self.set(self.t1, value);
+        self.push_unsafe(value);
+    }
+
+    fn push_unsafe(&mut self, value: T) {
+        unsafe { std::ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
         self.t1 += 1;
     }
 
@@ -100,11 +104,13 @@ impl<T> InPlaceVecBuilder<T> {
     /// They will be immediately dropped!
     pub fn skip(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
-        for i in 0..n {
-            // this is not a noop but is necessary to call drop!
-            let _ = self.get(self.s0 + i);
+        let v = self.v.as_mut_ptr();
+        for _ in 0..n {
+            unsafe {
+                self.s0 += 1;
+                std::ptr::drop_in_place(v.add(self.s0 - 1));
+            }
         }
-        self.s0 += n;
     }
 
     /// Take up to `n` elements from source to target.
@@ -112,8 +118,9 @@ impl<T> InPlaceVecBuilder<T> {
     pub fn take(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         if self.t1 != self.s0 {
-            for i in 0..n {
-                self.set(self.t1 + i, self.get(self.s0 + i));
+            unsafe {
+                let v = self.v.as_mut_ptr();
+                std::ptr::copy(v.add(self.s0), v.add(self.t1), n);
             }
         }
         self.t1 += n;
@@ -123,20 +130,11 @@ impl<T> InPlaceVecBuilder<T> {
     /// Takes the next element from the source, if it exists
     pub fn pop_front(&mut self) -> Option<T> {
         if self.s0 < self.v.len() {
-            let old = self.s0;
             self.s0 += 1;
-            Some(self.get(old))
+            Some(unsafe { std::ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
         } else {
             None
         }
-    }
-
-    fn get(&self, offset: usize) -> T {
-        unsafe { std::ptr::read(self.v.as_ptr().add(offset)) }
-    }
-
-    fn set(&mut self, offset: usize, value: T) {
-        unsafe { std::ptr::write(self.v.as_mut_ptr().add(offset), value) }
     }
 
     fn drop_source(&mut self) {
@@ -168,6 +166,61 @@ impl<T> Drop for InPlaceVecBuilder<T> {
         self.v.clear();
     }
 }
+
+struct Builder<'a, T>(&'a RefCell<InPlaceVecBuilder<T>>);
+
+impl<'a, T> Extend<T> for Builder<'a, T> {
+    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+        let iter = iter.into_iter();
+        let (min, _) = iter.size_hint();
+        for x in iter {
+            self.push(x, min)
+        }
+    }
+}
+
+impl<'a, T> Builder<'a, T> {
+
+    pub fn push(&mut self, value: T, gap: usize) {
+        self.0.borrow_mut().push(value, gap)
+    }
+
+    /// Take at most `n` elements from `iter` to the target. This will make room for `gap` elements if there is no space
+    pub fn extend_from_iter<I: Iterator<Item = T>>(&mut self, iter: &mut I, n: usize, gap: usize) {
+        if n > 0 {
+            self.0.borrow_mut().ensure_capacity(n, gap);
+            for _ in 0..n {
+                if let Some(value) = iter.next() {
+                    self.0.borrow_mut().push_unsafe(value);
+                }
+            }
+        }
+    }
+}
+
+struct BAI<T>(RefCell<InPlaceVecBuilder<T>>);
+
+impl<T> BAI<T> {
+    fn new(v: Vec<T>) -> Self {
+        Self(RefCell::new(InPlaceVecBuilder::from(v)))
+    }
+    fn pair(&mut self) -> (Builder<'_, T>, Iter<'_, T>) {
+        (Builder(&self.0), Iter(&self.0))
+    }
+    fn into_vec(self) -> Vec<T> {
+        self.0.into_inner().into_vec()
+    }
+}
+
+struct Iter<'a, T>(&'a RefCell<InPlaceVecBuilder<T>>);
+
+impl<'a, T> Iterator for Iter<'a, T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.borrow_mut().pop_front()
+    }
+} 
 
 #[cfg(test)]
 mod tests {
@@ -261,4 +314,23 @@ mod tests {
             res
         })
     }
+
+    #[test]
+    fn builder() {
+        let a = vec![1,2,3];
+        let mut a = BAI::new(a);
+        let (mut b, i) = a.pair();
+        b.extend(i.map(|x| x * 2));
+        let r: Vec<_> = a.into_vec();
+        assert_eq!(r, vec![2,4,6]);
+    }
+}
+
+pub fn demo() {
+    let a = vec![1,2,3];
+    let mut a = BAI::new(a);
+    let (mut b, i) = a.pair();
+    b.extend(i.map(|x| x * 2));
+    let r: Vec<_> = a.into_vec();
+    assert_eq!(r, vec![2,4,6]);
 }

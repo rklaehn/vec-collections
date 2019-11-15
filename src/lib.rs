@@ -13,7 +13,7 @@ extern crate serde;
 extern crate maplit;
 
 extern crate sorted_iter;
-pub use sorted_iter::{SortedIteratorExt, SortedPairIteratorExt};
+pub use sorted_iter::{SortedIterator, SortedPairIterator};
 
 #[cfg(test)]
 #[macro_use]
