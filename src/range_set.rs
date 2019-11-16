@@ -540,8 +540,7 @@ impl<'a, T> MergeStateMut<T> for InPlaceMergeState<T> {
     }
     fn advance_b(&mut self, n: usize, copy: bool) -> EarlyOut {
         if copy {
-            let capacity = self.b.as_slice().len();
-            self.a.extend_from_iter(&mut self.b, n, capacity);
+            self.a.extend_from_iter(&mut self.b, n);
         } else {
             for _ in 0..n {
                 let _ = self.b.next();

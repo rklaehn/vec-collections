@@ -72,13 +72,7 @@ impl<'a, T> MergeStateMut<T, T> for UnsafeInPlaceMergeState<T, T> {
         Some(())
     }
     fn move_b(&mut self, n: usize) -> EarlyOut {
-        let capacity = self.b_slice().len();
-        self.a.extend_from_iter(&mut self.b, n, capacity);
-        // for _ in 0..n {
-        //     if let Some(elem) = self.b.next() {
-        //         self.a.target_push(elem, capacity);
-        //     }
-        // }
+        self.a.extend_from_iter(&mut self.b, n);
         Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {

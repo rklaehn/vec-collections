@@ -42,7 +42,7 @@ impl<K: Ord, V, F: Fn(V, V) -> V>
     fn collision(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>) {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
             let r = (self.0)(av, bv);
-            m.a.push((ak, r), m.b.as_slice().len());
+            m.a.push((ak, r));
         }
     }
 }
