@@ -3,18 +3,167 @@ use crate::dedup::sort_and_dedup;
 use crate::iterators::SortedIter;
 use crate::merge_state::{
     BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState,
-    UnsafeSliceMergeState, VecMergeState,
+    UnsafeSliceMergeState, VecMergeState, SmallVecMergeState,
 };
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::iter::FromIterator;
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
+use smallvec::{SmallVec, Array};
+use std::marker::PhantomData;
 
 struct SetUnionOp;
 struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
+
+pub struct VecSet2<T, A=[T;2]>(SmallVec<A>, PhantomData<T>) where A: Array<Item=T>;
+
+impl<T: Clone, A: Array<Item=T> + Clone> Clone for VecSet2<T, A> {
+    fn clone(&self) -> Self {
+        Self::new(self.0.clone())
+    }
+}
+
+impl<T: PartialEq, A: Array<Item=T> + PartialEq> PartialEq for VecSet2<T, A> {
+    fn eq(&self, that: &Self) -> bool {
+        self.0.as_slice() == that.0.as_slice()
+    }
+}
+
+impl<T: Eq, A: Array<Item=T> + Eq> Eq for VecSet2<T, A> {}
+
+impl<T, A: Array<Item=T>> Default for VecSet2<T, A> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl<T, A: Array<Item=T>> VecSet2<T, A> {
+    fn new(a: SmallVec<A>) -> Self {
+        Self(a, PhantomData)
+    }
+    pub fn singleton(value: T) -> Self {
+        let mut res = SmallVec::new();
+        res.push(value);
+        Self(res, PhantomData)
+    }
+    pub fn empty() -> Self {
+        Self(SmallVec::new(), PhantomData)
+    }
+    pub fn as_slice(&self) -> &[T] {
+        &self.0
+    }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<T: Ord, A: Array<Item=T>> VecSet2<T, A> {
+    pub fn insert(&mut self, that: T) {
+        match self.0.binary_search(&that) {
+            Ok(index) => self.0[index] = that,
+            Err(index) => self.0.insert(index, that),
+        }
+    }
+
+    pub fn remove(&mut self, that: &T) {
+        if let Ok(index) = self.0.binary_search(&that) {
+            self.0.remove(index);
+        };
+    }
+
+    pub fn is_disjoint(&self, that: &Self) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
+    }
+
+    pub fn is_subset(&self, that: &Self) -> bool {
+        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt)
+    }
+
+    pub fn is_superset(&self, that: &Self) -> bool {
+        that.is_subset(self)
+    }
+    pub fn contains(&self, value: &T) -> bool {
+        self.0.binary_search(value).is_ok()
+    }
+
+    fn from_vec(vec: Vec<T>) -> Self {
+        let mut vec = vec;
+        vec.sort();
+        vec.dedup();
+        Self::new(SmallVec::from_vec(vec))
+    }
+}
+
+impl<A: Array<Item=T>, T: Debug> Debug for VecSet2<T, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_set().entries(self.0.iter()).finish()
+    }
+}
+
+impl<A: Array<Item=T>, T> Into<Vec<T>> for VecSet2<T, A> {
+    fn into(self) -> Vec<T> {
+        self.0.into_vec()
+    }
+}
+
+impl<T: Ord + Clone, Arr: Array<Item=T>> BitAnd for &VecSet2<T, Arr> {
+    type Output = VecSet2<T, Arr>;
+    fn bitand(self, that: Self) -> Self::Output {
+        Self::Output::new(SmallVecMergeState::merge_shortcut(
+            &self.0,
+            &that.0,
+            SetIntersectionOp,
+        ))
+    }
+}
+
+impl<T: Ord + Clone, Arr: Array<Item=T>> BitOr for &VecSet2<T, Arr> {
+    type Output = VecSet2<T, Arr>;
+    fn bitor(self, that: Self) -> Self::Output {
+        Self::Output::new(SmallVecMergeState::merge_shortcut(
+            &self.0,
+            &that.0,
+            SetUnionOp,
+        ))
+    }
+}
+
+impl<T: Ord + Clone, Arr: Array<Item=T>> BitXor for &VecSet2<T, Arr> {
+    type Output = VecSet2<T, Arr>;
+    fn bitxor(self, that: Self) -> Self::Output {
+        Self::Output::new(SmallVecMergeState::merge_shortcut(
+            &self.0,
+            &that.0,
+            SetXorOp,
+        ))
+    }
+}
+
+impl<T: Ord + Clone, Arr: Array<Item=T>> Sub for &VecSet2<T, Arr> {
+    type Output = VecSet2<T, Arr>;
+    fn sub(self, that: Self) -> Self::Output {
+        Self::Output::new(SmallVecMergeState::merge_shortcut(
+            &self.0,
+            &that.0,
+            SetDiffOpt,
+        ))
+    }
+}
+
+impl<T: Ord> FromIterator<T> for VecSet2<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self::from_vec(sort_and_dedup(iter.into_iter()))
+    }
+}
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct VecSet<T>(Vec<T>);
@@ -435,6 +584,152 @@ mod test {
     }
 
     bitop_assign_consistent!(Test);
+    set_predicate_consistent!(Test);
+    bitop_symmetry!(Test);
+    bitop_empty!(Test);
+
+    #[test]
+    fn full_in_place_merge() {
+        let mut v = vec![1, 3, 5, 7, 2, 3, 7, 8];
+        UnsafeSliceMergeState::merge(&mut v, 4, 4, SetXorOp);
+        v.shrink_to_fit();
+        println!("{:?} {}", v, v.capacity());
+    }
+}
+
+
+#[cfg(test)]
+mod test2 {
+    use super::*;
+    use crate::obey::*;
+    use num_traits::PrimInt;
+    use quickcheck::*;
+    use std::collections::BTreeSet;
+
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for VecSet2<T> {
+        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+            Self::from_vec(Arbitrary::arbitrary(g))
+        }
+    }
+
+    impl<E: PrimInt> TestSamples<E, bool> for VecSet2<E> {
+        fn samples(&self, res: &mut BTreeSet<E>) {
+            res.insert(E::min_value());
+            for x in self.0.iter().cloned() {
+                res.insert(x - E::one());
+                res.insert(x);
+                res.insert(x + E::one());
+            }
+            res.insert(E::max_value());
+        }
+
+        fn at(&self, elem: E) -> bool {
+            self.contains(&elem)
+        }
+    }
+
+    type Test = VecSet2<i64>;
+    type Reference = BTreeSet<i64>;
+
+    quickcheck! {
+
+        fn is_disjoint_sample(a: Test, b: Test) -> bool {
+            binary_property_test(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
+        }
+
+        fn is_subset_sample(a: Test, b: Test) -> bool {
+            binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b)
+        }
+
+        fn union_sample(a: Test, b: Test) -> bool {
+            binary_element_test(&a, &b, &a | &b, |a, b| a | b)
+        }
+
+        fn intersection_sample(a: Test, b: Test) -> bool {
+            binary_element_test(&a, &b, &a & &b, |a, b| a & b)
+        }
+
+        fn xor_sample(a: Test, b: Test) -> bool {
+            binary_element_test(&a, &b, &a ^ &b, |a, b| a ^ b)
+        }
+
+        fn diff_sample(a: Test, b: Test) -> bool {
+            binary_element_test(&a, &b, &a - &b, |a, b| a & !b)
+        }
+
+        fn union(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let r2 = &a1 | &b1;
+            // a1 |= b1;
+            let expected: Vec<i64> = a.union(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
+            // expected == actual && expected == actual2
+            expected == actual2
+        }
+
+        fn intersection(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let r2 = &a1 & &b1;
+            // a1 &= b1;
+            let expected: Vec<i64> = a.intersection(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
+            // expected == actual && expected == actual2
+            expected == actual2
+        }
+
+        fn xor(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let r2 = &a1 ^ &b1;
+            // a1 ^= b1;
+            let expected: Vec<i64> = a.symmetric_difference(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
+            // expected == actual && expected == actual2
+            expected == actual2
+        }
+
+        fn difference(a: Reference, b: Reference) -> bool {
+            let mut a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let r2 = &a1 - &b1;
+            // a1 -= b1;
+            let expected: Vec<i64> = a.difference(&b).cloned().collect();
+            let actual: Vec<i64> = a1.into();
+            let actual2: Vec<i64> = r2.into();
+            // expected == actual && expected == actual2
+            expected == actual2
+        }
+
+        fn is_disjoint(a: Reference, b: Reference) -> bool {
+            let a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let actual = a1.is_disjoint(&b1);
+            let expected = a.is_disjoint(&b);
+            expected == actual
+        }
+
+        fn is_subset(a: Reference, b: Reference) -> bool {
+            let a1: Test = a.iter().cloned().collect();
+            let b1: Test = b.iter().cloned().collect();
+            let actual = a1.is_subset(&b1);
+            let expected = a.is_subset(&b);
+            expected == actual
+        }
+
+        fn contains(a: Reference, b: i64) -> bool {
+            let a1: Test = a.iter().cloned().collect();
+            let expected = a.contains(&b);
+            let actual = a1.contains(&b);
+            expected == actual
+        }
+    }
+
+    // bitop_assign_consistent!(Test);
     set_predicate_consistent!(Test);
     bitop_symmetry!(Test);
     bitop_empty!(Test);

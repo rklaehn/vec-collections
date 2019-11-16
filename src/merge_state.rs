@@ -4,6 +4,7 @@ use crate::iterators::SliceIterator;
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
+use smallvec::{Array, SmallVec};
 
 /// A typical write part for the merge state
 pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
@@ -250,6 +251,90 @@ impl<'a, A, B> MergeStateMut<A, B> for BoolOpMergeState<'a, A, B> {
     fn move_b(&mut self, _n: usize) -> EarlyOut {
         self.r = true;
         None
+    }
+    fn skip_b(&mut self, n: usize) -> EarlyOut {
+        self.b.drop_front(n);
+        Some(())
+    }
+}
+
+/// A merge state where we build into a new vector
+pub(crate) struct SmallVecMergeState<'a, A, B, Arr: Array> {
+    pub a: SliceIterator<'a, A>,
+    pub b: SliceIterator<'a, B>,
+    pub r: SmallVec<Arr>,
+}
+
+impl<'a, A: Debug, B: Debug, Arr: Array> Debug for SmallVecMergeState<'a, A, B, Arr> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "a: {:?}, b: {:?}",
+            self.a_slice(),
+            self.b_slice(),
+        )
+    }
+}
+
+impl<'a, A, B, Arr: Array> SmallVecMergeState<'a, A, B, Arr> {
+    pub fn new(a: &'a [A], b: &'a [B], r: SmallVec<Arr>) -> Self {
+        Self {
+            a: SliceIterator(a),
+            b: SliceIterator(b),
+            r,
+        }
+    }
+
+    pub fn into_vec(self) -> SmallVec<Arr> {
+        self.r
+    }
+
+    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
+        a: &'a [A],
+        b: &'a [B],
+        o: O,
+    ) -> SmallVec<Arr> {
+        let t: SmallVec<Arr> = SmallVec::new();
+        let mut state = Self::new(a, b, t);
+        o.merge(&mut state);
+        state.into_vec()
+    }
+
+    pub fn merge<O: MergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> SmallVec<Arr> {
+        let t: SmallVec<Arr> = SmallVec::new();
+        let mut state = Self::new(a, b, t);
+        o.merge(&mut state);
+        state.into_vec()
+    }
+}
+
+impl<'a, A, B, Arr: Array> MergeStateRead<A, B> for SmallVecMergeState<'a, A, B, Arr> {
+    fn a_slice(&self) -> &[A] {
+        self.a.as_slice()
+    }
+    fn b_slice(&self) -> &[B] {
+        self.b.as_slice()
+    }
+}
+
+impl<'a, T: Clone, Arr: Array<Item = T>> MergeStateMut<T, T> for SmallVecMergeState<'a, T, T, Arr> {
+    fn move_a(&mut self, n: usize) -> EarlyOut {
+        self.r.reserve(n);
+        for e in self.a.take_front(n).iter() {
+            self.r.push(e.clone())
+        }
+        Some(())
+    }
+    fn skip_a(&mut self, n: usize) -> EarlyOut {
+        self.a.drop_front(n);
+        Some(())
+    }
+    fn move_b(&mut self, n: usize) -> EarlyOut {
+        self.r.reserve(n);
+        for e in self.b.take_front(n).iter() {
+            self.r.push(e.clone())
+        }
+        Some(())
     }
     fn skip_b(&mut self, n: usize) -> EarlyOut {
         self.b.drop_front(n);

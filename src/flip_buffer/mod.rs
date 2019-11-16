@@ -12,6 +12,7 @@ use std::fmt::Debug;
 pub struct InPlaceVecBuilder<T> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
     v: Vec<T>,
+    // v: SmallVec<[T; 2]>,
     /// the end of the target area
     t1: usize,
     /// the start of the source area
