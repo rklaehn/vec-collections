@@ -40,7 +40,7 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
             // pick the center element of a and find the corresponding one in b using binary search
             let a = &m.a_slice()[am];
             match m.b_slice()[..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
-                Result::Ok(bm) => {
+                Ok(bm) => {
                     // same elements. bm is the index corresponding to am
                     // merge everything below am with everything below the found element bm
                     self.merge0(m, am, bm);
@@ -49,7 +49,7 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
                     // merge everything above a(am) with everything above the found element
                     self.merge0(m, an - am - 1, bn - bm - 1);
                 }
-                Result::Err(bi) => {
+                Err(bi) => {
                     // not found. bi is the insertion point
                     // merge everything below a(am) with everything below the found insertion point bi
                     self.merge0(m, am, bi);
@@ -69,6 +69,7 @@ pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
 }
 
 /// Basically a convenient to use bool to allow aborting a piece of code early using ?
+/// return `None` to abort and `Some(())` to continue
 pub(crate) type EarlyOut = Option<()>;
 
 /// This is exactly the same as MergeOperation, except that it allows aborting the operation early.
@@ -95,7 +96,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
             // pick the center element of a and find the corresponding one in b using binary search
             let a = &m.a_slice()[am];
             match m.b_slice()[..bn].binary_search_by(|b| self.cmp(a, b).reverse()) {
-                Result::Ok(bm) => {
+                Ok(bm) => {
                     // same elements. bm is the index corresponding to am
                     // merge everything below am with everything below the found element bm
                     self.merge0(m, am, bm)?;
@@ -104,7 +105,7 @@ pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
                     // merge everything above a(am) with everything above the found element
                     self.merge0(m, an - am - 1, bn - bm - 1)?;
                 }
-                Result::Err(bi) => {
+                Err(bi) => {
                     // not found. bi is the insertion point
                     // merge everything below a(am) with everything below the found insertion point bi
                     self.merge0(m, am, bi)?;
