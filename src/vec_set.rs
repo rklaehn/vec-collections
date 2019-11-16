@@ -2,45 +2,47 @@ use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
 use crate::dedup::sort_and_dedup;
 use crate::iterators::SortedIter;
 use crate::merge_state::{
-    BoolOpMergeState, InPlaceMergeState, MergeStateMut, UnsafeInPlaceMergeState,
-    UnsafeSliceMergeState, VecMergeState, SmallVecMergeState,
+    BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecMergeState,
+    UnsafeInPlaceMergeState, UnsafeSliceMergeState, VecMergeState, SmallVecInPlaceMergeState,
 };
+use smallvec::{Array, SmallVec};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::iter::FromIterator;
-use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
-use smallvec::{SmallVec, Array};
 use std::marker::PhantomData;
+use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign};
 
 struct SetUnionOp;
 struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
 
-pub struct VecSet2<T, A=[T;2]>(SmallVec<A>, PhantomData<T>) where A: Array<Item=T>;
+pub struct VecSet2<T, A = [T; 2]>(SmallVec<A>, PhantomData<T>)
+where
+    A: Array<Item = T>;
 
-impl<T: Clone, A: Array<Item=T> + Clone> Clone for VecSet2<T, A> {
+impl<T: Clone, A: Array<Item = T> + Clone> Clone for VecSet2<T, A> {
     fn clone(&self) -> Self {
         Self::new(self.0.clone())
     }
 }
 
-impl<T: PartialEq, A: Array<Item=T> + PartialEq> PartialEq for VecSet2<T, A> {
+impl<T: PartialEq, A: Array<Item = T> + PartialEq> PartialEq for VecSet2<T, A> {
     fn eq(&self, that: &Self) -> bool {
         self.0.as_slice() == that.0.as_slice()
     }
 }
 
-impl<T: Eq, A: Array<Item=T> + Eq> Eq for VecSet2<T, A> {}
+impl<T: Eq, A: Array<Item = T> + Eq> Eq for VecSet2<T, A> {}
 
-impl<T, A: Array<Item=T>> Default for VecSet2<T, A> {
+impl<T, A: Array<Item = T>> Default for VecSet2<T, A> {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl<T, A: Array<Item=T>> VecSet2<T, A> {
+impl<T, A: Array<Item = T>> VecSet2<T, A> {
     fn new(a: SmallVec<A>) -> Self {
         Self(a, PhantomData)
     }
@@ -66,7 +68,7 @@ impl<T, A: Array<Item=T>> VecSet2<T, A> {
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> VecSet2<T, A> {
+impl<T: Ord, A: Array<Item = T>> VecSet2<T, A> {
     pub fn insert(&mut self, that: T) {
         match self.0.binary_search(&that) {
             Ok(index) => self.0[index] = that,
@@ -103,19 +105,19 @@ impl<T: Ord, A: Array<Item=T>> VecSet2<T, A> {
     }
 }
 
-impl<A: Array<Item=T>, T: Debug> Debug for VecSet2<T, A> {
+impl<A: Array<Item = T>, T: Debug> Debug for VecSet2<T, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_set().entries(self.0.iter()).finish()
     }
 }
 
-impl<A: Array<Item=T>, T> Into<Vec<T>> for VecSet2<T, A> {
+impl<A: Array<Item = T>, T> Into<Vec<T>> for VecSet2<T, A> {
     fn into(self) -> Vec<T> {
         self.0.into_vec()
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item=T>> BitAnd for &VecSet2<T, Arr> {
+impl<T: Ord + Clone, Arr: Array<Item = T>> BitAnd for &VecSet2<T, Arr> {
     type Output = VecSet2<T, Arr>;
     fn bitand(self, that: Self) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge_shortcut(
@@ -126,36 +128,54 @@ impl<T: Ord + Clone, Arr: Array<Item=T>> BitAnd for &VecSet2<T, Arr> {
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item=T>> BitOr for &VecSet2<T, Arr> {
+impl<T: Ord + Clone, Arr: Array<Item = T>> BitOr for &VecSet2<T, Arr> {
     type Output = VecSet2<T, Arr>;
     fn bitor(self, that: Self) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0,
-            &that.0,
-            SetUnionOp,
+            &self.0, &that.0, SetUnionOp,
         ))
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item=T>> BitXor for &VecSet2<T, Arr> {
+impl<T: Ord + Clone, Arr: Array<Item = T>> BitXor for &VecSet2<T, Arr> {
     type Output = VecSet2<T, Arr>;
     fn bitxor(self, that: Self) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0,
-            &that.0,
-            SetXorOp,
+            &self.0, &that.0, SetXorOp,
         ))
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item=T>> Sub for &VecSet2<T, Arr> {
+impl<T: Ord + Clone, Arr: Array<Item = T>> Sub for &VecSet2<T, Arr> {
     type Output = VecSet2<T, Arr>;
     fn sub(self, that: Self) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0,
-            &that.0,
-            SetDiffOpt,
+            &self.0, &that.0, SetDiffOpt,
         ))
+    }
+}
+
+impl<T: Ord> BitAndAssign for VecSet2<T> {
+    fn bitand_assign(&mut self, that: Self) {
+        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetIntersectionOp);
+    }
+}
+
+impl<T: Ord> BitOrAssign for VecSet2<T> {
+    fn bitor_assign(&mut self, that: Self) {
+        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetUnionOp);
+    }
+}
+
+impl<T: Ord> BitXorAssign for VecSet2<T> {
+    fn bitxor_assign(&mut self, that: Self) {
+        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetXorOp);
+    }
+}
+
+impl<T: Ord> SubAssign for VecSet2<T> {
+    fn sub_assign(&mut self, that: Self) {
+        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetDiffOpt);
     }
 }
 
@@ -173,14 +193,14 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetUnio
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_a(n)
+        m.advance_a(n, true)
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_b(n)
+        m.advance_b(n, true)
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        m.move_a(1)?;
-        m.skip_b(1)
+        m.advance_a(1, true)?;
+        m.advance_b(1, false)
     }
 }
 
@@ -189,14 +209,14 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetInte
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.skip_a(n)
+        m.advance_a(n, false)
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.skip_b(n)
+        m.advance_b(n, false)
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        m.move_a(1)?;
-        m.skip_b(1)
+        m.advance_a(1, true)?;
+        m.advance_b(1, false)
     }
 }
 
@@ -205,14 +225,14 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetDiff
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_a(n)
+        m.advance_a(n, true)
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.skip_b(n)
+        m.advance_b(n, false)
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        m.skip_a(1)?;
-        m.skip_b(1)
+        m.advance_a(1, false)?;
+        m.advance_b(1, false)
     }
 }
 
@@ -221,14 +241,14 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetXorO
         a.cmp(b)
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_a(n)
+        m.advance_a(n, true)
     }
     fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.move_b(n)
+        m.advance_b(n, true)
     }
     fn collision(&self, m: &mut I) -> EarlyOut {
-        m.skip_a(1)?;
-        m.skip_b(1)
+        m.advance_a(1, false)?;
+        m.advance_b(1, false)
     }
 }
 
@@ -596,7 +616,6 @@ mod test {
         println!("{:?} {}", v, v.capacity());
     }
 }
-
 
 #[cfg(test)]
 mod test2 {

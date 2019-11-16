@@ -34,10 +34,10 @@ impl<K: Ord, V, F: Fn(V, V) -> V>
         a.0.cmp(&b.0)
     }
     fn from_a(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
-        m.move_a(n);
+        m.advance_a(n, true);
     }
     fn from_b(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
-        m.move_b(n);
+        m.advance_b(n, true);
     }
     fn collision(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>) {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
@@ -56,14 +56,14 @@ impl<'a, K: Ord, V, I: MergeStateMut<(K, V), (K, V)>> MergeOperation<(K, V), (K,
         a.0.cmp(&b.0)
     }
     fn from_a(&self, m: &mut I, n: usize) {
-        m.move_a(n);
+        m.advance_a(n, true);
     }
     fn from_b(&self, m: &mut I, n: usize) {
-        m.move_b(n);
+        m.advance_b(n, true);
     }
     fn collision(&self, m: &mut I) {
-        m.move_a(1);
-        m.skip_b(1);
+        m.advance_a(1, false);
+        m.advance_b(1, true);
     }
 }
 

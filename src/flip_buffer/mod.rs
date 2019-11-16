@@ -98,6 +98,27 @@ impl<T> InPlaceVecBuilder<T> {
         self.t1 += 1;
     }
 
+    pub fn consume(&mut self, n: usize, take: bool) {
+        let n = std::cmp::min(n, self.source_slice().len());
+        let v = self.v.as_mut_ptr();
+        if take {
+            if self.t1 != self.s0 {
+                unsafe {
+                    std::ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                }
+            }
+            self.t1 += n;
+            self.s0 += n;
+        } else {
+            for _ in 0..n {
+                unsafe {
+                    self.s0 += 1;
+                    std::ptr::drop_in_place(v.add(self.s0 - 1));
+                }
+            }
+        }
+    }
+
     /// Skip up to `n` elements from source without adding them to the target.
     /// They will be immediately dropped!
     pub fn skip(&mut self, n: usize) {

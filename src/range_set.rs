@@ -530,11 +530,7 @@ impl<'a, T> MergeStateMut<T> for InPlaceMergeState<T> {
         Some(())
     }
     fn advance_a(&mut self, n: usize, copy: bool) -> EarlyOut {
-        if copy {
-            self.a.take(n);
-        } else {
-            self.a.skip(n);
-        }
+        self.a.consume(n, copy);
         self.ac ^= is_odd(n);
         Some(())
     }

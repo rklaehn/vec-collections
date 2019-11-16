@@ -1,8 +1,8 @@
 //! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
+use smallvec::{Array, SmallVec};
 use std::fmt::Debug;
-use smallvec::{SmallVec, Array};
 
 pub struct InPlaceSmallVecBuilder<A: Array> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
@@ -13,12 +13,16 @@ pub struct InPlaceSmallVecBuilder<A: Array> {
     s0: usize,
 }
 
-impl<T: Debug, A: Array<Item=T>> Debug for InPlaceSmallVecBuilder<A> {
+impl<T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let InPlaceSmallVecBuilder { s0, t1, v } = self;
         let s1 = v.len();
         let cap = v.capacity();
-        write!(f, "InPlaceSmallVecBuilder(0..{},{}..{},{})", t1, s0, s1, cap)
+        write!(
+            f,
+            "InPlaceSmallVecBuilder(0..{},{}..{},{})",
+            t1, s0, s1, cap
+        )
     }
 }
 
@@ -89,6 +93,27 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     fn push_unsafe(&mut self, value: A::Item) {
         unsafe { std::ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
         self.t1 += 1;
+    }
+
+    pub fn consume(&mut self, n: usize, take: bool) {
+        let n = std::cmp::min(n, self.source_slice().len());
+        let v = self.v.as_mut_ptr();
+        if take {
+            if self.t1 != self.s0 {
+                unsafe {
+                    std::ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                }
+            }
+            self.t1 += n;
+            self.s0 += n;
+        } else {
+            for _ in 0..n {
+                unsafe {
+                    self.s0 += 1;
+                    std::ptr::drop_in_place(v.add(self.s0 - 1));
+                }
+            }
+        }
     }
 
     /// Skip up to `n` elements from source without adding them to the target.
@@ -164,7 +189,7 @@ mod tests {
     use super::*;
     use testdrop::{Item, TestDrop};
 
-    type Array<'a> = [Item<'a>;2];
+    type Array<'a> = [Item<'a>; 2];
 
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
@@ -251,5 +276,63 @@ mod tests {
             res.pop_front();
             res
         })
+    }
+}
+
+/// workaround until https://github.com/servo/rust-smallvec/issues/181 is implemented
+pub struct SmallVecIntoIter<A: Array> {
+    data: SmallVec<A>,
+    current: usize,
+    end: usize,
+}
+
+impl<A: Array> Drop for SmallVecIntoIter<A> {
+    fn drop(&mut self) {
+        for _ in self {}
+    }
+}
+
+impl<A: Array> Iterator for SmallVecIntoIter<A> {
+    type Item = A::Item;
+
+    #[inline]
+    fn next(&mut self) -> Option<A::Item> {
+        if self.current == self.end {
+            None
+        } else {
+            unsafe {
+                let current = self.current as isize;
+                self.current += 1;
+                Some(core::ptr::read(self.data.as_ptr().offset(current)))
+            }
+        }
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let size = self.end - self.current;
+        (size, Some(size))
+    }
+}
+
+impl<A: Array> SmallVecIntoIter<A> {
+    pub fn new(data: SmallVec<A>) -> Self {
+        Self {
+            current: 0,
+            end: data.len(),
+            data,
+        }
+    }
+
+    /// Returns the remaining items of this iterator as a slice.
+    pub fn as_slice(&self) -> &[A::Item] {
+        let len = self.end - self.current;
+        unsafe { core::slice::from_raw_parts(self.data.as_ptr().add(self.current), len) }
+    }
+
+    /// Returns the remaining items of this iterator as a mutable slice.
+    pub fn as_mut_slice(&mut self) -> &mut [A::Item] {
+        let len = self.end - self.current;
+        unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr().add(self.current), len) }
     }
 }
