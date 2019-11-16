@@ -170,7 +170,7 @@ impl<T> Drop for InPlaceVecBuilder<T> {
 struct Builder<'a, T>(&'a RefCell<InPlaceVecBuilder<T>>);
 
 impl<'a, T> Extend<T> for Builder<'a, T> {
-    fn extend<I: IntoIterator<Item=T>>(&mut self, iter: I) {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         let (min, _) = iter.size_hint();
         for x in iter {
@@ -180,7 +180,6 @@ impl<'a, T> Extend<T> for Builder<'a, T> {
 }
 
 impl<'a, T> Builder<'a, T> {
-
     pub fn push(&mut self, value: T, gap: usize) {
         self.0.borrow_mut().push(value, gap)
     }
@@ -204,7 +203,16 @@ impl<T> BAI<T> {
     fn new(v: Vec<T>) -> Self {
         Self(RefCell::new(InPlaceVecBuilder::from(v)))
     }
-    fn pair(&mut self) -> (Builder<'_, T>, Iter<'_, T>) {
+    fn transform<'a, I, F>(&'a mut self, f: F)
+    where
+        F: Fn(Iter<'a, T>) -> I,
+        I: Iterator<Item = T> + 'a,
+        T: 'a,
+    {
+        let (mut b, i) = self.pair();
+        b.extend(f(i));
+    }
+    fn pair<'a>(&'a mut self) -> (Builder<'a, T>, Iter<'a, T>) {
         (Builder(&self.0), Iter(&self.0))
     }
     fn into_vec(self) -> Vec<T> {
@@ -220,7 +228,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         self.0.borrow_mut().pop_front()
     }
-} 
+}
 
 #[cfg(test)]
 mod tests {
@@ -317,20 +325,20 @@ mod tests {
 
     #[test]
     fn builder() {
-        let a = vec![1,2,3];
+        let a = vec![1, 2, 3];
         let mut a = BAI::new(a);
         let (mut b, i) = a.pair();
         b.extend(i.map(|x| x * 2));
         let r: Vec<_> = a.into_vec();
-        assert_eq!(r, vec![2,4,6]);
+        assert_eq!(r, vec![2, 4, 6]);
     }
 }
 
 pub fn demo() {
-    let a = vec![1,2,3];
+    let a = vec![1, 2, 3];
     let mut a = BAI::new(a);
     let (mut b, i) = a.pair();
     b.extend(i.map(|x| x * 2));
     let r: Vec<_> = a.into_vec();
-    assert_eq!(r, vec![2,4,6]);
+    assert_eq!(r, vec![2, 4, 6]);
 }

@@ -31,12 +31,12 @@ impl<K: Ord + Clone + Serialize, V: Clone + Serialize> Serialize for TagTree<K, 
 
 impl<'de, K: Ord + Deserialize<'de>, V: Deserialize<'de>> Deserialize<'de> for TagTree<K, V> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            Ok(match DeserHelper::<K, V>::deserialize(deserializer)? {
-                DeserHelper::VC((v, c)) => Self::new(Some(v), c),
-                DeserHelper::C(c) => Self::new(Default::default(), c),
-                DeserHelper::V((v,)) => Self::leaf(v),
-                DeserHelper::Empty => Self::default(),
-            })
+        Ok(match DeserHelper::<K, V>::deserialize(deserializer)? {
+            DeserHelper::VC((v, c)) => Self::new(Some(v), c),
+            DeserHelper::C(c) => Self::new(Default::default(), c),
+            DeserHelper::V((v,)) => Self::leaf(v),
+            DeserHelper::Empty => Self::default(),
+        })
     }
 }
 

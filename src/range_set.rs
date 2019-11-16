@@ -75,12 +75,12 @@ use crate::binary_merge::{EarlyOut, MergeStateRead, ShortcutMergeOperation};
 use crate::flip_buffer::InPlaceVecBuilder;
 use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::ops::{Bound, RangeBounds};
 use std::ops::Bound::*;
 use std::ops::{
     BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Range, RangeFrom, RangeTo,
     Sub, SubAssign,
 };
+use std::ops::{Bound, RangeBounds};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct RangeSet<T> {
