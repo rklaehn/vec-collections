@@ -4,11 +4,13 @@ use std::cmp::Ordering;
 /// it just needs random access for the remainder of a and b
 ///
 /// Very often A and B are the same type, but this is not strictly necessary
-pub(crate) trait MergeStateRead<A, B> {
+pub(crate) trait MergeStateRead {
+    type A;
+    type B;
     /// The remaining data in a
-    fn a_slice(&self) -> &[A];
+    fn a_slice(&self) -> &[Self::A];
     /// The remaining data in b
-    fn b_slice(&self) -> &[B];
+    fn b_slice(&self) -> &[Self::B];
 }
 
 // pub(crate) trait Merger<M> {
@@ -23,11 +25,11 @@ pub(crate) trait MergeStateRead<A, B> {
 /// can use the same merge operation. THerefore, the merge state is an additional parameter.SortedPairIter
 ///
 /// The operation itself will often be a zero size struct
-pub(crate) trait MergeOperation<A, B, M: MergeStateRead<A, B>> {
+pub(crate) trait MergeOperation<M: MergeStateRead> {
     fn from_a(&self, m: &mut M, n: usize);
     fn from_b(&self, m: &mut M, n: usize);
     fn collision(&self, m: &mut M);
-    fn cmp(&self, a: &A, b: &B) -> Ordering;
+    fn cmp(&self, a: &M::A, b: &M::B) -> Ordering;
     /// merge `an` elements from a and `bn` elements from b into the result
     fn merge0(&self, m: &mut M, an: usize, bn: usize) {
         if an == 0 {
@@ -79,11 +81,11 @@ pub(crate) type EarlyOut = Option<()>;
 /// This is exactly the same as MergeOperation, except that it allows aborting the operation early.
 /// In theory we could have just this operation with no runtime cost, since rust/LLVM will optimize away
 /// the EarlyOut when not used. But it is convenient to have two versions.
-pub(crate) trait ShortcutMergeOperation<A, B, M: MergeStateRead<A, B>> {
+pub(crate) trait ShortcutMergeOperation<M: MergeStateRead> {
     fn from_a(&self, m: &mut M, n: usize) -> EarlyOut;
     fn from_b(&self, m: &mut M, n: usize) -> EarlyOut;
     fn collision(&self, m: &mut M) -> EarlyOut;
-    fn cmp(&self, a: &A, b: &B) -> Ordering;
+    fn cmp(&self, a: &M::A, b: &M::B) -> Ordering;
     /// merge `an` elements from a and `bn` elements from b into the result
     fn merge0(&self, m: &mut M, an: usize, bn: usize) -> EarlyOut {
         if an == 0 {

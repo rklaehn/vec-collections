@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use crate::small_vec_builder::{InPlaceSmallVecBuilder, SmallVecIntoIter};
 
 /// A typical write part for the merge state
-pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
+pub(crate) trait MergeStateMut: MergeStateRead {
     /// Consume n elements of a
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut;
     /// Consume n elements of b
@@ -31,7 +31,9 @@ impl<A: Array, B: Array> SmallVecInPlaceMergeState<A, B> {
     }
 }
 
-impl<'a, A: Array, B: Array> MergeStateRead<A::Item, B::Item> for SmallVecInPlaceMergeState<A, B> {
+impl<'a, A: Array, B: Array> MergeStateRead for SmallVecInPlaceMergeState<A, B> {
+    type A = A::Item;
+    type B = B::Item;
     fn a_slice(&self) -> &[A::Item] {
         &self.a.source_slice()
     }
@@ -40,7 +42,7 @@ impl<'a, A: Array, B: Array> MergeStateRead<A::Item, B::Item> for SmallVecInPlac
     }
 }
 
-impl<'a, A: Array> MergeStateMut<A::Item, A::Item> for SmallVecInPlaceMergeState<A, A> {
+impl<'a, A: Array> MergeStateMut for SmallVecInPlaceMergeState<A, A> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         self.a.consume(n, take);
         Some(())
@@ -58,7 +60,7 @@ impl<'a, A: Array> MergeStateMut<A::Item, A::Item> for SmallVecInPlaceMergeState
 }
 
 impl<'a, A: Array, B: Array> SmallVecInPlaceMergeState<A, B> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A::Item, B::Item, Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
         let mut t: SmallVec<A> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);
@@ -66,7 +68,7 @@ impl<'a, A: Array, B: Array> SmallVecInPlaceMergeState<A, B> {
         *a = state.result();
     }
 
-    pub fn merge<O: MergeOperation<A::Item, B::Item, Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
+    pub fn merge<O: MergeOperation<Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
         let mut t: SmallVec<A> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);
@@ -104,7 +106,7 @@ impl<'a, T> InPlaceMergeState<'a, T> {
 }
 
 impl<'a, T: Clone + Default + Ord> InPlaceMergeState<'a, T> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<T, T, Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
+    pub fn merge_shortcut<O: ShortcutMergeOperation<Self>>(a: &mut Vec<T>, b: &'a [T], o: O) {
         let mut t: Vec<T> = Default::default();
         std::mem::swap(a, &mut t);
         let mut state = InPlaceMergeState::new(t, b);
@@ -139,7 +141,9 @@ impl<'a, T: Clone + Default> InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T> MergeStateRead<T, T> for InPlaceMergeState<'a, T> {
+impl<'a, T> MergeStateRead for InPlaceMergeState<'a, T> {
+    type A = T;
+    type B = T;
     fn a_slice(&self) -> &[T] {
         &self.a[self.ab..]
     }
@@ -148,7 +152,7 @@ impl<'a, T> MergeStateRead<T, T> for InPlaceMergeState<'a, T> {
     }
 }
 
-impl<'a, T: Clone + Default> MergeStateMut<T, T> for InPlaceMergeState<'a, T> {
+impl<'a, T: Clone + Default> MergeStateMut for InPlaceMergeState<'a, T> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
             if self.ab != self.rn {
@@ -205,14 +209,16 @@ impl<'a, A, B> BoolOpMergeState<'a, A, B> {
 }
 
 impl<'a, A, B> BoolOpMergeState<'a, A, B> {
-    pub fn merge<O: ShortcutMergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> bool {
+    pub fn merge<O: ShortcutMergeOperation<Self>>(a: &'a [A], b: &'a [B], o: O) -> bool {
         let mut state = Self::new(a, b);
         o.merge(&mut state);
         state.r
     }
 }
 
-impl<'a, A, B> MergeStateRead<A, B> for BoolOpMergeState<'a, A, B> {
+impl<'a, A, B> MergeStateRead for BoolOpMergeState<'a, A, B> {
+    type A = A;
+    type B = B;
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }
@@ -221,7 +227,7 @@ impl<'a, A, B> MergeStateRead<A, B> for BoolOpMergeState<'a, A, B> {
     }
 }
 
-impl<'a, A, B> MergeStateMut<A, B> for BoolOpMergeState<'a, A, B> {
+impl<'a, A, B> MergeStateMut for BoolOpMergeState<'a, A, B> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
             self.r = true;
@@ -268,7 +274,7 @@ impl<'a, A, B, Arr: Array> SmallVecMergeState<'a, A, B, Arr> {
         self.r
     }
 
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
+    pub fn merge_shortcut<O: ShortcutMergeOperation<Self>>(
         a: &'a [A],
         b: &'a [B],
         o: O,
@@ -279,7 +285,7 @@ impl<'a, A, B, Arr: Array> SmallVecMergeState<'a, A, B, Arr> {
         state.into_vec()
     }
 
-    pub fn merge<O: MergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> SmallVec<Arr> {
+    pub fn merge<O: MergeOperation<Self>>(a: &'a [A], b: &'a [B], o: O) -> SmallVec<Arr> {
         let t: SmallVec<Arr> = SmallVec::new();
         let mut state = Self::new(a, b, t);
         o.merge(&mut state);
@@ -287,7 +293,9 @@ impl<'a, A, B, Arr: Array> SmallVecMergeState<'a, A, B, Arr> {
     }
 }
 
-impl<'a, A, B, Arr: Array> MergeStateRead<A, B> for SmallVecMergeState<'a, A, B, Arr> {
+impl<'a, A, B, Arr: Array> MergeStateRead for SmallVecMergeState<'a, A, B, Arr> {
+    type A = A;
+    type B = B;
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }
@@ -296,7 +304,7 @@ impl<'a, A, B, Arr: Array> MergeStateRead<A, B> for SmallVecMergeState<'a, A, B,
     }
 }
 
-impl<'a, T: Clone, Arr: Array<Item = T>> MergeStateMut<T, T> for SmallVecMergeState<'a, T, T, Arr> {
+impl<'a, T: Clone, Arr: Array<Item = T>> MergeStateMut for SmallVecMergeState<'a, T, T, Arr> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
             self.r.reserve(n);
@@ -353,7 +361,7 @@ impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
         self.r
     }
 
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(
+    pub fn merge_shortcut<O: ShortcutMergeOperation<Self>>(
         a: &'a [A],
         b: &'a [B],
         o: O,
@@ -364,7 +372,7 @@ impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
         state.into_vec()
     }
 
-    pub fn merge<O: MergeOperation<A, B, Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
+    pub fn merge<O: MergeOperation<Self>>(a: &'a [A], b: &'a [B], o: O) -> Vec<R> {
         let t: Vec<R> = Vec::new();
         let mut state = VecMergeState::new(a, b, t);
         o.merge(&mut state);
@@ -372,7 +380,9 @@ impl<'a, A, B, R> VecMergeState<'a, A, B, R> {
     }
 }
 
-impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
+impl<'a, A, B, R> MergeStateRead for VecMergeState<'a, A, B, R> {
+    type A = A;
+    type B = B;
     fn a_slice(&self) -> &[A] {
         self.a.as_slice()
     }
@@ -381,7 +391,7 @@ impl<'a, A, B, R> MergeStateRead<A, B> for VecMergeState<'a, A, B, R> {
     }
 }
 
-impl<'a, T: Clone> MergeStateMut<T, T> for VecMergeState<'a, T, T, T> {
+impl<'a, T: Clone> MergeStateMut for VecMergeState<'a, T, T, T> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
             self.r.extend_from_slice(self.a.take_front(n));
@@ -396,99 +406,6 @@ impl<'a, T: Clone> MergeStateMut<T, T> for VecMergeState<'a, T, T, T> {
         } else {
             self.b.drop_front(n);
         }
-        Some(())
-    }
-}
-
-/// A merge state where we build into a new vector
-pub(crate) struct UnsafeSliceMergeState<T> {
-    a: *mut T,
-    an: usize,
-    b: *mut T,
-    bn: usize,
-    r: *mut T,
-    rn: usize,
-}
-
-impl<T> UnsafeSliceMergeState<T> {
-    pub fn merge<O: ShortcutMergeOperation<T, T, Self>>(
-        v: &mut Vec<T>,
-        an: usize,
-        bn: usize,
-        o: O,
-    ) {
-        assert!(an + bn <= v.len());
-        let len = v.len();
-        let base = len - an - bn;
-        let rn = an + bn;
-        v.reserve(an + bn);
-        unsafe {
-            v.set_len(base);
-            let a = v.as_mut_ptr().add(base);
-            let b = v.as_mut_ptr().add(base + an);
-            let r = v.as_mut_ptr().add(base + an + bn);
-            let mut state = Self {
-                a,
-                an,
-                b,
-                bn,
-                r,
-                rn,
-            };
-            o.merge(&mut state);
-            let copied = rn - state.rn;
-            std::ptr::copy_nonoverlapping(r, a, copied);
-            v.set_len(base + copied);
-        }
-    }
-}
-
-impl<T> MergeStateRead<T, T> for UnsafeSliceMergeState<T> {
-    fn a_slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.a, self.an) }
-    }
-    fn b_slice(&self) -> &[T] {
-        unsafe { std::slice::from_raw_parts(self.b, self.bn) }
-    }
-}
-
-impl<T> MergeStateMut<T, T> for UnsafeSliceMergeState<T> {
-    fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
-        if take {
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.a, self.r, n);
-                self.a = self.a.add(n);
-                self.r = self.r.add(n);
-            }
-            self.rn -= n;
-        } else {
-            unsafe {
-                for i in 0..n {
-                    std::ptr::drop_in_place(self.a.add(i));
-                }
-                self.a = self.a.add(n);
-            }
-        }
-        self.an -= n;
-        Some(())
-    }
-    fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
-        if take {
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.b, self.r, n);
-                self.b = self.b.add(n);
-                self.r = self.r.add(n);
-            }
-            self.rn -= n;
-        } else {
-            unsafe {
-                for i in 0..n {
-                    std::ptr::drop_in_place(self.b.add(i));
-                }
-                self.b = self.b.add(n);
-            }
-        }
-        self.bn -= n;
         Some(())
     }
 }

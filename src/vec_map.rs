@@ -30,7 +30,7 @@ impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
 impl<K: Ord, V, A: Array<Item=(K, V)>, F: Fn(V, V) -> V>
-    MergeOperation<(K, V), (K, V), SmallVecInPlaceMergeState<A, A>> for CombineOp<F, K>
+    MergeOperation<SmallVecInPlaceMergeState<A, A>> for CombineOp<F, K>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
@@ -51,7 +51,7 @@ impl<K: Ord, V, A: Array<Item=(K, V)>, F: Fn(V, V) -> V>
 
 struct RightBiasedUnionOp;
 
-impl<'a, K: Ord, V, I: MergeStateMut<(K, V), (K, V)>> MergeOperation<(K, V), (K, V), I>
+impl<'a, K: Ord, V, I: MergeStateMut<A=(K,V), B=(K,V)>> MergeOperation<I>
     for RightBiasedUnionOp
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
@@ -110,7 +110,7 @@ impl<K: Ord, V> Extend<(K, V)> for VecMap<K, V> {
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
-    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
+    MergeOperation<PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -145,7 +145,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, Option<&B>) -> R>
-    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
+    MergeOperation<PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -171,7 +171,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, Option<&B>) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(Option<&A>, &B) -> R>
-    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
+    MergeOperation<PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -196,7 +196,7 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(Option<&A>, &B) -> R>
 }
 
 impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
-    MergeOperation<(K, A), (K, B), PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
+    MergeOperation<PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
@@ -218,6 +218,11 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
 }
 
 impl<K, V, A: Array<Item=(K,V)>> VecMap<K, V, A> {
+
+    pub(crate) fn new(value: SmallVec<A>) -> Self {
+        Self(value)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }

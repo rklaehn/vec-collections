@@ -1,9 +1,10 @@
 use crate::binary_merge::MergeOperation;
-use crate::merge_state::VecMergeState;
+use crate::merge_state::SmallVecMergeState;
 use crate::vec_map::VecMap;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::ops::Index;
+use smallvec::Array;
 
 #[derive(Hash, Debug, Clone, Eq, PartialEq, Default)]
 pub struct TotalArrayMap<K, V>(VecMap<K, V>, V);
@@ -40,15 +41,15 @@ struct FastCombineOp<'a, F, V> {
     r_default: &'a V,
 }
 
-type PairMergeState<'a, K, V> = VecMergeState<'a, (K, V), (K, V), (K, V)>;
+type PairMergeState2<'a, Arr: Array> = SmallVecMergeState<'a, Arr::Item, Arr::Item, Arr>;
 
-impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
-    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for CombineOp<F, &'a V>
+impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V, Arr: Array<Item=(K, V)>>
+    MergeOperation<PairMergeState2<'a, Arr>> for CombineOp<F, &'a V>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, V>, n: usize) {
+    fn from_a(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
                 let result = (self.f)(a, self.b_default);
@@ -58,7 +59,7 @@ impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
             }
         }
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, V>, n: usize) {
+    fn from_b(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 let result = (self.f)(self.a_default, b);
@@ -68,7 +69,7 @@ impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
             }
         }
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, V>) {
+    fn collision(&self, m: &mut PairMergeState2<'a, Arr>) {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 let result = (self.f)(a, b);
@@ -80,27 +81,27 @@ impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V>
     }
 }
 
-impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V>
-    MergeOperation<(K, V), (K, V), PairMergeState<'a, K, V>> for FastCombineOp<'a, F, V>
+impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V, Arr: Array<Item=(K, V)>>
+    MergeOperation<PairMergeState2<'a, Arr>> for FastCombineOp<'a, F, V>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, V>, n: usize) {
+    fn from_a(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
                 m.r.push((k.clone(), a.clone()));
             }
         }
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, V>, n: usize) {
+    fn from_b(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 m.r.push((k.clone(), b.clone()));
             }
         }
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, V>) {
+    fn collision(&self, m: &mut PairMergeState2<'a, Arr>) {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 let result = (self.f)(a, b);
@@ -121,8 +122,8 @@ impl<K: Ord + Clone, V: Eq> TotalArrayMap<K, V> {
             b_default: &that.1,
             r_default: &r_default,
         };
-        let r = VecMergeState::merge(self.as_slice(), that.as_slice(), op);
-        Self(VecMap::from_sorted_vec(r), r_default)
+        let r = SmallVecMergeState::merge(self.as_slice(), that.as_slice(), op);
+        Self(VecMap::new(r), r_default)
     }
 }
 
@@ -148,8 +149,8 @@ impl<K: Ord + Clone, V: Eq + Clone> TotalArrayMap<K, V> {
             f,
             r_default: &r_default,
         };
-        let r = VecMergeState::merge(self.as_slice(), that.as_slice(), op);
-        Self(VecMap::from_sorted_vec(r), r_default)
+        let r = SmallVecMergeState::merge(self.as_slice(), that.as_slice(), op);
+        Self(VecMap::new(r), r_default)
     }
 }
 

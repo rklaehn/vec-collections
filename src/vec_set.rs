@@ -187,7 +187,7 @@ impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for VecSet<T> {
     }
 }
 
-impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetUnionOp {
+impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -203,7 +203,7 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetUnio
     }
 }
 
-impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetIntersectionOp {
+impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetIntersectionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -219,7 +219,7 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetInte
     }
 }
 
-impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetDiffOpt {
+impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -235,7 +235,7 @@ impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetDiff
     }
 }
 
-impl<T: Ord, I: MergeStateMut<T, T>> ShortcutMergeOperation<T, T, I> for SetXorOp {
+impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
