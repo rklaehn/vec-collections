@@ -39,6 +39,11 @@ impl<A: Array> From<SmallVec<A>> for InPlaceSmallVecBuilder<A> {
 }
 
 impl<A: Array> InPlaceSmallVecBuilder<A> {
+    fn assert_invariants(&self) {
+        assert!(self.t1 <= self.s0);
+        assert!(self.s0 <= self.v.len());
+        // assert!(self.v.len() <= self.v.capacity()); vec invariant
+    }
     /// The current target part as a slice
     pub fn target_slice(&self) -> &[A::Item] {
         &self.v[..self.t1]
@@ -165,12 +170,14 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     }
 
     /// takes the target part of the flip buffer as a vec and drops the remaining source part, if any
-    pub fn into_vec(self) -> SmallVec<A> {
-        let mut r = self;
-        r.drop_source();
-        let mut t: SmallVec<A> = SmallVec::new();
-        std::mem::swap(&mut t, &mut r.v);
-        t
+    pub fn into_vec(mut self) -> SmallVec<A> {
+        // drop the source part
+        self.drop_source();
+        // tear out the v
+        let v = std::mem::replace(&mut self.v, unsafe { std::mem::uninitialized() });
+        // forget the rest to prevent drop to run on uninitialized data
+        std::mem::forget(self);
+        v
     }
 }
 

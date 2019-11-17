@@ -18,29 +18,8 @@ struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
 
-pub struct VecSet2<T, A = [T; 2]>(SmallVec<A>, PhantomData<T>)
-where
-    A: Array<Item = T>;
-
-impl<T: Clone, A: Array<Item = T> + Clone> Clone for VecSet2<T, A> {
-    fn clone(&self) -> Self {
-        Self::new(self.0.clone())
-    }
-}
-
-impl<T: PartialEq, A: Array<Item = T> + PartialEq> PartialEq for VecSet2<T, A> {
-    fn eq(&self, that: &Self) -> bool {
-        self.0.as_slice() == that.0.as_slice()
-    }
-}
-
-impl<T: Eq, A: Array<Item = T> + Eq> Eq for VecSet2<T, A> {}
-
-impl<T, A: Array<Item = T>> Default for VecSet2<T, A> {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Default)]
+pub struct VecSet2<T, A: Array<Item = T> = [T; 2]>(SmallVec<A>, PhantomData<T>);
 
 impl<T, A: Array<Item = T>> VecSet2<T, A> {
     fn new(a: SmallVec<A>) -> Self {
@@ -52,7 +31,11 @@ impl<T, A: Array<Item = T>> VecSet2<T, A> {
         Self(res, PhantomData)
     }
     pub fn empty() -> Self {
-        Self(SmallVec::new(), PhantomData)
+        Self::new(SmallVec::new())
+    }
+    /// An iterator that returns the items of this vec set in sorted order
+    pub fn iter(&self) -> SortedIter<std::slice::Iter<T>> {
+        SortedIter::new(self.0.iter())
     }
     pub fn as_slice(&self) -> &[T] {
         &self.0
@@ -93,6 +76,7 @@ impl<T: Ord, A: Array<Item = T>> VecSet2<T, A> {
     pub fn is_superset(&self, that: &Self) -> bool {
         that.is_subset(self)
     }
+
     pub fn contains(&self, value: &T) -> bool {
         self.0.binary_search(value).is_ok()
     }
@@ -102,12 +86,6 @@ impl<T: Ord, A: Array<Item = T>> VecSet2<T, A> {
         vec.sort();
         vec.dedup();
         Self::new(SmallVec::from_vec(vec))
-    }
-}
-
-impl<A: Array<Item = T>, T: Debug> Debug for VecSet2<T, A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_set().entries(self.0.iter()).finish()
     }
 }
 
@@ -179,9 +157,33 @@ impl<T: Ord> SubAssign for VecSet2<T> {
     }
 }
 
+impl<T: Ord> From<Vec<T>> for VecSet2<T> {
+    fn from(vec: Vec<T>) -> Self {
+        Self::from_vec(vec)
+    }
+}
+
+impl<T: Ord> From<BTreeSet<T>> for VecSet2<T> {
+    fn from(value: BTreeSet<T>) -> Self {
+        Self::new(value.into_iter().collect())
+    }
+}
+
 impl<T: Ord> FromIterator<T> for VecSet2<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(sort_and_dedup(iter.into_iter()))
+    }
+}
+
+impl<T: Ord> Extend<T> for VecSet2<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        *self &= Self::from_iter(iter);
+    }
+}
+
+impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for VecSet2<T> {
+    fn extend<I: IntoIterator<Item = &'a T>>(&mut self, iter: I) {
+        self.extend(iter.into_iter().cloned())
     }
 }
 
@@ -680,48 +682,45 @@ mod test2 {
             let mut a1: Test = a.iter().cloned().collect();
             let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 | &b1;
-            // a1 |= b1;
+            a1 |= b1;
+            println!("{:?} {:?}", a, b);
             let expected: Vec<i64> = a.union(&b).cloned().collect();
             let actual: Vec<i64> = a1.into();
             let actual2: Vec<i64> = r2.into();
-            // expected == actual && expected == actual2
-            expected == actual2
+            expected == actual && expected == actual2
         }
 
         fn intersection(a: Reference, b: Reference) -> bool {
             let mut a1: Test = a.iter().cloned().collect();
             let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 & &b1;
-            // a1 &= b1;
+            a1 &= b1;
             let expected: Vec<i64> = a.intersection(&b).cloned().collect();
             let actual: Vec<i64> = a1.into();
             let actual2: Vec<i64> = r2.into();
-            // expected == actual && expected == actual2
-            expected == actual2
+            expected == actual && expected == actual2
         }
 
         fn xor(a: Reference, b: Reference) -> bool {
             let mut a1: Test = a.iter().cloned().collect();
             let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 ^ &b1;
-            // a1 ^= b1;
+            a1 ^= b1;
             let expected: Vec<i64> = a.symmetric_difference(&b).cloned().collect();
             let actual: Vec<i64> = a1.into();
             let actual2: Vec<i64> = r2.into();
-            // expected == actual && expected == actual2
-            expected == actual2
+            expected == actual && expected == actual2
         }
 
         fn difference(a: Reference, b: Reference) -> bool {
             let mut a1: Test = a.iter().cloned().collect();
             let b1: Test = b.iter().cloned().collect();
             let r2 = &a1 - &b1;
-            // a1 -= b1;
+            a1 -= b1;
             let expected: Vec<i64> = a.difference(&b).cloned().collect();
             let actual: Vec<i64> = a1.into();
             let actual2: Vec<i64> = r2.into();
-            // expected == actual && expected == actual2
-            expected == actual2
+            expected == actual && expected == actual2
         }
 
         fn is_disjoint(a: Reference, b: Reference) -> bool {
