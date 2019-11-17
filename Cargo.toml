@@ -27,3 +27,8 @@ lazy_static = "1.4.0"
 rand = "0.7.2"
 num-traits = "0.2.8"
 serde_json = "1.0.41"
+criterion = "0.3.0"
+
+[[bench]]
+name = "set_comparison"
+harness = false
