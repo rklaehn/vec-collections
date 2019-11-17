@@ -19,9 +19,6 @@ pub use sorted_iter::{SortedIterator, SortedPairIterator};
 #[macro_use]
 mod test_macros;
 
-#[allow(dead_code)]
-mod flip_buffer;
-
 mod binary_merge;
 mod merge_state;
 
@@ -37,17 +34,11 @@ mod vec_map;
 mod dedup;
 mod iterators;
 
-mod radix_tree;
-
 #[cfg(test)]
 mod obey;
 
-pub mod range_set;
+pub mod small_vec_builder;
 
-#[allow(dead_code)]
-mod sonic_reducer;
-
-pub use range_set::*;
 pub use total_vec_map::*;
 pub use total_vec_seq::*;
 pub use total_vec_set::*;

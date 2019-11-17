@@ -1,4 +1,4 @@
-use crate::{VecSet, VecSet2};
+use crate::VecSet;
 use std::fmt::Debug;
 use std::fmt::Write;
 use std::ops::BitAndAssign;
@@ -9,7 +9,7 @@ use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct TotalVecSet<T> {
-    elements: VecSet2<T>,
+    elements: VecSet<T>,
     negated: bool,
 }
 
@@ -23,7 +23,7 @@ impl<T: Debug> Debug for TotalVecSet<T> {
 }
 
 impl<T> TotalVecSet<T> {
-    fn new(elements: VecSet2<T>, negated: bool) -> Self {
+    fn new(elements: VecSet<T>, negated: bool) -> Self {
         Self { elements, negated }
     }
 
@@ -36,11 +36,11 @@ impl<T> TotalVecSet<T> {
     }
 
     pub fn empty() -> Self {
-        Self::new(VecSet2::empty(), false)
+        Self::new(VecSet::empty(), false)
     }
 
     pub fn all() -> Self {
-        Self::new(VecSet2::empty(), true)
+        Self::new(VecSet::empty(), true)
     }
 
     pub fn shrink_to_fit(&mut self) {
@@ -48,8 +48,8 @@ impl<T> TotalVecSet<T> {
     }
 }
 
-impl<T> From<VecSet2<T>> for TotalVecSet<T> {
-    fn from(value: VecSet2<T>) -> Self {
+impl<T> From<VecSet<T>> for TotalVecSet<T> {
+    fn from(value: VecSet<T>) -> Self {
         Self::new(value, false)
     }
 }

@@ -1,11 +1,10 @@
 use crate::binary_merge::{EarlyOut, MergeOperation, MergeStateRead, ShortcutMergeOperation};
-use crate::flip_buffer::InPlaceVecBuilder;
 use crate::iterators::SliceIterator;
 use smallvec::{Array, SmallVec};
 use std::cmp::Ord;
 use std::default::Default;
 use std::fmt::Debug;
-use crate::flip_buffer::small_vec_builder::{InPlaceSmallVecBuilder, SmallVecIntoIter};
+use crate::small_vec_builder::{InPlaceSmallVecBuilder, SmallVecIntoIter};
 
 /// A typical write part for the merge state
 pub(crate) trait MergeStateMut<A, B>: MergeStateRead<A, B> {
@@ -73,67 +72,6 @@ impl<'a, A: Array, B: Array> SmallVecInPlaceMergeState<A, B> {
         let mut state = Self::new(t, b);
         o.merge(&mut state);
         *a = state.result();
-    }
-}
-
-pub(crate) struct UnsafeInPlaceMergeState<A, B> {
-    pub a: InPlaceVecBuilder<A>,
-    pub b: std::vec::IntoIter<B>,
-}
-
-impl<A, B> UnsafeInPlaceMergeState<A, B> {
-    fn new(a: Vec<A>, b: Vec<B>) -> Self {
-        Self {
-            a: a.into(),
-            b: b.into_iter(),
-        }
-    }
-    fn result(self) -> Vec<A> {
-        self.a.into_vec()
-    }
-}
-
-impl<'a, A, B> UnsafeInPlaceMergeState<A, B> {
-    pub fn merge_shortcut<O: ShortcutMergeOperation<A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
-        let mut t: Vec<A> = Default::default();
-        std::mem::swap(a, &mut t);
-        let mut state = Self::new(t, b);
-        o.merge(&mut state);
-        *a = state.result();
-    }
-
-    pub fn merge<O: MergeOperation<A, B, Self>>(a: &mut Vec<A>, b: Vec<B>, o: O) {
-        let mut t: Vec<A> = Default::default();
-        std::mem::swap(a, &mut t);
-        let mut state = Self::new(t, b);
-        o.merge(&mut state);
-        *a = state.result();
-    }
-}
-
-impl<'a, A, B> MergeStateRead<A, B> for UnsafeInPlaceMergeState<A, B> {
-    fn a_slice(&self) -> &[A] {
-        &self.a.source_slice()
-    }
-    fn b_slice(&self) -> &[B] {
-        self.b.as_slice()
-    }
-}
-
-impl<'a, T> MergeStateMut<T, T> for UnsafeInPlaceMergeState<T, T> {
-    fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
-        self.a.consume(n, take);
-        Some(())
-    }
-    fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
-        if take {
-            self.a.extend_from_iter(&mut self.b, n);
-        } else {
-            for _ in 0..n {
-                let _ = self.b.next();
-            }
-        }
-        Some(())
     }
 }
 

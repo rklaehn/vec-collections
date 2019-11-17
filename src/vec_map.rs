@@ -1,19 +1,21 @@
 use crate::binary_merge::MergeOperation;
 use crate::dedup::{sort_and_dedup_by_key, Keep};
 use crate::iterators::SliceIterator;
-use crate::merge_state::{MergeStateMut, UnsafeInPlaceMergeState, VecMergeState};
+use crate::merge_state::{MergeStateMut, VecMergeState, SmallVecInPlaceMergeState};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::FromIterator;
+use smallvec::{SmallVec, Array};
 
 #[derive(Hash, Clone, Eq, PartialEq)]
-pub struct VecMap<K, V>(Vec<(K, V)>);
+pub struct VecMap<K, V, A: Array<Item=(K, V)> = [(K,V);2]>(SmallVec<A>);
 
-impl<K, V> Default for VecMap<K, V> {
+
+impl<K, V, A: Array<Item=(K, V)>> Default for VecMap<K, V, A> {
     fn default() -> Self {
-        Self(Vec::default())
+        VecMap(SmallVec::default())
     }
 }
 
@@ -27,19 +29,19 @@ impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
 
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
-impl<K: Ord, V, F: Fn(V, V) -> V>
-    MergeOperation<(K, V), (K, V), UnsafeInPlaceMergeState<(K, V), (K, V)>> for CombineOp<F, K>
+impl<K: Ord, V, A: Array<Item=(K, V)>, F: Fn(V, V) -> V>
+    MergeOperation<(K, V), (K, V), SmallVecInPlaceMergeState<A, A>> for CombineOp<F, K>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
+    fn from_a(&self, m: &mut SmallVecInPlaceMergeState<A, A>, n: usize) {
         m.advance_a(n, true);
     }
-    fn from_b(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>, n: usize) {
+    fn from_b(&self, m: &mut SmallVecInPlaceMergeState<A, A>, n: usize) {
         m.advance_b(n, true);
     }
-    fn collision(&self, m: &mut UnsafeInPlaceMergeState<(K, V), (K, V)>) {
+    fn collision(&self, m: &mut SmallVecInPlaceMergeState<A, A>) {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
             let r = (self.0)(av, bv);
             m.a.push((ak, r));
@@ -90,7 +92,7 @@ impl<K: Ord, V> FromIterator<(K, V)> for VecMap<K, V> {
             iter.into_iter(),
             |(k, _)| k,
             Keep::Last,
-        ))
+        ).into())
     }
 }
 
@@ -215,9 +217,13 @@ impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
     }
 }
 
-impl<K, V> VecMap<K, V> {
+impl<K, V, A: Array<Item=(K,V)>> VecMap<K, V, A> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub fn empty() -> Self {
+        Self(SmallVec::new())
     }
 
     pub fn len(&self) -> usize {
@@ -246,21 +252,21 @@ impl<K, V> VecMap<K, V> {
     }
 
     pub(crate) fn from_sorted_vec(v: Vec<(K, V)>) -> Self {
-        Self(v)
+        Self(v.into())
     }
 
-    pub fn into_sorted_vec(self) -> Vec<(K, V)> {
+    pub fn into_sorted_vec(self) -> SmallVec<A> {
         self.0
     }
 }
 
-impl<K: Ord, V> VecMap<K, V> {
-    pub fn merge_with(&mut self, rhs: VecMap<K, V>) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
+impl<K: Ord, V, A: Array<Item=(K, V)>> VecMap<K, V, A> {
+    pub fn merge_with(&mut self, rhs: VecMap<K, V, A>) {
+        SmallVecInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
 
-    pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<K, V>, f: F) {
-        UnsafeInPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
+    pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<K, V, A>, f: F) {
+        SmallVecInPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
     }
 
     pub fn get<Q>(&self, key: &Q) -> Option<&V>

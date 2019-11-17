@@ -11,6 +11,10 @@ pub(crate) trait MergeStateRead<A, B> {
     fn b_slice(&self) -> &[B];
 }
 
+// pub(crate) trait Merger<M> {
+//     fn merge(&self, m: &mut M);
+// }
+
 /// A binary merge operation
 ///
 /// It is often useful to keep the merge operation and the merge state separate. E.g. computing the
