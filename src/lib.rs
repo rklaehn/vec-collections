@@ -37,7 +37,7 @@ mod iterators;
 #[cfg(test)]
 mod obey;
 
-pub mod small_vec_builder;
+mod small_vec_builder;
 
 pub use total_vec_map::*;
 pub use total_vec_seq::*;

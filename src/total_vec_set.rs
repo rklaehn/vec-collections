@@ -35,16 +35,26 @@ impl<T> TotalVecSet<T> {
         self.negated && self.elements.is_empty()
     }
 
+    pub fn constant(value: bool) -> Self {
+        Self::new(VecSet::empty(), value)
+    }
+
     pub fn empty() -> Self {
-        Self::new(VecSet::empty(), false)
+        false.into()
     }
 
     pub fn all() -> Self {
-        Self::new(VecSet::empty(), true)
+        true.into()
     }
 
     pub fn shrink_to_fit(&mut self) {
         self.elements.shrink_to_fit()
+    }
+}
+
+impl<T> From<bool> for TotalVecSet<T> {
+    fn from(value: bool) -> Self {
+        Self::constant(value)
     }
 }
 

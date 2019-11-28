@@ -1,10 +1,7 @@
-use crate::binary_merge::{EarlyOut, ShortcutMergeOperation};
+use crate::binary_merge::{EarlyOut, MergeOperation};
 use crate::dedup::sort_and_dedup;
 use crate::iterators::SortedIter;
-use crate::merge_state::{
-    BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecInPlaceMergeState,
-    SmallVecMergeState,
-};
+use crate::merge_state::{BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecMergeState};
 use smallvec::{Array, SmallVec};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -98,7 +95,7 @@ impl<A: Array<Item = T>, T> Into<Vec<T>> for VecSet<T, A> {
 impl<T: Ord + Clone, Arr: Array<Item = T>> BitAnd for &VecSet<T, Arr> {
     type Output = VecSet<T, Arr>;
     fn bitand(self, that: Self) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge_shortcut(
+        Self::Output::new(SmallVecMergeState::merge(
             &self.0,
             &that.0,
             SetIntersectionOp,
@@ -109,51 +106,45 @@ impl<T: Ord + Clone, Arr: Array<Item = T>> BitAnd for &VecSet<T, Arr> {
 impl<T: Ord + Clone, Arr: Array<Item = T>> BitOr for &VecSet<T, Arr> {
     type Output = VecSet<T, Arr>;
     fn bitor(self, that: Self) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0, &that.0, SetUnionOp,
-        ))
+        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetUnionOp))
     }
 }
 
 impl<T: Ord + Clone, Arr: Array<Item = T>> BitXor for &VecSet<T, Arr> {
     type Output = VecSet<T, Arr>;
     fn bitxor(self, that: Self) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0, &that.0, SetXorOp,
-        ))
+        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetXorOp))
     }
 }
 
 impl<T: Ord + Clone, Arr: Array<Item = T>> Sub for &VecSet<T, Arr> {
     type Output = VecSet<T, Arr>;
     fn sub(self, that: Self) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge_shortcut(
-            &self.0, &that.0, SetDiffOpt,
-        ))
+        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetDiffOpt))
     }
 }
 
 impl<T: Ord> BitAndAssign for VecSet<T> {
     fn bitand_assign(&mut self, that: Self) {
-        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetIntersectionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp);
     }
 }
 
 impl<T: Ord> BitOrAssign for VecSet<T> {
     fn bitor_assign(&mut self, that: Self) {
-        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetUnionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp);
     }
 }
 
 impl<T: Ord> BitXorAssign for VecSet<T> {
     fn bitxor_assign(&mut self, that: Self) {
-        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetXorOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp);
     }
 }
 
 impl<T: Ord> SubAssign for VecSet<T> {
     fn sub_assign(&mut self, that: Self) {
-        SmallVecInPlaceMergeState::merge_shortcut(&mut self.0, that.0, SetDiffOpt);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt);
     }
 }
 
@@ -187,7 +178,7 @@ impl<'a, T: 'a + Ord + Copy> Extend<&'a T> for VecSet<T> {
     }
 }
 
-impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetUnionOp {
+impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -203,7 +194,7 @@ impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetUnionO
     }
 }
 
-impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetIntersectionOp {
+impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetIntersectionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -219,7 +210,7 @@ impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetInters
     }
 }
 
-impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetDiffOpt {
+impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -235,7 +226,7 @@ impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetDiffOp
     }
 }
 
-impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetXorOp {
+impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
@@ -292,11 +283,6 @@ impl<T: Ord, I: MergeStateMut<A=T, B=T>> ShortcutMergeOperation<I> for SetXorOp 
 //         InPlaceMergeState::merge(&mut self.0, &that.0, SetDiffOpt());
 //     }
 // }
-
-// cargo asm vec_set::array_set::union_u32
-pub fn union_u32(a: &mut Vec<u32>, b: &[u32]) {
-    InPlaceMergeState::merge_shortcut(a, b, SetUnionOp)
-}
 
 #[cfg(test)]
 mod test {

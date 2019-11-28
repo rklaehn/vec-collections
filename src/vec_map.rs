@@ -1,19 +1,18 @@
-use crate::binary_merge::MergeOperation;
+use crate::binary_merge::{EarlyOut, MergeOperation};
 use crate::dedup::{sort_and_dedup_by_key, Keep};
 use crate::iterators::SliceIterator;
-use crate::merge_state::{MergeStateMut, VecMergeState, SmallVecInPlaceMergeState};
+use crate::merge_state::{InPlaceMergeState, MergeStateMut, SmallVecMergeState};
+use smallvec::{Array, SmallVec};
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::FromIterator;
-use smallvec::{SmallVec, Array};
 
 #[derive(Hash, Clone, Eq, PartialEq)]
-pub struct VecMap<K, V, A: Array<Item=(K, V)> = [(K,V);2]>(SmallVec<A>);
+pub struct VecMap<K, V, A: Array<Item = (K, V)> = [(K, V); 2]>(SmallVec<A>);
 
-
-impl<K, V, A: Array<Item=(K, V)>> Default for VecMap<K, V, A> {
+impl<K, V, A: Array<Item = (K, V)>> Default for VecMap<K, V, A> {
     fn default() -> Self {
         VecMap(SmallVec::default())
     }
@@ -29,50 +28,51 @@ impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
 
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
-impl<K: Ord, V, A: Array<Item=(K, V)>, F: Fn(V, V) -> V>
-    MergeOperation<SmallVecInPlaceMergeState<A, A>> for CombineOp<F, K>
+impl<K: Ord, V, A: Array<Item = (K, V)>, F: Fn(V, V) -> V> MergeOperation<InPlaceMergeState<A, A>>
+    for CombineOp<F, K>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut SmallVecInPlaceMergeState<A, A>, n: usize) {
-        m.advance_a(n, true);
+    fn from_a(&self, m: &mut InPlaceMergeState<A, A>, n: usize) -> EarlyOut {
+        m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut SmallVecInPlaceMergeState<A, A>, n: usize) {
-        m.advance_b(n, true);
+    fn from_b(&self, m: &mut InPlaceMergeState<A, A>, n: usize) -> EarlyOut {
+        m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut SmallVecInPlaceMergeState<A, A>) {
+    fn collision(&self, m: &mut InPlaceMergeState<A, A>) -> EarlyOut {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
             let r = (self.0)(av, bv);
             m.a.push((ak, r));
         }
+        Some(())
     }
 }
 
 struct RightBiasedUnionOp;
 
-impl<'a, K: Ord, V, I: MergeStateMut<A=(K,V), B=(K,V)>> MergeOperation<I>
+impl<'a, K: Ord, V, I: MergeStateMut<A = (K, V), B = (K, V)>> MergeOperation<I>
     for RightBiasedUnionOp
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut I, n: usize) {
-        m.advance_a(n, true);
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) {
-        m.advance_b(n, true);
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut I) {
-        m.advance_a(1, false);
-        m.advance_b(1, true);
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        m.advance_a(1, false)?;
+        m.advance_b(1, true)
     }
 }
 
-pub enum OuterJoinArg<A, B> {
-    Left(A),
-    Right(B),
-    Both(A, B),
+pub enum OuterJoinArg<K, A, B> {
+    Left(K, A),
+    Right(K, B),
+    Both(K, A, B),
 }
 
 struct OuterJoinOp<F>(F);
@@ -82,17 +82,11 @@ struct InnerJoinOp<F>(F);
 
 // struct OuterJoinWithOp<F>(F);
 
-type PairMergeState<'a, K, A, B, R> = VecMergeState<'a, (K, A), (K, B), (K, R)>;
-
 // type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
 
 impl<K: Ord, V> FromIterator<(K, V)> for VecMap<K, V> {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        VecMap(sort_and_dedup_by_key(
-            iter.into_iter(),
-            |(k, _)| k,
-            Keep::Last,
-        ).into())
+        VecMap(sort_and_dedup_by_key(iter.into_iter(), |(k, _)| k, Keep::Last).into())
     }
 }
 
@@ -109,116 +103,159 @@ impl<K: Ord, V> Extend<(K, V)> for VecMap<K, V> {
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(OuterJoinArg<&A, &B>) -> R>
-    MergeOperation<PairMergeState<'a, K, A, B, R>> for OuterJoinOp<F>
+impl<
+        'a,
+        K: Ord + Clone,
+        A,
+        B,
+        R,
+        Arr: Array<Item = (K, R)>,
+        F: Fn(OuterJoinArg<&K, &A, &B>) -> Option<R>,
+    > MergeOperation<SmallVecMergeState<'a, (K, A), (K, B), Arr>> for OuterJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
-                let arg = OuterJoinArg::Left(a);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                let arg = OuterJoinArg::Left(k, a);
+                if let Some(res) = (self.0)(arg) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
-                let arg = OuterJoinArg::Right(b);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                let arg = OuterJoinArg::Right(k, b);
+                if let Some(res) = (self.0)(arg) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>) -> EarlyOut {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                let arg = OuterJoinArg::Both(a, b);
-                let res = (self.0)(arg);
-                m.r.push((k.clone(), res));
+                let arg = OuterJoinArg::Both(k, a, b);
+                if let Some(res) = (self.0)(arg) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, Option<&B>) -> R>
-    MergeOperation<PairMergeState<'a, K, A, B, R>> for LeftJoinOp<F>
+impl<
+        'a,
+        K: Ord + Clone,
+        A,
+        B,
+        R,
+        Arr: Array<Item = (K, R)>,
+        F: Fn(&K, &A, Option<&B>) -> Option<R>,
+    > MergeOperation<SmallVecMergeState<'a, (K, A), (K, B), Arr>> for LeftJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
-                let res = (self.0)(a, None);
-                m.r.push((k.clone(), res));
+                if let Some(res) = (self.0)(k, a, None) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         m.b.drop_front(n);
+        Some(())
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>) -> EarlyOut {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                m.r.push((k.clone(), (self.0)(a, Some(b))));
+                if let Some(res) = (self.0)(k, a, Some(b)) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(Option<&A>, &B) -> R>
-    MergeOperation<PairMergeState<'a, K, A, B, R>> for RightJoinOp<F>
+impl<
+        'a,
+        K: Ord + Clone,
+        A,
+        B,
+        R,
+        Arr: Array<Item = (K, R)>,
+        F: Fn(&K, Option<&A>, &B) -> Option<R>,
+    > MergeOperation<SmallVecMergeState<'a, (K, A), (K, B), Arr>> for RightJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         m.a.drop_front(n);
+        Some(())
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
-                m.r.push((k.clone(), (self.0)(None, b)));
+                if let Some(res) = (self.0)(k, None, b) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>) -> EarlyOut {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                m.r.push((k.clone(), (self.0)(Some(a), b)));
+                if let Some(res) = (self.0)(k, Some(a), b) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
 }
 
-impl<'a, K: Ord + Clone, A, B, R, F: Fn(&A, &B) -> R>
-    MergeOperation<PairMergeState<'a, K, A, B, R>> for InnerJoinOp<F>
+impl<'a, K: Ord + Clone, A, B, R, Arr: Array<Item = (K, R)>, F: Fn(&K, &A, &B) -> Option<R>>
+    MergeOperation<SmallVecMergeState<'a, (K, A), (K, B), Arr>> for InnerJoinOp<F>
 {
     fn cmp(&self, a: &(K, A), b: &(K, B)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         m.a.drop_front(n);
+        Some(())
     }
-    fn from_b(&self, m: &mut PairMergeState<'a, K, A, B, R>, n: usize) {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>, n: usize) -> EarlyOut {
         m.b.drop_front(n);
+        Some(())
     }
-    fn collision(&self, m: &mut PairMergeState<'a, K, A, B, R>) {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, A), (K, B), Arr>) -> EarlyOut {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
-                let res = (self.0)(a, b);
-                m.r.push((k.clone(), res));
+                if let Some(res) = (self.0)(k, a, b) {
+                    m.r.push((k.clone(), res));
+                }
             }
         }
+        Some(())
     }
 }
 
-impl<K, V, A: Array<Item=(K,V)>> VecMap<K, V, A> {
-
+impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
     pub(crate) fn new(value: SmallVec<A>) -> Self {
         Self(value)
     }
@@ -263,15 +300,19 @@ impl<K, V, A: Array<Item=(K,V)>> VecMap<K, V, A> {
     pub fn into_sorted_vec(self) -> SmallVec<A> {
         self.0
     }
+
+    pub fn single(k: K, v: V) -> Self {
+        Self::from_sorted_vec(vec![(k, v)])
+    }
 }
 
-impl<K: Ord, V, A: Array<Item=(K, V)>> VecMap<K, V, A> {
+impl<K: Ord, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
     pub fn merge_with(&mut self, rhs: VecMap<K, V, A>) {
-        SmallVecInPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
+        InPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
 
     pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<K, V, A>, f: F) {
-        SmallVecInPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
+        InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
     }
 
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
@@ -300,10 +341,6 @@ impl<K: Ord, V, A: Array<Item=(K, V)>> VecMap<K, V, A> {
 }
 
 impl<K: Ord + Clone, V: Clone> VecMap<K, V> {
-    pub fn single(k: K, v: V) -> Self {
-        Self::from_sorted_vec(vec![(k, v)])
-    }
-
     // pub fn outer_join_with<W: Clone, R, F: Fn(OuterJoinArg<&V, W>)>(
     //     &self,
     //     that: &VecMap<K, W>,
@@ -316,48 +353,48 @@ impl<K: Ord + Clone, V: Clone> VecMap<K, V> {
     //     ))
     // }
 
-    pub fn outer_join<W: Clone, R, F: Fn(OuterJoinArg<&V, &W>) -> R>(
+    pub fn outer_join<W: Clone, R, F: Fn(OuterJoinArg<&K, &V, &W>) -> Option<R>>(
         &self,
         that: &VecMap<K, W>,
         f: F,
     ) -> VecMap<K, R> {
-        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+        VecMap::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             OuterJoinOp(f),
         ))
     }
 
-    pub fn left_join<W: Clone, R, F: Fn(&V, Option<&W>) -> R>(
+    pub fn left_join<W: Clone, R, F: Fn(&K, &V, Option<&W>) -> Option<R>>(
         &self,
         that: &VecMap<K, W>,
         f: F,
     ) -> VecMap<K, R> {
-        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+        VecMap::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             LeftJoinOp(f),
         ))
     }
 
-    pub fn right_join<W: Clone, R, F: Fn(Option<&V>, &W) -> R>(
+    pub fn right_join<W: Clone, R, F: Fn(&K, Option<&V>, &W) -> Option<R>>(
         &self,
         that: &VecMap<K, W>,
         f: F,
     ) -> VecMap<K, R> {
-        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+        VecMap::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             RightJoinOp(f),
         ))
     }
 
-    pub fn inner_join<W: Clone, R, F: Fn(&V, &W) -> R>(
+    pub fn inner_join<W: Clone, R, F: Fn(&K, &V, &W) -> Option<R>>(
         &self,
         that: &VecMap<K, W>,
         f: F,
     ) -> VecMap<K, R> {
-        VecMap::<K, R>::from_sorted_vec(VecMergeState::merge(
+        VecMap::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             InnerJoinOp(f),
@@ -406,11 +443,11 @@ mod tests {
             let expected: Test = outer_join_reference(&a, &b).into();
             let a: Test = a.into();
             let b: Test = b.into();
-            let actual = a.outer_join(&b, |arg| match arg {
-                Left(a) => a.clone(),
-                Right(b) => b.clone(),
-                Both(_, b) => b.clone(),
-            });
+            let actual = a.outer_join(&b, |arg| Some(match arg {
+                Left(_, a) => a.clone(),
+                Right(_, b) => b.clone(),
+                Both(_, _, b) => b.clone(),
+            }));
             expected == actual
         }
 
@@ -418,7 +455,7 @@ mod tests {
             let expected: Test = inner_join_reference(&a, &b).into();
             let a: Test = a.into();
             let b: Test = b.into();
-            let actual = a.inner_join(&b, |a,_| a.clone());
+            let actual = a.inner_join(&b, |_, a,_| Some(a.clone()));
             expected == actual
         }
     }
@@ -437,10 +474,12 @@ mod tests {
         let a: Test = a.into();
         let b: Test = b.into();
         let expected: Test = r.into();
-        let actual = a.outer_join(&b, |arg| match arg {
-            Left(a) => a.clone(),
-            Right(b) => b.clone(),
-            Both(_, b) => b.clone(),
+        let actual = a.outer_join(&b, |arg| {
+            Some(match arg {
+                Left(_, a) => a.clone(),
+                Right(_, b) => b.clone(),
+                Both(_, _, b) => b.clone(),
+            })
         });
         assert_eq!(actual, expected);
         println!("{:?}", actual);

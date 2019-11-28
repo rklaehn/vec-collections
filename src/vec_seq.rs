@@ -71,20 +71,20 @@ impl<T: Clone + Eq> AddAssign<&VecSeq<T>> for VecSeq<T> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn test_basic_usage() {
-        let a: VecSeq<i64> = vec![1, 2, 3].into();
-        let b: VecSeq<i64> = vec![1, 2, 3].into();
-        let mut c = &a + &b;
-        c += &b;
-        let at = a.clone().into_total(0);
-        let bt = b.clone().into_total(0);
-        let ct = at.operate(&bt);
-        println!("{} {} {}", a, b, c);
-        println!("{} {} {}", at, bt, ct);
-    }
-}
+//     #[test]
+//     fn test_basic_usage() {
+//         let a: VecSeq<i64> = vec![1, 2, 3].into();
+//         let b: VecSeq<i64> = vec![1, 2, 3].into();
+//         let mut c = &a + &b;
+//         c += &b;
+//         let at = a.clone().into_total(0);
+//         let bt = b.clone().into_total(0);
+//         let ct = at.operate(&bt);
+//         println!("{} {} {}", a, b, c);
+//         println!("{} {} {}", at, bt, ct);
+//     }
+// }
