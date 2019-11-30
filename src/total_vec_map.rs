@@ -1,17 +1,25 @@
+//! A map with default value, backed by a `SmallVec<(K, V)>` of key value pairs.
+//!
+//! Having a default value means that the mapping is a total function from K to V, hence the name.
 use crate::binary_merge::{EarlyOut, MergeOperation};
 use crate::merge_state::SmallVecMergeState;
 use crate::vec_map::VecMap;
+use num_traits::{Bounded, One, Zero};
 use smallvec::Array;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
-use std::ops::{Add, Sub, Mul, Div, Neg, Index};
-use num_traits::{Bounded, Zero, One};
+use std::fmt::Debug;
+use std::ops::{Add, Div, Index, Mul, Neg, Sub};
 
-#[derive(Hash, Debug, Clone, Eq, PartialEq, Default)]
-pub struct TotalVecMap<K, V>(VecMap<K, V>, V);
+#[derive(Hash, Clone, Eq, PartialEq, Default)]
+pub struct TotalVecMap<K, V, A: Array<Item = (K, V)> = [(K, V); 2]>(VecMap<K, V, A>, V);
 
-impl<K, V: Eq> TotalVecMap<K, V> {
-    pub fn new(map: VecMap<K, V>, default: V) -> Self {
+impl<K, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
+    /// Creates a total vec map, given a vec map and a default value.serde
+    ///
+    /// Mappings in the map that map to the default value will be removed in order to have
+    /// a unique representation.
+    pub fn new(map: VecMap<K, V, A>, default: V) -> Self {
         let mut entries = map;
         // ensure canonical representation!
         entries.retain(|(_, v)| *v != default);
@@ -19,23 +27,34 @@ impl<K, V: Eq> TotalVecMap<K, V> {
     }
 }
 
-impl<K, V> TotalVecMap<K, V> {
+impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
+    /// Creates a constant mapping from any K to the given V.
     pub fn constant(value: V) -> Self {
         Self(VecMap::default(), value)
     }
 
-    pub fn as_slice(&self) -> &[(K, V)] {
-        self.0.as_slice()
+    // pub fn non_default_mappings(&self) -> &VecMap<K, V> {
+    //     self.0
+    // }
+}
+
+impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<K, V, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TotalVecMap")
+            .field("values", &self.0)
+            .field("default", &self.1)
+            .finish()
     }
 }
 
-impl<K, V> From<V> for TotalVecMap<K, V> {
+/// Creates a constant mapping from any K to the given V.
+impl<K, V, A: Array<Item = (K, V)>> From<V> for TotalVecMap<K, V, A> {
     fn from(value: V) -> Self {
         Self::constant(value)
     }
 }
 
-impl<K, V: Bounded> Bounded for TotalVecMap<K, V> {
+impl<K, V: Bounded, A: Array<Item = (K, V)>> Bounded for TotalVecMap<K, V, A> {
     fn min_value() -> Self {
         V::min_value().into()
     }
@@ -44,7 +63,7 @@ impl<K, V: Bounded> Bounded for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Add<Output=V> + Eq + Clone> Add for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone> Add for TotalVecMap<K, V> {
     type Output = TotalVecMap<K, V>;
 
     fn add(self, that: Self) -> Self::Output {
@@ -52,7 +71,7 @@ impl<K: Ord + Clone, V: Add<Output=V> + Eq + Clone> Add for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Sub<Output=V> + Eq + Clone> Sub for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone> Sub for TotalVecMap<K, V> {
     type Output = Self;
 
     fn sub(self, that: Self) -> Self::Output {
@@ -60,7 +79,7 @@ impl<K: Ord + Clone, V: Sub<Output=V> + Eq + Clone> Sub for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Neg<Output=V> + Eq + Clone> Neg for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone> Neg for TotalVecMap<K, V> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -68,7 +87,7 @@ impl<K: Ord + Clone, V: Neg<Output=V> + Eq + Clone> Neg for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Mul<Output=V> + Eq + Clone> Mul for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone> Mul for TotalVecMap<K, V> {
     type Output = TotalVecMap<K, V>;
 
     fn mul(self, that: Self) -> Self::Output {
@@ -76,7 +95,7 @@ impl<K: Ord + Clone, V: Mul<Output=V> + Eq + Clone> Mul for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Div<Output=V> + Eq + Clone> Div for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Div<Output = V> + Eq + Clone> Div for TotalVecMap<K, V> {
     type Output = TotalVecMap<K, V>;
 
     fn div(self, that: Self) -> Self::Output {
@@ -194,6 +213,7 @@ impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V, Arr: Array<Item = (K
 }
 
 impl<K: Ord + Clone, V: Eq> TotalVecMap<K, V> {
+    /// combine a total map with another total map, using a function that takes value references
     pub fn combine_ref<F: Fn(&V, &V) -> V>(&self, that: &Self, f: F) -> Self {
         let r_default = f(&self.1, &that.1);
         let op = CombineOp {
@@ -202,17 +222,17 @@ impl<K: Ord + Clone, V: Eq> TotalVecMap<K, V> {
             b_default: &that.1,
             r_default: &r_default,
         };
-        let r = SmallVecMergeState::merge(self.as_slice(), that.as_slice(), op);
+        let r = SmallVecMergeState::merge(self.0.as_slice(), that.0.as_slice(), op);
         Self(VecMap::new(r), r_default)
     }
 }
 
 impl<K: Ord + Clone, V: Ord + Clone> TotalVecMap<K, V> {
     pub fn supremum(&self, that: &Self) -> Self {
-        self.combine_ref(that, |a, b| std::cmp::max(a,b).clone())
+        self.combine_ref(that, |a, b| std::cmp::max(a, b).clone())
     }
     pub fn infimum(&self, that: &Self) -> Self {
-        self.combine_ref(that, |a, b| std::cmp::min(a,b).clone())
+        self.combine_ref(that, |a, b| std::cmp::min(a, b).clone())
     }
 }
 
@@ -229,7 +249,7 @@ impl<K: Ord + Clone, V: Eq + Clone> TotalVecMap<K, V> {
             f,
             r_default: &r_default,
         };
-        let r = SmallVecMergeState::merge(self.as_slice(), that.as_slice(), op);
+        let r = SmallVecMergeState::merge(self.0.as_slice(), that.0.as_slice(), op);
         Self(VecMap::new(r), r_default)
     }
 }
@@ -260,6 +280,7 @@ where
 {
     type Output = V;
 
+    /// Lookup. Time complexity is O(log N), where N is the number of non-default elements
     fn index(&self, key: &Q) -> &V {
         self.0.get(key).unwrap_or(&self.1)
     }

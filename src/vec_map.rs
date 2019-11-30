@@ -1,3 +1,10 @@
+//! A map based on a `SmallVec<(K, V)>` of key value pairs.
+//!
+//! An advantage of this map compared to e.g. BTreeMap is that small maps will be stored inline without allocations.
+//! Larger maps will be stored using a single object on the heap.
+//!
+//! A disadvante is that insertion and removal of single mappings is very slow (O(N)) for large maps.
+//!
 use crate::binary_merge::{EarlyOut, MergeOperation};
 use crate::dedup::{sort_and_dedup_by_key, Keep};
 use crate::iterators::SliceIterator;
@@ -18,7 +25,7 @@ impl<K, V, A: Array<Item = (K, V)>> Default for VecMap<K, V, A> {
     }
 }
 
-impl<K: Debug, V: Debug> Debug for VecMap<K, V> {
+impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for VecMap<K, V, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
             .entries(self.0.iter().map(|(k, v)| (k, v)))
@@ -256,6 +263,7 @@ impl<'a, K: Ord + Clone, A, B, R, Arr: Array<Item = (K, R)>, F: Fn(&K, &A, &B) -
 }
 
 impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
+    /// private because it does not check invariants
     pub(crate) fn new(value: SmallVec<A>) -> Self {
         Self(value)
     }
@@ -268,14 +276,17 @@ impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
         Self(SmallVec::new())
     }
 
+    /// number of mappings
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// the underlying memory as a slice of key value pairs
     pub fn as_slice(&self) -> &[(K, V)] {
         self.0.as_slice()
     }
 
+    /// retain all pairs matching a predicate
     pub fn retain<F: FnMut((&K, &V)) -> bool>(&mut self, mut f: F) {
         self.0.retain(|entry| f((&entry.0, &entry.1)))
     }
@@ -284,6 +295,7 @@ impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
         SliceIterator(self.0.as_slice())
     }
 
+    /// map values while keeping keys
     pub fn map_values<R, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<K, R> {
         VecMap::from_sorted_vec(
             self.0
@@ -301,20 +313,26 @@ impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
         self.0
     }
 
+    /// A map containing a single mapping
     pub fn single(k: K, v: V) -> Self {
         Self::from_sorted_vec(vec![(k, v)])
     }
 }
 
 impl<K: Ord, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
+    /// in-place merge with another map of the same type. The merge is right-biased, so on collisions the values
+    /// from the rhs will win.
     pub fn merge_with(&mut self, rhs: VecMap<K, V, A>) {
         InPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
     }
 
+    /// in-place combine with another map of the same type. The given function allows to select the value in case
+    /// of collisions.
     pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<K, V, A>, f: F) {
         InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
     }
 
+    /// lookup of a mapping. Time complexity is O(log N). Binary search.
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,

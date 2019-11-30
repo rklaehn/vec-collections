@@ -1,3 +1,7 @@
+//! A total set backed by a `SmallVec<T>`.
+//!
+//! This set stores an additional flag to support negation, so it is possible to support e.g. the set of all
+//! u64 except 1.
 use crate::VecSet;
 use std::fmt::Debug;
 use std::fmt::Write;

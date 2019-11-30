@@ -1,8 +1,8 @@
-use num_traits::{One, Zero, Bounded};
+use num_traits::{Bounded, One, Zero};
 use std::cmp::max;
 use std::fmt;
 use std::fmt::Display;
-use std::ops::{Add, Sub, Mul, Div, Neg, Index};
+use std::ops::{Add, Div, Index, Mul, Neg, Sub};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct TotalVecSeq<T> {
@@ -10,7 +10,7 @@ pub struct TotalVecSeq<T> {
     values: Vec<T>,
 }
 
-impl<T: Add<Output=T> + Eq + Clone> Add for TotalVecSeq<T> {
+impl<T: Add<Output = T> + Eq + Clone> Add for TotalVecSeq<T> {
     type Output = Self;
 
     fn add(self, that: Self) -> Self::Output {
@@ -18,7 +18,7 @@ impl<T: Add<Output=T> + Eq + Clone> Add for TotalVecSeq<T> {
     }
 }
 
-impl<T: Sub<Output=T> + Eq + Clone> Sub for TotalVecSeq<T> {
+impl<T: Sub<Output = T> + Eq + Clone> Sub for TotalVecSeq<T> {
     type Output = Self;
 
     fn sub(self, that: Self) -> Self::Output {
@@ -26,14 +26,14 @@ impl<T: Sub<Output=T> + Eq + Clone> Sub for TotalVecSeq<T> {
     }
 }
 
-impl <T: Neg<Output=T> + Eq + Clone> Neg for TotalVecSeq<T> {
+impl<T: Neg<Output = T> + Eq + Clone> Neg for TotalVecSeq<T> {
     type Output = Self;
     fn neg(self) -> Self {
         self.map(|x| -x)
     }
 }
 
-impl<T: Mul<Output=T> + Eq + Clone> Mul for TotalVecSeq<T> {
+impl<T: Mul<Output = T> + Eq + Clone> Mul for TotalVecSeq<T> {
     type Output = Self;
 
     fn mul(self, that: Self) -> Self {
@@ -41,7 +41,7 @@ impl<T: Mul<Output=T> + Eq + Clone> Mul for TotalVecSeq<T> {
     }
 }
 
-impl<T: Div<Output=T> + Eq + Clone> Div for TotalVecSeq<T> {
+impl<T: Div<Output = T> + Eq + Clone> Div for TotalVecSeq<T> {
     type Output = Self;
 
     fn div(self, that: Self) -> Self {
@@ -99,8 +99,10 @@ impl<V> Index<usize> for TotalVecSeq<V> {
 }
 
 impl<T: Eq> TotalVecSeq<T> {
-
-    fn iter<'a>(&'a self) -> impl Iterator<Item=&'a T> where T: 'a {
+    fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T>
+    where
+        T: 'a,
+    {
         self.values.iter().chain(std::iter::repeat(&self.default))
     }
 
@@ -108,7 +110,12 @@ impl<T: Eq> TotalVecSeq<T> {
         let lhs = self;
         let l = max(lhs.values.len(), rhs.values.len());
         let default = op(&lhs.default, &rhs.default);
-        let values: Vec<T> = lhs.iter().zip(rhs.iter()).map(|(a,b)| op(a,b)).take(l).collect();
+        let values: Vec<T> = lhs
+            .iter()
+            .zip(rhs.iter())
+            .map(|(a, b)| op(a, b))
+            .take(l)
+            .collect();
         TotalVecSeq::new(values, default)
     }
 
@@ -123,7 +130,6 @@ impl<T: Eq> TotalVecSeq<T> {
 }
 
 impl<T: Eq + Ord + Clone> TotalVecSeq<T> {
-
     pub fn supremum(&self, that: &Self) -> Self {
         self.combine_ref(that, |a, b| if a > b { a.clone() } else { b.clone() })
     }
@@ -133,15 +139,22 @@ impl<T: Eq + Ord + Clone> TotalVecSeq<T> {
 }
 
 impl<T: Eq + Clone> TotalVecSeq<T> {
-    fn into_iter(self) -> impl Iterator<Item=T> {
-        self.values.into_iter().chain(std::iter::repeat(self.default))
+    fn into_iter(self) -> impl Iterator<Item = T> {
+        self.values
+            .into_iter()
+            .chain(std::iter::repeat(self.default))
     }
 
     fn combine<F: Fn(T, T) -> T>(self, rhs: Self, op: F) -> Self {
         let lhs = self;
         let l = max(lhs.values.len(), rhs.values.len());
         let default = op(lhs.default.clone(), rhs.default.clone());
-        let values: Vec<T> = lhs.into_iter().zip(rhs.into_iter()).map(|(a,b)| op(a,b)).take(l).collect();
+        let values: Vec<T> = lhs
+            .into_iter()
+            .zip(rhs.into_iter())
+            .map(|(a, b)| op(a, b))
+            .take(l)
+            .collect();
         TotalVecSeq::new(values, default)
     }
 
@@ -185,8 +198,8 @@ mod tests {
     #[test]
     fn usage() {
         type Test = TotalVecSeq<i64>;
-        let x: Test = Test::new(vec![1,2,3], 0);
-        let y: Test = Test::new(vec![4,5], 6);
+        let x: Test = Test::new(vec![1, 2, 3], 0);
+        let y: Test = Test::new(vec![4, 5], 6);
         let z: Test = x + y;
         println!("{}", z);
     }
