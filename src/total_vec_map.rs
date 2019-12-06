@@ -15,7 +15,7 @@ use std::ops::{Add, Div, Index, Mul, Neg, Sub};
 pub struct TotalVecMap<K, V, A: Array<Item = (K, V)> = [(K, V); 2]>(VecMap<K, V, A>, V);
 
 impl<K, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
-    /// Creates a total vec map, given a vec map and a default value.serde
+    /// Creates a total vec map, given a vec map and a default value.
     ///
     /// Mappings in the map that map to the default value will be removed in order to have
     /// a unique representation.

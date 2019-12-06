@@ -104,7 +104,7 @@ impl<T: Ord, A: Array<Item = T>> VecSet<T, A> {
         that.is_subset(self)
     }
 
-    /// true if this set contains the item.serde
+    /// true if this set contains the item.
     ///
     /// Time complexity is O(log N). Binary search.
     pub fn contains(&self, value: &T) -> bool {
