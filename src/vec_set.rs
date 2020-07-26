@@ -1,16 +1,12 @@
 //! A set backed by a `SmallVec<T>`.
 //!
 //! An advantage of this set compared to e.g. BTreeSet is that small sets will be stored inline without allocations.
-//! Larger sets will be stored using a single object on the heap. The maximum inlined size can be chosen using a type
-//! parameter. The default inline threshold is 2.
+//! Larger sets will be stored using a single object on the heap.
 //!
-//! A disadvante is that insertion and removal of single elements is very slow (O(N)), which makes these operations
-//! prohibitive for large sets.
+//! A disadvante is that insertion and removal of single elements is very slow (O(N)) for large sets.
 //!
 //! Set operations (union, intersection etc.) are supported using the binary operators, with both variants that
 //! create new sets and in-place variants.
-//!
-//! When using in-place operations, if the backing buffer has sufficient space, there will be no allocations.
 use crate::binary_merge::{EarlyOut, MergeOperation};
 use crate::dedup::sort_and_dedup;
 use crate::iterators::SortedIter;
@@ -28,8 +24,8 @@ struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
 
-/// A set backed by a `SmallVec<T>`. Default inline size is 2, so sets with 0, 1 or 2 elements will not allocate.
-#[derive(Debug, Hash, Clone, PartialOrd, Ord, PartialEq, Eq, Default)]
+/// A set backed by a `SmallVec<T>`
+#[derive(Debug, Hash, Clone, PartialEq, Eq, Default)]
 pub struct VecSet<T, A: Array<Item = T> = [T; 2]>(SmallVec<A>, PhantomData<T>);
 
 impl<T, A: Array<Item = T>> VecSet<T, A> {
@@ -130,16 +126,8 @@ impl<T: Ord, A: Array<Item = T>> VecSet<T, A> {
     }
 }
 
-impl<A: Array> IntoIterator for VecSet<A::Item, A> {
-    type Item = A::Item;
-    type IntoIter = smallvec::IntoIter<A>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-impl<A: Array> Into<Vec<A::Item>> for VecSet<A::Item, A> {
-    fn into(self) -> Vec<A::Item> {
+impl<A: Array<Item = T>, T> Into<Vec<T>> for VecSet<T, A> {
+    fn into(self) -> Vec<T> {
         self.0.into_vec()
     }
 }
@@ -200,22 +188,20 @@ impl<T: Ord> SubAssign for VecSet<T> {
     }
 }
 
-impl<A: Array> AsRef<[A::Item]> for VecSet<A::Item, A> {
-    fn as_ref(&self) -> &[A::Item] {
+impl<T, A: Array<Item = T>> AsRef<[T]> for VecSet<T, A> {
+    fn as_ref(&self) -> &[T] {
         self.as_slice()
     }
 }
 
-impl<A: Array> From<Vec<A::Item>> for VecSet<A::Item, A>
-    where A::Item: Ord,
-{
-    fn from(vec: Vec<A::Item>) -> Self {
+impl<T: Ord> From<Vec<T>> for VecSet<T> {
+    fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
 
-impl<A: Array> From<BTreeSet<A::Item>> for VecSet<A::Item, A> {
-    fn from(value: BTreeSet<A::Item>) -> Self {
+impl<T: Ord> From<BTreeSet<T>> for VecSet<T> {
+    fn from(value: BTreeSet<T>) -> Self {
         Self::new(value.into_iter().collect())
     }
 }

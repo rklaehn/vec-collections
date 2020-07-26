@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::FromIterator;
+use std::fmt;
 
 /// A map backed by a `SmallVec<(K, V)>`. Default inline size is 2, so maps with 0, 1 or 2 elements will not allocate.
 #[derive(Hash, Clone, Eq, PartialEq)]
@@ -35,7 +36,7 @@ impl<K, V, A: Array<Item = (K, V)>> Default for VecMap<K, V, A> {
 }
 
 impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for VecMap<K, V, A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_map()
             .entries(self.0.iter().map(|(k, v)| (k, v)))
             .finish()
