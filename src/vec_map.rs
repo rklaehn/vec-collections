@@ -16,8 +16,17 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::FromIterator;
 
+/// A map backed by a `SmallVec<(K, V)>`. Default inline size is 2, so maps with 0, 1 or 2 elements will not allocate.
 #[derive(Hash, Clone, Eq, PartialEq)]
 pub struct VecMap<K, V, A: Array<Item = (K, V)> = [(K, V); 2]>(SmallVec<A>);
+
+impl<K, V, A: Array<Item=(K, V)>> IntoIterator for VecMap<K, V, A> {
+    type Item = (K, V);
+    type IntoIter = smallvec::IntoIter<A>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
 
 impl<K, V, A: Array<Item = (K, V)>> Default for VecMap<K, V, A> {
     fn default() -> Self {
