@@ -188,6 +188,12 @@ impl<T: Ord> SubAssign for VecSet<T> {
     }
 }
 
+impl<T, A: Array<Item = T>> AsRef<[T]> for VecSet<T, A> {
+    fn as_ref(&self) -> &[T] {
+        self.as_slice()
+    }
+}
+
 impl<T: Ord> From<Vec<T>> for VecSet<T> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)

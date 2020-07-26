@@ -319,6 +319,13 @@ impl<K, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
     }
 }
 
+impl<K, V, A: Array<Item = (K, V)>> AsRef<[(K, V)]> for VecMap<K, V, A> {
+    fn as_ref(&self) -> &[(K, V)] {
+        self.as_slice()
+    }
+
+}
+
 impl<K: Ord, V, A: Array<Item = (K, V)>> VecMap<K, V, A> {
     /// in-place merge with another map of the same type. The merge is right-biased, so on collisions the values
     /// from the rhs will win.
