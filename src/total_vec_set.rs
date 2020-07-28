@@ -9,15 +9,38 @@ use std::ops::BitAndAssign;
 use std::ops::BitOrAssign;
 use std::ops::BitXorAssign;
 use std::ops::SubAssign;
-use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
-
-#[derive(Clone, PartialEq, Eq)]
-pub struct TotalVecSet<T> {
-    elements: VecSet<T>,
+use std::{hash::Hash, ops::{BitAnd, BitOr, BitXor, Not, Sub}};
+use smallvec::Array;
+pub struct TotalVecSet<A: Array> {
+    elements: VecSet<A>,
     negated: bool,
 }
 
-impl<T: Debug> Debug for TotalVecSet<T> {
+impl<T: Clone, A: Array<Item = T>> Clone for TotalVecSet<A> {
+    fn clone(&self) -> Self {
+        Self {
+            elements: self.elements.clone(),
+            negated: self.negated,
+        }
+    }
+}
+
+impl<T: Hash, A: Array<Item = T>> Hash for TotalVecSet<A> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.elements.hash(state);
+        self.negated.hash(state);
+    }
+}
+
+impl<T: PartialEq, A: Array<Item = T>> PartialEq for TotalVecSet<A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.elements == other.elements && self.negated == other.negated
+    }
+}
+
+impl<T: Eq, A: Array<Item = T>> Eq for TotalVecSet<A> {}
+
+impl<T: Debug, A: Array<Item=T>> Debug for TotalVecSet<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.negated {
             f.write_char('!')?;
@@ -26,8 +49,8 @@ impl<T: Debug> Debug for TotalVecSet<T> {
     }
 }
 
-impl<T> TotalVecSet<T> {
-    fn new(elements: VecSet<T>, negated: bool) -> Self {
+impl<T, A: Array<Item=T>> TotalVecSet<A> {
+    fn new(elements: VecSet<A>, negated: bool) -> Self {
         Self { elements, negated }
     }
 
@@ -56,19 +79,19 @@ impl<T> TotalVecSet<T> {
     }
 }
 
-impl<T> From<bool> for TotalVecSet<T> {
+impl<T, A: Array<Item=T>> From<bool> for TotalVecSet<A> {
     fn from(value: bool) -> Self {
         Self::constant(value)
     }
 }
 
-impl<T> From<VecSet<T>> for TotalVecSet<T> {
-    fn from(value: VecSet<T>) -> Self {
+impl<T, A: Array<Item=T>> From<VecSet<A>> for TotalVecSet<A> {
+    fn from(value: VecSet<A>) -> Self {
         Self::new(value, false)
     }
 }
 
-impl<T: Ord> TotalVecSet<T> {
+impl<T: Ord, A: Array<Item=T>> TotalVecSet<A> {
     pub fn contains(&self, value: &T) -> bool {
         self.negated ^ self.elements.contains(value)
     }
@@ -104,7 +127,7 @@ impl<T: Ord> TotalVecSet<T> {
     }
 }
 
-impl<T: Ord + Clone> TotalVecSet<T> {
+impl<T: Ord + Clone, A: Array<Item=T>> TotalVecSet<A> {
     pub fn remove(&mut self, that: &T) {
         if self.negated {
             self.elements.insert(that.clone())
@@ -114,8 +137,8 @@ impl<T: Ord + Clone> TotalVecSet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitAnd for &TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord + Clone, A: Array<Item=T>> BitAnd for &TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn bitand(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -130,7 +153,7 @@ impl<T: Ord + Clone> BitAnd for &TotalVecSet<T> {
     }
 }
 
-impl<T: Ord> BitAndAssign for TotalVecSet<T> {
+impl<T: Ord, A: Array<Item=T>> BitAndAssign for TotalVecSet<A> {
     fn bitand_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -159,8 +182,8 @@ impl<T: Ord> BitAndAssign for TotalVecSet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitOr for &TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord + Clone, A: Array<Item=T>> BitOr for &TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn bitor(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // union of elements
@@ -175,7 +198,7 @@ impl<T: Ord + Clone> BitOr for &TotalVecSet<T> {
     }
 }
 
-impl<T: Ord> BitOrAssign for TotalVecSet<T> {
+impl<T: Ord, A: Array<Item=T>> BitOrAssign for TotalVecSet<A> {
     fn bitor_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // union of elements
@@ -204,14 +227,14 @@ impl<T: Ord> BitOrAssign for TotalVecSet<T> {
     }
 }
 
-impl<T: Ord + Clone> BitXor for &TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord + Clone, A: Array<Item=T>> BitXor for &TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn bitxor(self, that: Self) -> Self::Output {
         Self::Output::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
     }
 }
 
-impl<T: Ord> BitXorAssign for TotalVecSet<T> {
+impl<T: Ord, A: Array<Item=T>> BitXorAssign for TotalVecSet<A> {
     fn bitxor_assign(&mut self, that: Self) {
         self.elements ^= that.elements;
         self.negated ^= that.negated;
@@ -219,8 +242,8 @@ impl<T: Ord> BitXorAssign for TotalVecSet<T> {
 }
 
 #[allow(clippy::suspicious_arithmetic_impl)]
-impl<T: Ord + Clone> Sub for &TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord + Clone, A: Array<Item=T>> Sub for &TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn sub(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -235,7 +258,7 @@ impl<T: Ord + Clone> Sub for &TotalVecSet<T> {
     }
 }
 
-impl<T: Ord> SubAssign for TotalVecSet<T> {
+impl<T: Ord, A: Array<Item=T>> SubAssign for TotalVecSet<A> {
     fn sub_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -264,15 +287,15 @@ impl<T: Ord> SubAssign for TotalVecSet<T> {
     }
 }
 
-impl<T: Ord + Clone> Not for &TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord + Clone, A: Array<Item=T>> Not for &TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements.clone(), !self.negated)
     }
 }
 
-impl<T: Ord> Not for TotalVecSet<T> {
-    type Output = TotalVecSet<T>;
+impl<T: Ord, A: Array<Item=T>> Not for TotalVecSet<A> {
+    type Output = TotalVecSet<A>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements, !self.negated)
     }
@@ -284,9 +307,9 @@ mod tests {
     use quickcheck::*;
     use std::collections::BTreeSet;
 
-    type Test = TotalVecSet<i64>;
+    type Test = TotalVecSet<[i64; 2]>;
 
-    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalVecSet<T> {
+    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for TotalVecSet<[T; 2]> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let mut elements: Vec<T> = Arbitrary::arbitrary(g);
             elements.truncate(2);

@@ -3,11 +3,11 @@ use std::collections::{BTreeSet, HashSet};
 use vec_collections::*;
 
 fn vs_create(n: u64) -> usize {
-    let res: VecSet<u64> = (0..n).collect();
+    let res: VecSet2<u64> = (0..n).collect();
     res.len()
 }
 
-fn vs_contains(x: &VecSet<u64>, n: u64) -> usize {
+fn vs_contains(x: &VecSet2<u64>, n: u64) -> usize {
     let mut res = 0;
     for e in 0..n {
         if x.contains(&e) {
@@ -65,7 +65,7 @@ pub fn creation(c: &mut Criterion) {
     );
 }
 pub fn lookup(c: &mut Criterion) {
-    let vs: VecSet<u64> = (0..100).collect();
+    let vs: VecSet2<u64> = (0..100).collect();
     let bs: BTreeSet<u64> = (0..100).collect();
     let hs: HashSet<u64> = (0..100).collect();
     c.bench_function("vs_lookup 100", |b| {

@@ -38,6 +38,10 @@ pub enum Keep {
     Last,
 }
 
+trait Inner<T>: AsMut<T> {
+    fn push(&mut self, value: T);
+}
+
 /// an aggregator to incrementally sort and deduplicate unsorted elements
 ///
 /// this is a compromise between sorting and deduping at the end, which can have a lot of

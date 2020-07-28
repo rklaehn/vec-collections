@@ -1,7 +1,7 @@
 extern crate vec_collections;
 
 use std::collections::{BTreeSet, HashSet};
-use vec_collections::VecSet;
+use vec_collections::{VecSet2, VecSet};
 
 // #[macro_use]
 // extern crate lazy_static;
@@ -58,8 +58,8 @@ impl TestData {
 }
 
 fn union_arrayset(data: &TestData) {
-    let a: VecSet<Element> = data.a.clone().into();
-    let b: VecSet<Element> = data.b.clone().into();
+    let a: VecSet2<Element> = data.a.clone().into();
+    let b: VecSet2<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a | &b;
     let dt = std::time::Instant::now() - t0;
@@ -85,8 +85,8 @@ fn union_hashset(data: &TestData) {
 }
 
 fn intersection_arrayset(data: &TestData) {
-    let a: VecSet<Element> = data.a.clone().into();
-    let b: VecSet<Element> = data.b.clone().into();
+    let a: VecSet2<Element> = data.a.clone().into();
+    let b: VecSet2<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = &a & &b;
     let dt = std::time::Instant::now() - t0;
@@ -112,8 +112,8 @@ fn intersection_hashset(data: &TestData) {
 }
 
 fn is_disjoint_arrayset(data: &TestData) {
-    let a: VecSet<Element> = data.a.clone().into();
-    let b: VecSet<Element> = data.b.clone().into();
+    let a: VecSet2<Element> = data.a.clone().into();
+    let b: VecSet2<Element> = data.b.clone().into();
     let t0 = std::time::Instant::now();
     let _r = a.is_disjoint(&b);
     let dt = std::time::Instant::now() - t0;
@@ -140,7 +140,7 @@ fn is_disjoint_hashset(data: &TestData) {
 fn creation_arrayset(name: &str, data: &Vec<Element>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
-    let a: VecSet<Element> = elems.into_iter().collect();
+    let a: VecSet2<Element> = elems.into_iter().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation vecset {} {} {:?}", a.len(), name, dt);
 }
