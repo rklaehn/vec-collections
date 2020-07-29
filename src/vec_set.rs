@@ -55,6 +55,18 @@ impl<T: PartialEq, A: Array<Item = T>> PartialEq for VecSet<A> {
 
 impl<T: Eq, A: Array<Item = T>> Eq for VecSet<A> {}
 
+impl<T: PartialOrd, A: Array<Item = T>> PartialOrd for VecSet<A> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl<T: Ord, A: Array<Item = T>> Ord for VecSet<A> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
+
 impl<A: Array> VecSet<A> {
     /// private because it does not check the invariants
     fn new(a: SmallVec<A>) -> Self {

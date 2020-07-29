@@ -1,4 +1,5 @@
-use std::cmp::{min, Ordering};
+use std::{marker::PhantomData, cmp::{min, Ordering}, ops::DerefMut};
+use smallvec::SmallVec;
 
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
@@ -25,21 +26,33 @@ pub fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Kee
     j + 1
 }
 
-fn dedup<T: Eq>(d: &mut [T], keep: Keep) -> usize {
-    dedup_by(d, T::eq, keep)
-}
-
-/// size of a chunk for dedup and sort. After we have a full chunk we will sort it in.
-const CHUNK_BITS: u32 = 3;
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Keep {
     First,
     Last,
 }
 
-trait Inner<T>: AsMut<T> {
+trait Inner<T>: DerefMut<Target=[T]> {
     fn push(&mut self, value: T);
+    fn truncate(&mut self, size: usize);
+}
+
+impl<T> Inner<T> for Vec<T> {
+    fn push(&mut self, value: T) {
+        self.push(value)
+    }
+    fn truncate(&mut self, len: usize) {
+        self.truncate(len)
+    }
+}
+
+impl<A: smallvec::Array> Inner<A::Item> for SmallVec<A> {
+    fn push(&mut self, value: A::Item) {
+        self.push(value)
+    }
+    fn truncate(&mut self, len: usize) {
+        self.truncate(len)
+    }
 }
 
 /// an aggregator to incrementally sort and deduplicate unsorted elements
@@ -48,9 +61,9 @@ trait Inner<T>: AsMut<T> {
 /// temporary memory usage if you feed it with lots of duplicate elements, and sorting
 /// on each insertion, which is expensive for a flat data structure due to all the memory
 /// movements.
-struct SortAndDedup<T, F> {
+struct SortAndDedup<I, T, F> {
     /// partially sorted and deduplicated data elements
-    data: Vec<T>,
+    data: I,
     /// number of sorted elements
     sorted: usize,
     /// comparison
@@ -59,49 +72,56 @@ struct SortAndDedup<T, F> {
     count: usize,
     /// which element to keep in case of duplicates
     keep: Keep,
+
+    _t: PhantomData<T>,
 }
 
-pub fn sort_and_dedup<T: Ord, I: Iterator<Item = T>>(iter: I) -> Vec<T> {
-    let mut agg: SortAndDedup<T, _> = SortAndDedup {
+pub fn sort_and_dedup<I: Iterator>(iter: I) -> Vec<I::Item>
+    where I::Item: Ord
+{
+    let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
         data: Vec::with_capacity(iter.size_hint().0),
         count: 0,
         sorted: 0,
-        cmp: |a: &T, b: &T| a.cmp(b),
+        cmp: |a: &I::Item, b: &I::Item| a.cmp(b),
         keep: Keep::First,
+        _t: PhantomData,
     };
     for x in iter {
         agg.push(x);
     }
-    agg.into_vec()
+    agg.into_inner()
 }
 
-pub fn sort_and_dedup_by_key<T, K, I, F>(iter: I, key: F, keep: Keep) -> Vec<T>
+pub fn sort_and_dedup_by_key<K, I, F>(iter: I, key: F, keep: Keep) -> Vec<I::Item>
 where
     K: Ord,
-    I: Iterator<Item = T>,
-    F: Fn(&T) -> &K,
+    I: Iterator,
+    F: Fn(&I::Item) -> &K,
 {
-    let mut agg: SortAndDedup<T, _> = SortAndDedup {
+    let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
         data: Vec::with_capacity(min(iter.size_hint().0, 16)),
         count: 0,
         sorted: 0,
-        cmp: |a: &T, b: &T| key(a).cmp(&key(b)),
+        cmp: |a: &I::Item, b: &I::Item| key(a).cmp(&key(b)),
         keep,
+        _t: PhantomData,
     };
     for x in iter {
         agg.push(x);
     }
-    agg.into_vec()
+    agg.into_inner()
 }
 
-impl<T, F> SortAndDedup<T, F>
+impl<I, T, F> SortAndDedup<I, T, F>
 where
     F: Fn(&T, &T) -> Ordering,
+    I: Inner<T>,
 {
     fn sort_and_dedup(&mut self) {
         if self.sorted < self.data.len() {
             let cmp = &self.cmp;
-            let slice = self.data.as_mut_slice();
+            let slice = self.data.deref_mut();
             slice.sort_by(cmp);
             let unique = dedup_by(slice, |a, b| cmp(a, b) == Ordering::Equal, self.keep);
             self.data.truncate(unique);
@@ -109,7 +129,7 @@ where
         }
     }
 
-    fn into_vec(self) -> Vec<T> {
+    fn into_inner(self) -> I {
         let mut res = self;
         res.sort_and_dedup();
         res.data
@@ -138,18 +158,20 @@ where
                 }
             } else {
                 // single element is always sorted
-                self.data.push(elem);
                 self.sorted += 1;
+                self.data.push(elem);
             }
         } else {
             // not sorted
             self.data.push(elem);
         }
-        let level = self.count.trailing_zeros();
-        if level >= CHUNK_BITS {
+        // Don't bother with the compaction for small collections
+        if self.data.len() >= 16 {
             let sorted = self.sorted;
             let unsorted = self.data.len() - sorted;
             if unsorted > sorted {
+                // after this, it will be fully sorted. So even in the worst case 
+                // it will be another self.data.len() elements until we call this again
                 self.sort_and_dedup();
             }
         }
