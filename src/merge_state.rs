@@ -41,7 +41,8 @@ impl<'a, A: Array, B: Array> MergeStateRead for InPlaceMergeState<A, B> {
     }
 }
 
-impl<'a, A: Array> MergeStateMut for InPlaceMergeState<A, A> {
+impl<'a, T, A: Array<Item = T>, B: Array<Item = T>> MergeStateMut for InPlaceMergeState<A, B>
+{
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         self.a.consume(n, take);
         Some(())

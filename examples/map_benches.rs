@@ -1,7 +1,7 @@
 extern crate vec_collections;
 
 use std::collections::{BTreeMap, HashMap};
-use vec_collections::VecMap;
+use vec_collections::VecMap2;
 
 type Element = i64;
 fn element(x: usize) -> Element {
@@ -11,7 +11,7 @@ fn element(x: usize) -> Element {
 fn creation_vecmap(name: &str, data: &Vec<(Element, Element)>) {
     let elems = data.clone();
     let t0 = std::time::Instant::now();
-    let a: VecMap<Element, Element> = elems.into_iter().collect();
+    let a: VecMap2<Element, Element> = elems.into_iter().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation vecmap {} {} {:?}", a.len(), name, dt);
 }

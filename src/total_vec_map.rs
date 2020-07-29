@@ -9,17 +9,56 @@ use smallvec::Array;
 use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt::Debug;
-use std::ops::{Add, Div, Index, Mul, Neg, Sub};
+use std::{hash::Hash, ops::{Add, Div, Index, Mul, Neg, Sub}};
 
-#[derive(Hash, Clone, Eq, PartialEq, Default)]
-pub struct TotalVecMap<K, V, A: Array<Item = (K, V)> = [(K, V); 2]>(VecMap<K, V, A>, V);
+pub struct TotalVecMap<V, A: Array>(VecMap<A>, V);
 
-impl<K, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
+pub type TotalVecMap2<K, V> = TotalVecMap<V, [(K, V); 2]>;
+
+// impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<V, A> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct().entries(self.as_slice().iter()).finish()
+//     }   
+// }
+
+impl<K: Clone, V: Clone, A: Array<Item = (K, V)>> Clone for TotalVecMap<V, A> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+}
+
+impl<K: Hash, V: Hash, A: Array<Item = (K, V)>> Hash for TotalVecMap<V, A> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state)
+    }
+}
+
+impl<K: PartialEq, V: PartialEq, A: Array<Item = (K, V)>> PartialEq for TotalVecMap<V, A> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<K: Eq, V: Eq, A: Array<Item = (K, V)>> Eq for TotalVecMap<V, A> {}
+
+impl<K: PartialOrd, V: PartialOrd, A: Array<Item = (K, V)>> PartialOrd for TotalVecMap<V, A> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (&self.0, &self.1).partial_cmp(&(&other.0, &other.1))
+    }
+}
+
+impl<K: Ord, V: Ord, A: Array<Item = (K, V)>> Ord for TotalVecMap<V, A> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (&self.0, &self.1).cmp(&(&other.0, &other.1))
+    }
+}
+
+impl<K, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     /// Creates a total vec map, given a vec map and a default value.
     ///
     /// Mappings in the map that map to the default value will be removed in order to have
     /// a unique representation.
-    pub fn new(map: VecMap<K, V, A>, default: V) -> Self {
+    pub fn new(map: VecMap<A>, default: V) -> Self {
         let mut entries = map;
         // ensure canonical representation!
         entries.retain(|(_, v)| *v != default);
@@ -27,7 +66,7 @@ impl<K, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
     }
 }
 
-impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
+impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     /// Creates a constant mapping from any K to the given V.
     pub fn constant(value: V) -> Self {
         Self(VecMap::default(), value)
@@ -38,7 +77,7 @@ impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<K, V, A> {
     // }
 }
 
-impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<K, V, A> {
+impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<V, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TotalVecMap")
             .field("values", &self.0)
@@ -48,13 +87,13 @@ impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<K, V, A>
 }
 
 /// Creates a constant mapping from any K to the given V.
-impl<K, V, A: Array<Item = (K, V)>> From<V> for TotalVecMap<K, V, A> {
+impl<K, V, A: Array<Item = (K, V)>> From<V> for TotalVecMap<V, A> {
     fn from(value: V) -> Self {
         Self::constant(value)
     }
 }
 
-impl<K, V: Bounded, A: Array<Item = (K, V)>> Bounded for TotalVecMap<K, V, A> {
+impl<K, V: Bounded, A: Array<Item = (K, V)>> Bounded for TotalVecMap<V, A> {
     fn min_value() -> Self {
         V::min_value().into()
     }
@@ -63,15 +102,15 @@ impl<K, V: Bounded, A: Array<Item = (K, V)>> Bounded for TotalVecMap<K, V, A> {
     }
 }
 
-impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone> Add for TotalVecMap<K, V> {
-    type Output = TotalVecMap<K, V>;
+impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Add for TotalVecMap<V, A> {
+    type Output = TotalVecMap<V, A>;
 
     fn add(self, that: Self) -> Self::Output {
         self.combine_ref(&that, |a, b| a.clone() + b.clone())
     }
 }
 
-impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone> Sub for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Sub for TotalVecMap<V, A> {
     type Output = Self;
 
     fn sub(self, that: Self) -> Self::Output {
@@ -79,7 +118,7 @@ impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone> Sub for TotalVecMap<K, V> 
     }
 }
 
-impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone> Neg for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Neg for TotalVecMap<V, A> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -87,23 +126,23 @@ impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone> Neg for TotalVecMap<K, V> 
     }
 }
 
-impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone> Mul for TotalVecMap<K, V> {
-    type Output = TotalVecMap<K, V>;
+impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Mul for TotalVecMap<V, A> {
+    type Output = TotalVecMap<V, A>;
 
     fn mul(self, that: Self) -> Self::Output {
         self.combine_ref(&that, |a, b| a.clone() * b.clone())
     }
 }
 
-impl<K: Ord + Clone, V: Div<Output = V> + Eq + Clone> Div for TotalVecMap<K, V> {
-    type Output = TotalVecMap<K, V>;
+impl<K: Ord + Clone, V: Div<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Div for TotalVecMap<V, A> {
+    type Output = TotalVecMap<V, A>;
 
     fn div(self, that: Self) -> Self::Output {
         self.combine_ref(&that, |a, b| a.clone() / b.clone())
     }
 }
 
-impl<K: Ord + Clone, V: Zero + Eq + Clone> Zero for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Zero + Eq + Clone, A: Array<Item = (K, V)>> Zero for TotalVecMap<V, A> {
     fn zero() -> Self {
         V::zero().into()
     }
@@ -112,7 +151,7 @@ impl<K: Ord + Clone, V: Zero + Eq + Clone> Zero for TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: One + Eq + Clone> One for TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: One + Eq + Clone, A: Array<Item = (K, V)>> One for TotalVecMap<V, A> {
     fn one() -> Self {
         V::one().into()
     }
@@ -212,7 +251,7 @@ impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V, Arr: Array<Item = (K
     }
 }
 
-impl<K: Ord + Clone, V: Eq> TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     /// combine a total map with another total map, using a function that takes value references
     pub fn combine_ref<F: Fn(&V, &V) -> V>(&self, that: &Self, f: F) -> Self {
         let r_default = f(&self.1, &that.1);
@@ -227,7 +266,7 @@ impl<K: Ord + Clone, V: Eq> TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord + Clone, V: Ord + Clone> TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Ord + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     pub fn supremum(&self, that: &Self) -> Self {
         self.combine_ref(that, |a, b| std::cmp::max(a, b).clone())
     }
@@ -238,12 +277,12 @@ impl<K: Ord + Clone, V: Ord + Clone> TotalVecMap<K, V> {
 
 /// not sure if I can even use fast_combine in rust
 #[allow(dead_code)]
-impl<K: Ord + Clone, V: Eq + Clone> TotalVecMap<K, V> {
+impl<K: Ord + Clone, V: Eq + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     pub(crate) fn fast_combine<F: Fn(&V, &V) -> V>(
         &self,
-        that: &TotalVecMap<K, V>,
+        that: &TotalVecMap<V, A>,
         f: F,
-    ) -> TotalVecMap<K, V> {
+    ) -> TotalVecMap<V, A> {
         let r_default = f(&self.1, &that.1);
         let op = FastCombineOp {
             f,
@@ -254,8 +293,8 @@ impl<K: Ord + Clone, V: Eq + Clone> TotalVecMap<K, V> {
     }
 }
 
-impl<K: Clone, V: Eq> TotalVecMap<K, V> {
-    pub fn map_values<W: Eq, F: Fn(&V) -> W>(&self, f: F) -> TotalVecMap<K, W> {
+impl<K: Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
+    pub fn map_values<W: Eq, F: Fn(&V) -> W, B: Array<Item = (K, W)>>(&self, f: F) -> TotalVecMap<W, B> {
         let default = f(&self.1);
         let elements: Vec<(K, W)> = self
             .0
@@ -273,7 +312,7 @@ impl<K: Clone, V: Eq> TotalVecMap<K, V> {
     }
 }
 
-impl<K: Ord, Q: ?Sized, V> Index<&Q> for TotalVecMap<K, V>
+impl<K: Ord + 'static, Q: ?Sized, V, A: Array<Item = (K, V)>> Index<&Q> for TotalVecMap<V, A>
 where
     K: Borrow<Q>,
     Q: Ord,
@@ -290,60 +329,60 @@ mod alga_instances {
     use super::*;
     use alga::general::*;
 
-    impl<K: Ord + Clone, V: AbstractMagma<Additive> + Eq> AbstractMagma<Additive>
-        for TotalVecMap<K, V>
+    impl<K: Ord + Clone, V: AbstractMagma<Additive> + Eq, A: Array<Item = (K, V)>> AbstractMagma<Additive>
+        for TotalVecMap<V, A>
     {
         fn operate(&self, that: &Self) -> Self {
             self.combine_ref(that, V::operate)
         }
     }
 
-    impl<K, V: Identity<Additive>> Identity<Additive> for TotalVecMap<K, V> {
+    impl<K, V: Identity<Additive>, A: Array<Item = (K, V)>> Identity<Additive> for TotalVecMap<V, A> {
         fn identity() -> Self {
             TotalVecMap::constant(V::identity())
         }
     }
 
-    impl<K: Clone, V: TwoSidedInverse<Additive> + Eq> TwoSidedInverse<Additive> for TotalVecMap<K, V> {
+    impl<K: Clone, V: TwoSidedInverse<Additive> + Eq, A: Array<Item = (K, V)>> TwoSidedInverse<Additive> for TotalVecMap<V, A> {
         fn two_sided_inverse(&self) -> Self {
             self.map_values(V::two_sided_inverse)
         }
     }
 
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Additive> + Eq> AbstractSemigroup<Additive> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Additive> + Eq> AbstractMonoid<Additive> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Additive> + Eq> AbstractQuasigroup<Additive> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Additive> + Eq> AbstractLoop<Additive> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Additive> + Eq> AbstractGroup<Additive> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroupAbelian<Additive> + Eq> AbstractGroupAbelian<Additive> for TotalVecMap<K, V> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractSemigroup<Additive> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Additive> + Eq, A: Array<Item = (K, V)>> AbstractMonoid<Additive> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractQuasigroup<Additive> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Additive> + Eq, A: Array<Item = (K, V)>> AbstractLoop<Additive> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroup<Additive> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroupAbelian<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroupAbelian<Additive> for TotalVecMap<V, A> {}
 
-    impl<K: Ord + Clone, V: AbstractMagma<Multiplicative> + Eq> AbstractMagma<Multiplicative>
-        for TotalVecMap<K, V>
+    impl<K: Ord + Clone, V: AbstractMagma<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractMagma<Multiplicative>
+        for TotalVecMap<V, A>
     {
         fn operate(&self, that: &Self) -> Self {
             self.combine_ref(that, V::operate)
         }
     }
 
-    impl<K, V: Identity<Multiplicative>> Identity<Multiplicative> for TotalVecMap<K, V> {
+    impl<K, V: Identity<Multiplicative>, A: Array<Item = (K, V)>> Identity<Multiplicative> for TotalVecMap<V, A> {
         fn identity() -> Self {
             TotalVecMap::constant(V::identity())
         }
     }
 
-    impl<K: Clone, V: TwoSidedInverse<Multiplicative> + Eq> TwoSidedInverse<Multiplicative>
-        for TotalVecMap<K, V>
+    impl<K: Clone, V: TwoSidedInverse<Multiplicative> + Eq, A: Array<Item = (K, V)>> TwoSidedInverse<Multiplicative>
+        for TotalVecMap<V, A>
     {
         fn two_sided_inverse(&self) -> Self {
             self.map_values(V::two_sided_inverse)
         }
     }
 
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Multiplicative> + Eq> AbstractSemigroup<Multiplicative> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Multiplicative> + Eq> AbstractMonoid<Multiplicative> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Multiplicative> + Eq> AbstractQuasigroup<Multiplicative> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Multiplicative> + Eq> AbstractLoop<Multiplicative> for TotalVecMap<K, V> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Multiplicative> + Eq> AbstractGroup<Multiplicative> for TotalVecMap<K, V> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractSemigroup<Multiplicative> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractMonoid<Multiplicative> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractQuasigroup<Multiplicative> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractLoop<Multiplicative> for TotalVecMap<V, A> {}
+    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractGroup<Multiplicative> for TotalVecMap<V, A> {}
 }
 
 // we don't implement IndexMut since that would allow changing a value to the default and all sorts of other nasty things!
@@ -355,14 +394,14 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     type Ref = (BTreeMap<i32, i32>, i32);
-    type Test = TotalVecMap<i32, i32>;
+    type Test = TotalVecMap2<i32, i32>;
 
     fn from_ref(r: Ref) -> Test {
         let (elements, default) = r;
         Test::new(elements.clone().into(), default)
     }
 
-    impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap<K, V> {
+    impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap2<K, V> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             TotalVecMap::new(Arbitrary::arbitrary(g), Arbitrary::arbitrary(g))
         }
