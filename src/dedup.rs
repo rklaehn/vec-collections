@@ -122,6 +122,8 @@ where
         if self.sorted < self.data.len() {
             let cmp = &self.cmp;
             let slice = self.data.deref_mut();
+            // this must be a stable sort for the keep feature to work
+            // since typically the first 50% are already sorted, we benefit from a sort algo that optimizes for that, like timsort
             slice.sort_by(cmp);
             let unique = dedup_by(slice, |a, b| cmp(a, b) == Ordering::Equal, self.keep);
             self.data.truncate(unique);
