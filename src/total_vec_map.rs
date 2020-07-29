@@ -296,7 +296,7 @@ impl<K: Ord + Clone, V: Eq + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
 impl<K: Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     pub fn map_values<W: Eq, F: Fn(&V) -> W, B: Array<Item = (K, W)>>(&self, f: F) -> TotalVecMap<W, B> {
         let default = f(&self.1);
-        let elements: Vec<(K, W)> = self
+        let elements: smallvec::SmallVec<B> = self
             .0
             .slice_iter()
             .filter_map(|entry| {
@@ -308,7 +308,7 @@ impl<K: Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
                 }
             })
             .collect();
-        TotalVecMap(VecMap::from_sorted_vec(elements), default)
+        TotalVecMap(VecMap::new(elements), default)
     }
 }
 

@@ -15,11 +15,12 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::iter::FromIterator;
-use std::hash::Hash;
+use std::{sync::Arc, hash::Hash, marker::PhantomData};
 
-/// A map backed by a `SmallVec<(K, V)>`. Default inline size is 2, so maps with 0, 1 or 2 elements will not allocate.
+/// A map backed by a `SmallVec<(K, V)>`.
 pub struct VecMap<A: Array>(SmallVec<A>);
 
+// A VecMap with a reasonable default size, 2
 pub type VecMap2<K, V> = VecMap<[(K, V); 2]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecMap<A> {
@@ -140,8 +141,7 @@ impl<K: Ord, V, A: Array<Item=(K, V)>> FromIterator<(K, V)> for VecMap<A> {
 
 impl<K, V, A: Array<Item=(K, V)>> From<BTreeMap<K, V>> for VecMap<A> {
     fn from(value: BTreeMap<K, V>) -> Self {
-        let elements: Vec<(K, V)> = value.into_iter().collect();
-        Self::from_sorted_vec(elements)
+        Self::new(value.into_iter().collect())
     }
 }
 
@@ -303,6 +303,18 @@ impl<'a, K: Ord + Clone, A, B, R, Arr: Array<Item = (K, R)>, F: Fn(&K, &A, &B) -
     }
 }
 
+impl<K, V, A: Array<Item=(K, V)>> VecMap<A> {
+    /// map values while keeping keys
+    pub fn map_values<R, B: Array<Item=(K, R)>, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<B> {
+        VecMap::new(
+            self.0
+                .into_iter()
+                .map(|entry| (entry.0, f(entry.1)))
+                .collect(),
+        )
+    }
+}
+
 impl<A: Array> VecMap<A> {
     /// private because it does not check invariants
     pub(crate) fn new(value: SmallVec<A>) -> Self {
@@ -334,20 +346,6 @@ impl<A: Array> VecMap<A> {
 
     pub(crate) fn slice_iter(&self) -> SliceIterator<A::Item> {
         SliceIterator(self.0.as_slice())
-    }
-
-    // /// map values while keeping keys
-    // pub fn map_values<R, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<K, R> {
-    //     VecMap::from_sorted_vec(
-    //         self.0
-    //             .into_iter()
-    //             .map(|entry| (entry.0, f(entry.1)))
-    //             .collect(),
-    //     )
-    // }
-
-    pub(crate) fn from_sorted_vec(v: Vec<A::Item>) -> Self {
-        Self(v.into())
     }
 
     pub fn into_sorted_vec(self) -> SmallVec<A> {
@@ -407,7 +405,7 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
     //     that: &VecMap2<K, W>,
     //     f: F,
     // ) -> VecMap2<K, R> {
-    //     VecMap2::<K, R>::from_sorted_vec(VecMergeState::merge(
+    //     VecMap2::<K, R>::new(VecMergeState::merge(
     //         self.0.as_slice(),
     //         that.0.as_slice(),
     //         OuterJoinWithOp(f),
@@ -545,4 +543,61 @@ mod tests {
         assert_eq!(actual, expected);
         println!("{:?}", actual);
     }
+}
+
+struct Refined<R, A: ?Sized>(PhantomData<R>, A);
+
+enum InlinePtr<R> {
+    Inline(u8, [u8; 30]),
+    Heap(Arc<Refined<R, [u8]>>),
+}
+
+impl<R> InlinePtr<R> {
+
+    fn new(value: &Refined<R, [u8]>) -> Self {
+        let len = (&value.1).len();
+        if len > 30 {
+            let arc = Arc::<[u8]>::from(&value.1);
+            InlinePtr::Heap(unsafe { Arc::from_raw(Arc::into_raw(arc) as *const Refined<R, [u8]>) })
+        } else {
+            let mut data = [0u8; 30];
+            data[..len].copy_from_slice(&value.1);
+            InlinePtr::Inline(len as u8, data)
+        }
+    }
+}
+
+impl<R> std::ops::Deref for InlinePtr<R> {
+    type Target = Refined<R, [u8]>;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            InlinePtr::Heap(x) => x.deref(),
+            InlinePtr::Inline(size, data) => {
+                let slice = &data[..(*size as usize)];
+                unsafe {
+                    &*(slice as *const [u8] as *const Self::Target)
+                }
+            }
+        }
+    }
+}
+
+struct RString;
+
+impl std::ops::Deref for Refined<RString, [u8]> {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            std::str::from_utf8_unchecked(&self.1)
+        }
+    }
+}
+
+fn test() {
+    let foo: InlinePtr<RString> = InlinePtr::Inline(4, *b"123400000000000000000000000000");
+    let x: &str = &foo;
+    println!("{}", x);
+    let y: InlinePtr<RString> = InlinePtr::new(&foo);
+    let x: &str = &y;
+    println!("{}", x);
 }
