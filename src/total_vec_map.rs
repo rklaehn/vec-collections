@@ -339,75 +339,10 @@ where
     }
 }
 
-mod alga_instances {
-    use super::*;
-    use alga::general::*;
-
-    impl<K: Ord + Clone, V: AbstractMagma<Additive> + Eq, A: Array<Item = (K, V)>>
-        AbstractMagma<Additive> for TotalVecMap<V, A>
-    {
-        fn operate(&self, that: &Self) -> Self {
-            self.combine_ref(that, V::operate)
-        }
-    }
-
-    impl<K, V: Identity<Additive>, A: Array<Item = (K, V)>> Identity<Additive> for TotalVecMap<V, A> {
-        fn identity() -> Self {
-            TotalVecMap::constant(V::identity())
-        }
-    }
-
-    impl<K: Clone, V: TwoSidedInverse<Additive> + Eq, A: Array<Item = (K, V)>>
-        TwoSidedInverse<Additive> for TotalVecMap<V, A>
-    {
-        fn two_sided_inverse(&self) -> Self {
-            self.map_values(V::two_sided_inverse)
-        }
-    }
-
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractSemigroup<Additive> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Additive> + Eq, A: Array<Item = (K, V)>> AbstractMonoid<Additive> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractQuasigroup<Additive> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Additive> + Eq, A: Array<Item = (K, V)>> AbstractLoop<Additive> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroup<Additive> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroupAbelian<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroupAbelian<Additive> for TotalVecMap<V, A> {}
-
-    impl<K: Ord + Clone, V: AbstractMagma<Multiplicative> + Eq, A: Array<Item = (K, V)>>
-        AbstractMagma<Multiplicative> for TotalVecMap<V, A>
-    {
-        fn operate(&self, that: &Self) -> Self {
-            self.combine_ref(that, V::operate)
-        }
-    }
-
-    impl<K, V: Identity<Multiplicative>, A: Array<Item = (K, V)>> Identity<Multiplicative>
-        for TotalVecMap<V, A>
-    {
-        fn identity() -> Self {
-            TotalVecMap::constant(V::identity())
-        }
-    }
-
-    impl<K: Clone, V: TwoSidedInverse<Multiplicative> + Eq, A: Array<Item = (K, V)>>
-        TwoSidedInverse<Multiplicative> for TotalVecMap<V, A>
-    {
-        fn two_sided_inverse(&self) -> Self {
-            self.map_values(V::two_sided_inverse)
-        }
-    }
-
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractSemigroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractSemigroup<Multiplicative> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractMonoid<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractMonoid<Multiplicative> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractQuasigroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractQuasigroup<Multiplicative> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractLoop<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractLoop<Multiplicative> for TotalVecMap<V, A> {}
-    #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractGroup<Multiplicative> for TotalVecMap<V, A> {}
-}
-
 // we don't implement IndexMut since that would allow changing a value to the default and all sorts of other nasty things!
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alga::general::*;
     use quickcheck::*;
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -464,18 +399,6 @@ mod tests {
             let b1 = from_ref(b.clone());
             let actual = a1.infimum(&b1);
             expected == actual
-        }
-
-        fn prop_is_associative_additive(args: (Test, Test, Test)) -> bool {
-            AbstractSemigroup::<Additive>::prop_is_associative(args)
-        }
-
-        fn prop_operating_identity_element_is_noop_additive(args: (Test, )) -> bool {
-            AbstractMonoid::<Additive>::prop_operating_identity_element_is_noop(args)
-        }
-
-        fn prop_is_commutative(args: (Test, Test)) -> bool {
-            AbstractGroupAbelian::<Additive>::prop_is_commutative(args)
         }
     }
 }

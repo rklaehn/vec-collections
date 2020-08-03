@@ -18,9 +18,6 @@ mod test_macros;
 mod binary_merge;
 mod merge_state;
 
-mod total_vec_seq;
-mod vec_seq;
-
 mod total_vec_set;
 mod vec_set;
 
@@ -36,8 +33,6 @@ mod obey;
 mod small_vec_builder;
 
 pub use total_vec_map::*;
-pub use total_vec_seq::*;
 pub use total_vec_set::*;
 pub use vec_map::*;
-pub use vec_seq::*;
 pub use vec_set::*;
