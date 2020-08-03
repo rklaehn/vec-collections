@@ -11,6 +11,9 @@ pub struct TotalVecSet<A: Array> {
     negated: bool,
 }
 
+/// Type alias for a TotalVecSet with up to 2 elements with inline storage.
+pub type TotalVecSet2<T> = TotalVecSet<[T; 2]>;
+
 impl<T: Clone, A: Array<Item = T>> Clone for TotalVecSet<A> {
     fn clone(&self) -> Self {
         Self {

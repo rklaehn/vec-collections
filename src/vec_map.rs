@@ -21,7 +21,7 @@ use std::{
 /// A map backed by a [`SmallVec`](smallvec::SmallVec) of key value pairs.
 pub struct VecMap<A: Array>(SmallVec<A>);
 
-// A VecMap with a reasonable default size, 2
+/// Type alias for a VecMap with up to 2 mappings with inline storage.
 pub type VecMap2<K, V> = VecMap<[(K, V); 2]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecMap<A> {
@@ -79,25 +79,25 @@ impl<A: Array> Default for VecMap<A> {
 impl<A: Array> From<VecMap<A>> for VecSet<A> {
     fn from(value: VecMap<A>) -> Self {
         // entries are sorted by unique first elemnt, so they are also a valid set
-        VecSet::new(value.0)
+        VecSet::new_unsafe(value.0)
     }
 }
 
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
-impl<K: Ord, V, A: Array<Item = (K, V)>, F: Fn(V, V) -> V> MergeOperation<InPlaceMergeState<A, A>>
-    for CombineOp<F, K>
+impl<K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V) -> V>
+    MergeOperation<InPlaceMergeState<A, B>> for CombineOp<F, K>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceMergeState<A, A>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> EarlyOut {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut InPlaceMergeState<A, A>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> EarlyOut {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut InPlaceMergeState<A, A>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceMergeState<A, B>) -> EarlyOut {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
             let r = (self.0)(av, bv);
             m.a.push((ak, r));
@@ -382,7 +382,11 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
 
     /// in-place combine with another map of the same type. The given function allows to select the value in case
     /// of collisions.
-    pub fn combine_with<F: Fn(V, V) -> V>(&mut self, that: VecMap<A>, f: F) {
+    pub fn combine_with<B: Array<Item = A::Item>, F: Fn(V, V) -> V>(
+        &mut self,
+        that: VecMap<B>,
+        f: F,
+    ) {
         InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
     }
 

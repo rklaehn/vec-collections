@@ -1,12 +1,3 @@
-//! A set backed by a `SmallVec<T>`.
-//!
-//! An advantage of this set compared to e.g. BTreeSet is that small sets will be stored inline without allocations.
-//! Larger sets will be stored using a single object on the heap.
-//!
-//! A disadvante is that insertion and removal of single elements is very slow (O(N)) for large sets.
-//!
-//! Set operations (union, intersection etc.) are supported using the binary operators, with both variants that
-//! create new sets and in-place variants.
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
@@ -28,11 +19,37 @@ struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
 
-/// A set backed by a [`SmallVec`](smallvec::SmallVec).
+/// A set backed by a [SmallVec] of elements.
 ///
 /// `A` the underlying storage. This must be an array. The size of this array is the maximum size this collection
-/// can hold without allocating. VecSet is just a wrapper around a SmallVec, so it does not have addiitonal memory
+/// can hold without allocating. VecSet is just a wrapper around a [SmallVec], so it does not have additional memory
 /// overhead.
+///
+/// Sets support comparison operations ([is_disjoint], [is_subset], [is_superset]) and set combine operations
+/// ([bitand], [bitor], [bitxor], [sub]).
+/// They also support in place operations ([bitand_assign], [bitor_assign], [bitxor_assign], [sub_assign]) that will
+/// try to avoid allocations.
+///
+/// # General usage
+/// ```
+/// use vec_collections::VecSet;
+/// let a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
+/// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
+/// println!("{}", a.is_disjoint(&b)); // true
+/// let c = &a | &b;
+/// println!("{}", c.contains(&5)); // true
+/// ```
+///
+/// # In place operations
+/// ```
+/// use vec_collections::VecSet;
+/// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
+/// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
+/// a &= b;
+/// println!("{}", a.contains(&5)); // true
+/// ```
+///
+/// [SmallVec]: smallvec::SmallVec
 #[derive(Default)]
 pub struct VecSet<A: Array>(SmallVec<A>);
 
@@ -78,19 +95,19 @@ impl<T: Ord, A: Array<Item = T>> Ord for VecSet<A> {
 }
 
 impl<A: Array> VecSet<A> {
-    /// private because it does not check the invariants
-    pub(crate) fn new(a: SmallVec<A>) -> Self {
+    /// Private because it does not check the invariants.
+    pub(crate) fn new_unsafe(a: SmallVec<A>) -> Self {
         Self(a)
     }
     /// A set with a single element.
-    pub fn singleton(value: A::Item) -> Self {
+    pub fn single(value: A::Item) -> Self {
         let mut res = SmallVec::new();
         res.push(value);
         Self(res)
     }
     /// The empty set.
     pub fn empty() -> Self {
-        Self::new(SmallVec::new())
+        Self::new_unsafe(SmallVec::new())
     }
     /// An iterator that returns references to the items of this set in sorted order
     pub fn iter(&self) -> SortedIter<std::slice::Iter<A::Item>> {
@@ -181,7 +198,7 @@ where
         let mut vec = vec;
         vec.sort();
         vec.dedup();
-        Self::new(SmallVec::from_vec(vec))
+        Self::new_unsafe(SmallVec::from_vec(vec))
     }
 }
 
@@ -200,7 +217,7 @@ impl<A: Array> Into<SmallVec<A>> for VecSet<A> {
 impl<T: Ord + Clone, Arr: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<Arr> {
     type Output = VecSet<Arr>;
     fn bitand(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge(
+        Self::Output::new_unsafe(SmallVecMergeState::merge(
             &self.0,
             &that.0,
             SetIntersectionOp,
@@ -211,21 +228,21 @@ impl<T: Ord + Clone, Arr: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOr<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn bitor(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetUnionOp))
+        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetUnionOp))
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXor<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn bitxor(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetXorOp))
+        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetXorOp))
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> Sub<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn sub(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetDiffOpt))
+        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetDiffOpt))
     }
 }
 
@@ -268,7 +285,7 @@ impl<T: Ord, A: Array<Item = T>> From<Vec<T>> for VecSet<A> {
 /// Provides a way to create a VecSet from a BTreeSet without having to sort again
 impl<T: Ord, A: Array<Item = T>> From<BTreeSet<T>> for VecSet<A> {
     fn from(value: BTreeSet<T>) -> Self {
-        Self::new(value.into_iter().collect())
+        Self::new_unsafe(value.into_iter().collect())
     }
 }
 

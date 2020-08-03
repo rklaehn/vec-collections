@@ -18,6 +18,7 @@ use std::{
 
 pub struct TotalVecMap<V, A: Array>(VecMap<A>, V);
 
+/// Type alias for a [TotalVecMap](vec_collections::TotalVecMap) with up to 2 mappings with inline storage.
 pub type TotalVecMap2<K, V> = TotalVecMap<V, [(K, V); 2]>;
 
 impl<K: Clone, V: Clone, A: Array<Item = (K, V)>> Clone for TotalVecMap<V, A> {
