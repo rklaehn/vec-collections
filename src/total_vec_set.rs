@@ -1,16 +1,11 @@
-//! A total set backed by a `SmallVec<T>`.
-//!
-//! This set stores an additional flag to support negation, so it is possible to support e.g. the set of all
-//! u64 except 1.
 use crate::VecSet;
-use std::fmt::Debug;
-use std::fmt::Write;
-use std::ops::BitAndAssign;
-use std::ops::BitOrAssign;
-use std::ops::BitXorAssign;
-use std::ops::SubAssign;
-use std::{hash::Hash, ops::{BitAnd, BitOr, BitXor, Not, Sub}};
 use smallvec::Array;
+use std::{
+    fmt::{Debug, Write},
+    hash::Hash,
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Sub, SubAssign},
+};
+
 pub struct TotalVecSet<A: Array> {
     elements: VecSet<A>,
     negated: bool,
@@ -40,7 +35,7 @@ impl<T: PartialEq, A: Array<Item = T>> PartialEq for TotalVecSet<A> {
 
 impl<T: Eq, A: Array<Item = T>> Eq for TotalVecSet<A> {}
 
-impl<T: Debug, A: Array<Item=T>> Debug for TotalVecSet<A> {
+impl<T: Debug, A: Array<Item = T>> Debug for TotalVecSet<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.negated {
             f.write_char('!')?;
@@ -49,7 +44,7 @@ impl<T: Debug, A: Array<Item=T>> Debug for TotalVecSet<A> {
     }
 }
 
-impl<T, A: Array<Item=T>> TotalVecSet<A> {
+impl<T, A: Array<Item = T>> TotalVecSet<A> {
     fn new(elements: VecSet<A>, negated: bool) -> Self {
         Self { elements, negated }
     }
@@ -79,19 +74,19 @@ impl<T, A: Array<Item=T>> TotalVecSet<A> {
     }
 }
 
-impl<T, A: Array<Item=T>> From<bool> for TotalVecSet<A> {
+impl<T, A: Array<Item = T>> From<bool> for TotalVecSet<A> {
     fn from(value: bool) -> Self {
         Self::constant(value)
     }
 }
 
-impl<T, A: Array<Item=T>> From<VecSet<A>> for TotalVecSet<A> {
+impl<T, A: Array<Item = T>> From<VecSet<A>> for TotalVecSet<A> {
     fn from(value: VecSet<A>) -> Self {
         Self::new(value, false)
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> TotalVecSet<A> {
     pub fn contains(&self, value: &T) -> bool {
         self.negated ^ self.elements.contains(value)
     }
@@ -127,7 +122,7 @@ impl<T: Ord, A: Array<Item=T>> TotalVecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, A: Array<Item=T>> TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> TotalVecSet<A> {
     pub fn remove(&mut self, that: &T) {
         if self.negated {
             self.elements.insert(that.clone())
@@ -137,7 +132,7 @@ impl<T: Ord + Clone, A: Array<Item=T>> TotalVecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, A: Array<Item=T>> BitAnd for &TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> BitAnd for &TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn bitand(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
@@ -153,7 +148,7 @@ impl<T: Ord + Clone, A: Array<Item=T>> BitAnd for &TotalVecSet<A> {
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> BitAndAssign for TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> BitAndAssign for TotalVecSet<A> {
     fn bitand_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -182,7 +177,7 @@ impl<T: Ord, A: Array<Item=T>> BitAndAssign for TotalVecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, A: Array<Item=T>> BitOr for &TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> BitOr for &TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn bitor(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
@@ -198,7 +193,7 @@ impl<T: Ord + Clone, A: Array<Item=T>> BitOr for &TotalVecSet<A> {
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> BitOrAssign for TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> BitOrAssign for TotalVecSet<A> {
     fn bitor_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // union of elements
@@ -227,14 +222,14 @@ impl<T: Ord, A: Array<Item=T>> BitOrAssign for TotalVecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, A: Array<Item=T>> BitXor for &TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> BitXor for &TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn bitxor(self, that: Self) -> Self::Output {
         Self::Output::new(&self.elements ^ &that.elements, self.negated ^ that.negated)
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> BitXorAssign for TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> BitXorAssign for TotalVecSet<A> {
     fn bitxor_assign(&mut self, that: Self) {
         self.elements ^= that.elements;
         self.negated ^= that.negated;
@@ -242,7 +237,7 @@ impl<T: Ord, A: Array<Item=T>> BitXorAssign for TotalVecSet<A> {
 }
 
 #[allow(clippy::suspicious_arithmetic_impl)]
-impl<T: Ord + Clone, A: Array<Item=T>> Sub for &TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> Sub for &TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn sub(self, that: Self) -> Self::Output {
         match (self.negated, that.negated) {
@@ -258,7 +253,7 @@ impl<T: Ord + Clone, A: Array<Item=T>> Sub for &TotalVecSet<A> {
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> SubAssign for TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> SubAssign for TotalVecSet<A> {
     fn sub_assign(&mut self, that: Self) {
         match (self.negated, that.negated) {
             // intersection of elements
@@ -287,14 +282,14 @@ impl<T: Ord, A: Array<Item=T>> SubAssign for TotalVecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, A: Array<Item=T>> Not for &TotalVecSet<A> {
+impl<T: Ord + Clone, A: Array<Item = T>> Not for &TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements.clone(), !self.negated)
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> Not for TotalVecSet<A> {
+impl<T: Ord, A: Array<Item = T>> Not for TotalVecSet<A> {
     type Output = TotalVecSet<A>;
     fn not(self) -> Self::Output {
         Self::Output::new(self.elements, !self.negated)
@@ -303,6 +298,7 @@ impl<T: Ord, A: Array<Item=T>> Not for TotalVecSet<A> {
 
 #[cfg(test)]
 mod tests {
+    #[allow(dead_code)]
     use super::*;
     use quickcheck::*;
     use std::collections::BTreeSet;
@@ -318,6 +314,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     /// just a helper to get good output when a check fails
     fn print_on_failure_unary<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {
         let res = expected == actual;

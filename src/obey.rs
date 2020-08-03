@@ -1,12 +1,9 @@
-use std::collections::BTreeSet;
-use std::fmt::Debug;
+use std::{collections::BTreeSet, fmt::Debug};
 
-///
 /// A support trait for testing any kind of collection.
 ///
 /// Almost anything can be viewed as a collection. E.g. an integer can be viewed as a collection of bit offsets at which it has
 /// a boolean value.
-///
 pub trait TestSamples<K, V> {
     /// produces "interesting" sample points to test a property for.
     fn samples(&self, res: &mut BTreeSet<K>);
@@ -15,6 +12,7 @@ pub trait TestSamples<K, V> {
     fn at(&self, k: K) -> V;
 }
 
+#[allow(dead_code)]
 pub fn unary_element_test<C, K, V>(a: &C, r: C, op: impl Fn(V) -> V) -> bool
 where
     C: TestSamples<K, V> + Debug + Clone,

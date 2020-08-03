@@ -5,19 +5,20 @@
 //!
 //! A disadvante is that insertion and removal of single mappings is very slow (O(N)) for large maps.
 //!
-use crate::binary_merge::{EarlyOut, MergeOperation};
-use crate::dedup::{sort_and_dedup_by_key, Keep};
-use crate::iterators::SliceIterator;
-use crate::merge_state::{InPlaceMergeState, MergeStateMut, SmallVecMergeState};
+use crate::{
+    binary_merge::{EarlyOut, MergeOperation},
+    dedup::{sort_and_dedup_by_key, Keep},
+    iterators::SliceIterator,
+    merge_state::{InPlaceMergeState, MergeStateMut, SmallVecMergeState},
+    VecSet,
+};
 use smallvec::{Array, SmallVec};
-use std::borrow::Borrow;
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::iter::FromIterator;
-use std::{sync::Arc, hash::Hash, marker::PhantomData};
+use std::{
+    borrow::Borrow, cmp::Ordering, collections::BTreeMap, fmt::Debug, hash::Hash,
+    iter::FromIterator,
+};
 
-/// A map backed by a `SmallVec<(K, V)>`.
+/// A map backed by a [`SmallVec`](smallvec::SmallVec) of key value pairs.
 pub struct VecMap<A: Array>(SmallVec<A>);
 
 // A VecMap with a reasonable default size, 2
@@ -26,7 +27,7 @@ pub type VecMap2<K, V> = VecMap<[(K, V); 2]>;
 impl<T: Debug, A: Array<Item = T>> Debug for VecMap<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_set().entries(self.as_slice().iter()).finish()
-    }   
+    }
 }
 
 impl<T: Clone, A: Array<Item = T>> Clone for VecMap<A> {
@@ -72,6 +73,13 @@ impl<A: Array> IntoIterator for VecMap<A> {
 impl<A: Array> Default for VecMap<A> {
     fn default() -> Self {
         VecMap(SmallVec::default())
+    }
+}
+
+impl<A: Array> From<VecMap<A>> for VecSet<A> {
+    fn from(value: VecMap<A>) -> Self {
+        // entries are sorted by unique first elemnt, so they are also a valid set
+        VecSet::new(value.0)
     }
 }
 
@@ -133,21 +141,33 @@ struct InnerJoinOp<F>(F);
 
 // type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
 
-impl<K: Ord, V, A: Array<Item=(K, V)>> FromIterator<(K, V)> for VecMap<A> {
+impl<K: Ord, V, A: Array<Item = (K, V)>> FromIterator<(K, V)> for VecMap<A> {
     fn from_iter<I: IntoIterator<Item = A::Item>>(iter: I) -> Self {
         VecMap(sort_and_dedup_by_key(iter.into_iter(), |(k, _)| k, Keep::Last).into())
     }
 }
 
-impl<K, V, A: Array<Item=(K, V)>> From<BTreeMap<K, V>> for VecMap<A> {
+impl<K, V, A: Array<Item = (K, V)>> From<BTreeMap<K, V>> for VecMap<A> {
     fn from(value: BTreeMap<K, V>) -> Self {
         Self::new(value.into_iter().collect())
     }
 }
 
-impl<K: Ord + 'static, V, A: Array<Item=(K, V)>> Extend<A::Item> for VecMap<A> {
+impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> Extend<A::Item> for VecMap<A> {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         self.merge_with::<A>(iter.into_iter().collect());
+    }
+}
+
+impl<A: Array> AsRef<[A::Item]> for VecMap<A> {
+    fn as_ref(&self) -> &[A::Item] {
+        self.as_slice()
+    }
+}
+
+impl<A: Array> Into<SmallVec<A>> for VecMap<A> {
+    fn into(self) -> SmallVec<A> {
+        self.0
     }
 }
 
@@ -303,9 +323,9 @@ impl<'a, K: Ord + Clone, A, B, R, Arr: Array<Item = (K, R)>, F: Fn(&K, &A, &B) -
     }
 }
 
-impl<K, V, A: Array<Item=(K, V)>> VecMap<A> {
+impl<K, V, A: Array<Item = (K, V)>> VecMap<A> {
     /// map values while keeping keys
-    pub fn map_values<R, B: Array<Item=(K, R)>, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<B> {
+    pub fn map_values<R, B: Array<Item = (K, R)>, F: FnMut(V) -> R>(self, mut f: F) -> VecMap<B> {
         VecMap::new(
             self.0
                 .into_iter()
@@ -351,13 +371,6 @@ impl<A: Array> VecMap<A> {
     pub fn into_sorted_vec(self) -> SmallVec<A> {
         self.0
     }
-}
-
-impl<A: Array> AsRef<[A::Item]> for VecMap<A> {
-    fn as_ref(&self) -> &[A::Item] {
-        self.as_slice()
-    }
-
 }
 
 impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
@@ -412,7 +425,12 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
     //     ))
     // }
 
-    pub fn outer_join<W: Clone, R, F: Fn(OuterJoinArg<&K, &V, &W>) -> Option<R>, B: Array<Item = (K, W)>>(
+    pub fn outer_join<
+        W: Clone,
+        R,
+        F: Fn(OuterJoinArg<&K, &V, &W>) -> Option<R>,
+        B: Array<Item = (K, W)>,
+    >(
         &self,
         that: &VecMap<B>,
         f: F,
@@ -424,7 +442,12 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         ))
     }
 
-    pub fn left_join<W: Clone, R, F: Fn(&K, &V, Option<&W>) -> Option<R>, B: Array<Item = (K, W)>>(
+    pub fn left_join<
+        W: Clone,
+        R,
+        F: Fn(&K, &V, Option<&W>) -> Option<R>,
+        B: Array<Item = (K, W)>,
+    >(
         &self,
         that: &VecMap2<K, W>,
         f: F,
@@ -436,7 +459,12 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         ))
     }
 
-    pub fn right_join<W: Clone, R, F: Fn(&K, Option<&V>, &W) -> Option<R>, B: Array<Item = (K, W)>>(
+    pub fn right_join<
+        W: Clone,
+        R,
+        F: Fn(&K, Option<&V>, &W) -> Option<R>,
+        B: Array<Item = (K, W)>,
+    >(
         &self,
         that: &VecMap<B>,
         f: F,
@@ -543,61 +571,4 @@ mod tests {
         assert_eq!(actual, expected);
         println!("{:?}", actual);
     }
-}
-
-struct Refined<R, A: ?Sized>(PhantomData<R>, A);
-
-enum InlinePtr<R> {
-    Inline(u8, [u8; 30]),
-    Heap(Arc<Refined<R, [u8]>>),
-}
-
-impl<R> InlinePtr<R> {
-
-    fn new(value: &Refined<R, [u8]>) -> Self {
-        let len = (&value.1).len();
-        if len > 30 {
-            let arc = Arc::<[u8]>::from(&value.1);
-            InlinePtr::Heap(unsafe { Arc::from_raw(Arc::into_raw(arc) as *const Refined<R, [u8]>) })
-        } else {
-            let mut data = [0u8; 30];
-            data[..len].copy_from_slice(&value.1);
-            InlinePtr::Inline(len as u8, data)
-        }
-    }
-}
-
-impl<R> std::ops::Deref for InlinePtr<R> {
-    type Target = Refined<R, [u8]>;
-    fn deref(&self) -> &Self::Target {
-        match self {
-            InlinePtr::Heap(x) => x.deref(),
-            InlinePtr::Inline(size, data) => {
-                let slice = &data[..(*size as usize)];
-                unsafe {
-                    &*(slice as *const [u8] as *const Self::Target)
-                }
-            }
-        }
-    }
-}
-
-struct RString;
-
-impl std::ops::Deref for Refined<RString, [u8]> {
-    type Target = str;
-    fn deref(&self) -> &Self::Target {
-        unsafe {
-            std::str::from_utf8_unchecked(&self.1)
-        }
-    }
-}
-
-fn test() {
-    let foo: InlinePtr<RString> = InlinePtr::Inline(4, *b"123400000000000000000000000000");
-    let x: &str = &foo;
-    println!("{}", x);
-    let y: InlinePtr<RString> = InlinePtr::new(&foo);
-    let x: &str = &y;
-    println!("{}", x);
 }

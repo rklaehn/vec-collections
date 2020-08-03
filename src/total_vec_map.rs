@@ -1,25 +1,24 @@
 //! A map with default value, backed by a `SmallVec<(K, V)>` of key value pairs.
 //!
 //! Having a default value means that the mapping is a total function from K to V, hence the name.
-use crate::binary_merge::{EarlyOut, MergeOperation};
-use crate::merge_state::SmallVecMergeState;
-use crate::vec_map::VecMap;
+use crate::{
+    binary_merge::{EarlyOut, MergeOperation},
+    merge_state::SmallVecMergeState,
+    vec_map::VecMap,
+};
 use num_traits::{Bounded, One, Zero};
 use smallvec::Array;
-use std::borrow::Borrow;
-use std::cmp::Ordering;
-use std::fmt::Debug;
-use std::{hash::Hash, ops::{Add, Div, Index, Mul, Neg, Sub}};
+use std::{
+    borrow::Borrow,
+    cmp::Ordering,
+    fmt::Debug,
+    hash::Hash,
+    ops::{Add, Div, Index, Mul, Neg, Sub},
+};
 
 pub struct TotalVecMap<V, A: Array>(VecMap<A>, V);
 
 pub type TotalVecMap2<K, V> = TotalVecMap<V, [(K, V); 2]>;
-
-// impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<V, A> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct().entries(self.as_slice().iter()).finish()
-//     }   
-// }
 
 impl<K: Clone, V: Clone, A: Array<Item = (K, V)>> Clone for TotalVecMap<V, A> {
     fn clone(&self) -> Self {
@@ -72,9 +71,10 @@ impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
         Self(VecMap::default(), value)
     }
 
-    // pub fn non_default_mappings(&self) -> &VecMap<K, V> {
-    //     self.0
-    // }
+    /// Returns all non-default mappings as a `VecMap<A>`.
+    pub fn non_default_mappings(&self) -> &VecMap<A> {
+        &self.0
+    }
 }
 
 impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<V, A> {
@@ -102,7 +102,9 @@ impl<K, V: Bounded, A: Array<Item = (K, V)>> Bounded for TotalVecMap<V, A> {
     }
 }
 
-impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Add for TotalVecMap<V, A> {
+impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Add
+    for TotalVecMap<V, A>
+{
     type Output = TotalVecMap<V, A>;
 
     fn add(self, that: Self) -> Self::Output {
@@ -110,7 +112,9 @@ impl<K: Ord + Clone, V: Add<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> A
     }
 }
 
-impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Sub for TotalVecMap<V, A> {
+impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Sub
+    for TotalVecMap<V, A>
+{
     type Output = Self;
 
     fn sub(self, that: Self) -> Self::Output {
@@ -118,7 +122,9 @@ impl<K: Ord + Clone, V: Sub<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> S
     }
 }
 
-impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Neg for TotalVecMap<V, A> {
+impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Neg
+    for TotalVecMap<V, A>
+{
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -126,7 +132,9 @@ impl<K: Ord + Clone, V: Neg<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> N
     }
 }
 
-impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Mul for TotalVecMap<V, A> {
+impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Mul
+    for TotalVecMap<V, A>
+{
     type Output = TotalVecMap<V, A>;
 
     fn mul(self, that: Self) -> Self::Output {
@@ -134,7 +142,9 @@ impl<K: Ord + Clone, V: Mul<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> M
     }
 }
 
-impl<K: Ord + Clone, V: Div<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Div for TotalVecMap<V, A> {
+impl<K: Ord + Clone, V: Div<Output = V> + Eq + Clone, A: Array<Item = (K, V)>> Div
+    for TotalVecMap<V, A>
+{
     type Output = TotalVecMap<V, A>;
 
     fn div(self, that: Self) -> Self::Output {
@@ -173,7 +183,8 @@ struct FastCombineOp<'a, F, V> {
     r_default: &'a V,
 }
 
-type PairMergeState2<'a, Arr: Array> = SmallVecMergeState<'a, Arr::Item, Arr::Item, Arr>;
+type PairMergeState2<'a, Arr> =
+    SmallVecMergeState<'a, <Arr as Array>::Item, <Arr as Array>::Item, Arr>;
 
 impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V, Arr: Array<Item = (K, V)>>
     MergeOperation<PairMergeState2<'a, Arr>> for CombineOp<F, &'a V>
@@ -294,7 +305,10 @@ impl<K: Ord + Clone, V: Eq + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
 }
 
 impl<K: Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
-    pub fn map_values<W: Eq, F: Fn(&V) -> W, B: Array<Item = (K, W)>>(&self, f: F) -> TotalVecMap<W, B> {
+    pub fn map_values<W: Eq, F: Fn(&V) -> W, B: Array<Item = (K, W)>>(
+        &self,
+        f: F,
+    ) -> TotalVecMap<W, B> {
         let default = f(&self.1);
         let elements: smallvec::SmallVec<B> = self
             .0
@@ -329,8 +343,8 @@ mod alga_instances {
     use super::*;
     use alga::general::*;
 
-    impl<K: Ord + Clone, V: AbstractMagma<Additive> + Eq, A: Array<Item = (K, V)>> AbstractMagma<Additive>
-        for TotalVecMap<V, A>
+    impl<K: Ord + Clone, V: AbstractMagma<Additive> + Eq, A: Array<Item = (K, V)>>
+        AbstractMagma<Additive> for TotalVecMap<V, A>
     {
         fn operate(&self, that: &Self) -> Self {
             self.combine_ref(that, V::operate)
@@ -343,7 +357,9 @@ mod alga_instances {
         }
     }
 
-    impl<K: Clone, V: TwoSidedInverse<Additive> + Eq, A: Array<Item = (K, V)>> TwoSidedInverse<Additive> for TotalVecMap<V, A> {
+    impl<K: Clone, V: TwoSidedInverse<Additive> + Eq, A: Array<Item = (K, V)>>
+        TwoSidedInverse<Additive> for TotalVecMap<V, A>
+    {
         fn two_sided_inverse(&self) -> Self {
             self.map_values(V::two_sided_inverse)
         }
@@ -356,22 +372,24 @@ mod alga_instances {
     #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroup<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroup<Additive> for TotalVecMap<V, A> {}
     #[rustfmt::skip] impl<K: Ord + Clone, V: AbstractGroupAbelian<Additive> + Eq, A: Array<Item = (K, V)>> AbstractGroupAbelian<Additive> for TotalVecMap<V, A> {}
 
-    impl<K: Ord + Clone, V: AbstractMagma<Multiplicative> + Eq, A: Array<Item = (K, V)>> AbstractMagma<Multiplicative>
-        for TotalVecMap<V, A>
+    impl<K: Ord + Clone, V: AbstractMagma<Multiplicative> + Eq, A: Array<Item = (K, V)>>
+        AbstractMagma<Multiplicative> for TotalVecMap<V, A>
     {
         fn operate(&self, that: &Self) -> Self {
             self.combine_ref(that, V::operate)
         }
     }
 
-    impl<K, V: Identity<Multiplicative>, A: Array<Item = (K, V)>> Identity<Multiplicative> for TotalVecMap<V, A> {
+    impl<K, V: Identity<Multiplicative>, A: Array<Item = (K, V)>> Identity<Multiplicative>
+        for TotalVecMap<V, A>
+    {
         fn identity() -> Self {
             TotalVecMap::constant(V::identity())
         }
     }
 
-    impl<K: Clone, V: TwoSidedInverse<Multiplicative> + Eq, A: Array<Item = (K, V)>> TwoSidedInverse<Multiplicative>
-        for TotalVecMap<V, A>
+    impl<K: Clone, V: TwoSidedInverse<Multiplicative> + Eq, A: Array<Item = (K, V)>>
+        TwoSidedInverse<Multiplicative> for TotalVecMap<V, A>
     {
         fn two_sided_inverse(&self) -> Self {
             self.map_values(V::two_sided_inverse)

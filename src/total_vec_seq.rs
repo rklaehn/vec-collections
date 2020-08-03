@@ -1,8 +1,10 @@
 use num_traits::{Bounded, One, Zero};
-use std::cmp::max;
-use std::fmt;
-use std::fmt::Display;
-use std::ops::{Add, Div, Index, Mul, Neg, Sub};
+use std::{
+    cmp::max,
+    fmt,
+    fmt::Display,
+    ops::{Add, Div, Index, Mul, Neg, Sub},
+};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
 pub struct TotalVecSeq<T> {
@@ -119,6 +121,7 @@ impl<T: Eq> TotalVecSeq<T> {
         TotalVecSeq::new(values, default)
     }
 
+    #[allow(dead_code)]
     fn map_ref<F: Fn(&T) -> T>(&self, op: F) -> Self {
         let default = op(&self.default);
         let mut values = Vec::with_capacity(self.values.len());

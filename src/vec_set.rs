@@ -7,32 +7,42 @@
 //!
 //! Set operations (union, intersection etc.) are supported using the binary operators, with both variants that
 //! create new sets and in-place variants.
-use crate::binary_merge::{EarlyOut, MergeOperation};
-use crate::dedup::sort_and_dedup;
-use crate::iterators::SortedIter;
-use crate::merge_state::{BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecMergeState};
+use crate::{
+    binary_merge::{EarlyOut, MergeOperation},
+    dedup::sort_and_dedup,
+    iterators::SortedIter,
+    merge_state::{BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecMergeState},
+};
 use smallvec::{Array, SmallVec};
-use std::cmp::Ordering;
-use std::collections::BTreeSet;
-use std::fmt::Debug;
-use std::iter::FromIterator;
-use std::{hash::Hash, ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign}};
+use std::{
+    cmp::Ordering,
+    collections::BTreeSet,
+    fmt::Debug,
+    hash::Hash,
+    iter::FromIterator,
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
+};
 
 struct SetUnionOp;
 struct SetIntersectionOp;
 struct SetXorOp;
 struct SetDiffOpt;
 
-/// A set backed by a `SmallVec<T>`
+/// A set backed by a [`SmallVec`](smallvec::SmallVec).
+///
+/// `A` the underlying storage. This must be an array. The size of this array is the maximum size this collection
+/// can hold without allocating. VecSet is just a wrapper around a SmallVec, so it does not have addiitonal memory
+/// overhead.
 #[derive(Default)]
 pub struct VecSet<A: Array>(SmallVec<A>);
 
+/// Type alias for a VecSet with up to 2 elements with inline storage.
 pub type VecSet2<T> = VecSet<[T; 2]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecSet<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_set().entries(self.iter()).finish()
-    }   
+    }
 }
 
 impl<T: Clone, A: Array<Item = T>> Clone for VecSet<A> {
@@ -69,16 +79,16 @@ impl<T: Ord, A: Array<Item = T>> Ord for VecSet<A> {
 
 impl<A: Array> VecSet<A> {
     /// private because it does not check the invariants
-    fn new(a: SmallVec<A>) -> Self {
+    pub(crate) fn new(a: SmallVec<A>) -> Self {
         Self(a)
     }
-    /// a set with a single element. Will not allocate.
+    /// A set with a single element.
     pub fn singleton(value: A::Item) -> Self {
         let mut res = SmallVec::new();
         res.push(value);
         Self(res)
     }
-    /// the empty set. Will not allocate.
+    /// The empty set.
     pub fn empty() -> Self {
         Self::new(SmallVec::new())
     }
@@ -86,29 +96,32 @@ impl<A: Array> VecSet<A> {
     pub fn iter(&self) -> SortedIter<std::slice::Iter<A::Item>> {
         SortedIter::new(self.0.iter())
     }
-    /// The underlying memory as a slice
+    /// The underlying memory as a slice.
     pub fn as_slice(&self) -> &[A::Item] {
         &self.0
     }
-    /// number of elements in the set
+    /// The number of elements in the set.
     pub fn len(&self) -> usize {
         self.0.len()
     }
-    /// shrink the underlying SmallVec<T> to fit
+    /// Shrink the underlying SmallVec<T> to fit.
     pub fn shrink_to_fit(&mut self) {
         self.0.shrink_to_fit()
     }
-    /// true if the set is empty
+    /// true if the set is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
 
 impl<A: Array> VecSet<A>
-    where A::Item: Ord {
+where
+    A::Item: Ord,
+{
     /// insert an element.
     ///
-    /// The time complexity of this is O(N), so building a large set using inserts will be slow!
+    /// The time complexity of this is O(N), so building a large set using single element inserts will be slow!
+    /// Prefer using [from_iter](from_iter) when building a large VecSet from elements.
     pub fn insert(&mut self, that: A::Item) {
         match self.0.binary_search(&that) {
             Ok(index) => self.0[index] = that,
@@ -116,31 +129,37 @@ impl<A: Array> VecSet<A>
         }
     }
 
-    /// Remove an element
+    /// Remove an element.
     ///
-    /// The time complexity of this is O(N), so building a large set using inserts will be slow!
+    /// The time complexity of this is O(N), so removing many elements using single element removes inserts will be slow!
+    /// Prefer using [retain](retain) when removing a large number of elements.
     pub fn remove(&mut self, that: &A::Item) {
         if let Ok(index) = self.0.binary_search(&that) {
             self.0.remove(index);
         };
     }
 
-    /// true if this set has no common elements with another set
-    pub fn is_disjoint(&self, that: &Self) -> bool {
+    /// Retain all elements matching a predicate.
+    pub fn retain<F: FnMut(&A::Item) -> bool>(&mut self, mut f: F) {
+        self.0.retain(|entry| f(entry))
+    }
+
+    /// true if this set has no common elements with another set.
+    pub fn is_disjoint<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
     }
 
-    /// true if this set is a subset of another set
+    /// true if this set is a subset of another set.
     ///
-    /// A set is considered to be a subset of itself
-    pub fn is_subset(&self, that: &Self) -> bool {
+    /// A set is considered to be a subset of itself.
+    pub fn is_subset<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
         !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt)
     }
 
-    /// true if this set is a superset of another set
+    /// true if this set is a superset of another set.
     ///
-    /// A set is considered to be a superset of itself
-    pub fn is_superset(&self, that: &Self) -> bool {
+    /// A set is considered to be a superset of itself.
+    pub fn is_superset<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
         that.is_subset(self)
     }
 
@@ -151,12 +170,12 @@ impl<A: Array> VecSet<A>
         self.0.binary_search(value).is_ok()
     }
 
-    /// creates a set from a vec
+    /// creates a set from a vec.
     ///
     /// Will sort and deduplicate the vector using a stable merge sort, so worst case time complexity
     /// is O(N log N). However, this will be faster for an already partially sorted vector.
     ///
-    /// Note that the backing memory of the vector will be reused, so if this is a large vector containing
+    /// Note that the backing memory of the vector might be reused, so if this is a large vector containing
     /// lots of duplicates, it is advisable to call shrink_to_fit on the resulting set.
     fn from_vec(vec: Vec<A::Item>) -> Self {
         let mut vec = vec;
@@ -172,9 +191,15 @@ impl<A: Array> Into<Vec<A::Item>> for VecSet<A> {
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>> BitAnd for &VecSet<Arr> {
+impl<A: Array> Into<SmallVec<A>> for VecSet<A> {
+    fn into(self) -> SmallVec<A> {
+        self.0
+    }
+}
+
+impl<T: Ord + Clone, Arr: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<Arr> {
     type Output = VecSet<Arr>;
-    fn bitand(self, that: Self) -> Self::Output {
+    fn bitand(self, that: &VecSet<B>) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge(
             &self.0,
             &that.0,
@@ -183,47 +208,47 @@ impl<T: Ord + Clone, Arr: Array<Item = T>> BitAnd for &VecSet<Arr> {
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>> BitOr for &VecSet<Arr> {
-    type Output = VecSet<Arr>;
-    fn bitor(self, that: Self) -> Self::Output {
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOr<&VecSet<B>> for &VecSet<A> {
+    type Output = VecSet<A>;
+    fn bitor(self, that: &VecSet<B>) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetUnionOp))
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>> BitXor for &VecSet<Arr> {
-    type Output = VecSet<Arr>;
-    fn bitxor(self, that: Self) -> Self::Output {
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXor<&VecSet<B>> for &VecSet<A> {
+    type Output = VecSet<A>;
+    fn bitxor(self, that: &VecSet<B>) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetXorOp))
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>> Sub for &VecSet<Arr> {
-    type Output = VecSet<Arr>;
-    fn sub(self, that: Self) -> Self::Output {
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> Sub<&VecSet<B>> for &VecSet<A> {
+    type Output = VecSet<A>;
+    fn sub(self, that: &VecSet<B>) -> Self::Output {
         Self::Output::new(SmallVecMergeState::merge(&self.0, &that.0, SetDiffOpt))
     }
 }
 
-impl<T: Ord, A: Array<Item = T>> BitAndAssign for VecSet<A> {
-    fn bitand_assign(&mut self, that: Self) {
+impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<VecSet<B>> for VecSet<A> {
+    fn bitand_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp);
     }
 }
 
-impl<T: Ord, A: Array<Item = T>> BitOrAssign for VecSet<A> {
-    fn bitor_assign(&mut self, that: Self) {
+impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<VecSet<B>> for VecSet<A> {
+    fn bitor_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp);
     }
 }
 
-impl<T: Ord, A: Array<Item = T>> BitXorAssign for VecSet<A> {
-    fn bitxor_assign(&mut self, that: Self) {
+impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<VecSet<B>> for VecSet<A> {
+    fn bitxor_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp);
     }
 }
 
-impl<T: Ord, A: Array<Item = T>> SubAssign for VecSet<A> {
-    fn sub_assign(&mut self, that: Self) {
+impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> SubAssign<VecSet<B>> for VecSet<A> {
+    fn sub_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt);
     }
 }
@@ -234,13 +259,14 @@ impl<A: Array> AsRef<[A::Item]> for VecSet<A> {
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> From<Vec<T>> for VecSet<A> {
+impl<T: Ord, A: Array<Item = T>> From<Vec<T>> for VecSet<A> {
     fn from(vec: Vec<T>) -> Self {
         Self::from_vec(vec)
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> From<BTreeSet<T>> for VecSet<A> {
+/// Provides a way to create a VecSet from a BTreeSet without having to sort again
+impl<T: Ord, A: Array<Item = T>> From<BTreeSet<T>> for VecSet<A> {
     fn from(value: BTreeSet<T>) -> Self {
         Self::new(value.into_iter().collect())
     }
@@ -249,14 +275,21 @@ impl<T: Ord, A: Array<Item=T>> From<BTreeSet<T>> for VecSet<A> {
 /// Builds the set from an iterator.
 ///
 /// Uses a heuristic to deduplicate while building the set, so the intermediate storage will never be more
-/// than twice the size of the resulting set.
-impl<T: Ord, A: Array<Item=T>> FromIterator<T> for VecSet<A> {
+/// than twice the size of the resulting set. This is the most efficient way to build a large VecSet, significantly
+/// more efficient than single element insertion.
+///
+/// Worst case performance is O(log(n)^2 * n), but performance for already partially sorted collections will be
+/// significantly better. For a fully sorted collection, performance will be O(n).
+///
+/// The underlying array might be up to twice as large as needed after calling this method, so it might be a good
+/// idea to call [shrink_to_fit](shrink_to_fit) if you want to keep the set around for a long time.
+impl<T: Ord, A: Array<Item = T>> FromIterator<T> for VecSet<A> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self::from_vec(sort_and_dedup(iter.into_iter()))
     }
 }
 
-impl<T: Ord, A: Array<Item=T>> Extend<T> for VecSet<A> {
+impl<T: Ord, A: Array<Item = T>> Extend<T> for VecSet<A> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         *self |= Self::from_iter(iter);
     }

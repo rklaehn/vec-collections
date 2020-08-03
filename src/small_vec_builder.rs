@@ -40,12 +40,15 @@ impl<A: Array> From<SmallVec<A>> for InPlaceSmallVecBuilder<A> {
 }
 
 impl<A: Array> InPlaceSmallVecBuilder<A> {
+    #[allow(dead_code)]
     fn assert_invariants(&self) {
         assert!(self.t1 <= self.s0);
         assert!(self.s0 <= self.v.len());
         // assert!(self.v.len() <= self.v.capacity()); vec invariant
     }
+
     /// The current target part as a slice
+    #[allow(dead_code)]
     pub fn target_slice(&self) -> &[A::Item] {
         &self.v[..self.t1]
     }
@@ -126,6 +129,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
 
     /// Skip up to `n` elements from source without adding them to the target.
     /// They will be immediately dropped!
+    #[allow(dead_code)]
     pub fn skip(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         let v = self.v.as_mut_ptr();
@@ -139,6 +143,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
 
     /// Take up to `n` elements from source to target.
     /// If n is larger than the size of the remaining source, this will only copy all remaining elements in source.
+    #[allow(dead_code)]
     pub fn take(&mut self, n: usize) {
         let n = std::cmp::min(n, self.source_slice().len());
         if self.t1 != self.s0 {
@@ -177,7 +182,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
         // drop the source part
         self.drop_source();
         // tear out the v
-        let v = std::mem::replace(&mut self.v, unsafe { std::mem::uninitialized() });
+        let v = std::mem::replace(&mut self.v, unsafe { std::mem::zeroed() });
         // forget the rest to prevent drop to run on uninitialized data
         std::mem::forget(self);
         v
@@ -342,6 +347,7 @@ impl<A: Array> SmallVecIntoIter<A> {
     }
 
     /// Returns the remaining items of this iterator as a mutable slice.
+    #[allow(dead_code)]
     pub fn as_mut_slice(&mut self) -> &mut [A::Item] {
         let len = self.end - self.current;
         unsafe { core::slice::from_raw_parts_mut(self.data.as_mut_ptr().add(self.current), len) }

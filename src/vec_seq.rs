@@ -4,9 +4,11 @@ use alga::general::AbstractMonoid;
 use alga::general::AbstractSemigroup;
 use alga::general::Additive;
 use alga::general::Identity;
-use std::fmt;
-use std::fmt::Display;
-use std::ops::{Add, AddAssign};
+use std::{
+    fmt,
+    fmt::Display,
+    ops::{Add, AddAssign},
+};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub struct VecSeq<T>(Vec<T>);

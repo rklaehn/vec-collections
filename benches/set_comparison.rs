@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, HashSet};
 use vec_collections::*;
 
 fn vs_create(n: u64) -> usize {
-    let res: VecSet2<u64> = (0..n).map(|x| n-x).collect();
+    let res: VecSet2<u64> = (0..n).map(|x| n - x).collect();
     res.len()
 }
 
@@ -18,7 +18,7 @@ fn vs_contains(x: &VecSet2<u64>, n: u64) -> usize {
 }
 
 fn bs_create(n: u64) -> usize {
-    let res: BTreeSet<u64> = (0..n).map(|x| n-x).collect();
+    let res: BTreeSet<u64> = (0..n).map(|x| n - x).collect();
     res.len()
 }
 
@@ -33,7 +33,7 @@ fn bs_contains(x: &BTreeSet<u64>, n: u64) -> usize {
 }
 
 fn hs_create(n: u64) -> usize {
-    let res: HashSet<u64> = (0..n).map(|x| n-x).collect();
+    let res: HashSet<u64> = (0..n).map(|x| n - x).collect();
     res.len()
 }
 

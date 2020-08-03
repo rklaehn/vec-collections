@@ -1,5 +1,9 @@
-use std::{marker::PhantomData, cmp::{min, Ordering}, ops::DerefMut};
 use smallvec::SmallVec;
+use std::{
+    cmp::{min, Ordering},
+    marker::PhantomData,
+    ops::DerefMut,
+};
 
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
@@ -32,7 +36,7 @@ pub enum Keep {
     Last,
 }
 
-trait Inner<T>: DerefMut<Target=[T]> {
+trait Inner<T>: DerefMut<Target = [T]> {
     fn push(&mut self, value: T);
     fn truncate(&mut self, size: usize);
 }
@@ -77,7 +81,8 @@ struct SortAndDedup<I, T, F> {
 }
 
 pub fn sort_and_dedup<I: Iterator>(iter: I) -> Vec<I::Item>
-    where I::Item: Ord
+where
+    I::Item: Ord,
 {
     let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
         data: Vec::with_capacity(iter.size_hint().0),
@@ -172,7 +177,7 @@ where
             let sorted = self.sorted;
             let unsorted = self.data.len() - sorted;
             if unsorted > sorted {
-                // after this, it will be fully sorted. So even in the worst case 
+                // after this, it will be fully sorted. So even in the worst case
                 // it will be another self.data.len() elements until we call this again
                 self.sort_and_dedup();
             }
