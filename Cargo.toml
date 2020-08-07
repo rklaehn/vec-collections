@@ -15,9 +15,9 @@ homepage = "https://github.com/rklaehn"
 inplace = []
 
 [dependencies]
-sorted-iter = "0.1.5"
-num-traits = "0.2"
-smallvec = "1.0"
+sorted-iter = "0.1.6"
+num-traits = "0.2.12"
+smallvec = "1.4.1"
 
 [dev-dependencies]
 quickcheck = "0.8"

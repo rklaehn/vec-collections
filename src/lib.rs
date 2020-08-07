@@ -1,6 +1,6 @@
 //! This crate provides collections (sets and maps) that wrap [SmallVec].
 //!
-//! # Motivation
+//! # Use cases
 //!
 //! ## Small collections
 //!
@@ -38,6 +38,10 @@
 //! ## [TotalVecMap]
 //!
 //! A [VecMap] with an additional default value, so lookup is a total function.
+//!
+//! # Unsafe
+//!
+//! The in place operations use unsafe code. If that is a problem for you, let me know and I can hide them behind a feature.
 //!
 //! [SmallVec]: https://docs.rs/smallvec/1.4.1/smallvec/struct.SmallVec.html
 //! [VecSet]: struct.VecSet.html
