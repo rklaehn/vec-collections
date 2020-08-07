@@ -1,6 +1,3 @@
-//! A map with default value, backed by a `SmallVec<(K, V)>` of key value pairs.
-//!
-//! Having a default value means that the mapping is a total function from K to V, hence the name.
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::SmallVecMergeState,
@@ -16,10 +13,15 @@ use std::{
     ops::{Add, Div, Index, Mul, Neg, Sub},
 };
 
+/// A [VecMap] with default value.
+///
+/// Having a default value means that the mapping is a total function from K to V, hence the name.
+///
+/// [VecMap]: struct.VecMap.html
 pub struct TotalVecMap<V, A: Array>(VecMap<A>, V);
 
-/// Type alias for a [TotalVecMap](vec_collections::TotalVecMap) with up to 2 mappings with inline storage.
-pub type TotalVecMap2<K, V> = TotalVecMap<V, [(K, V); 2]>;
+/// Type alias for a [TotalVecMap](struct.TotalVecMap) with up to 1 mappings with inline storage.
+pub type TotalVecMap1<K, V> = TotalVecMap<V, [(K, V); 1]>;
 
 impl<K: Clone, V: Clone, A: Array<Item = (K, V)>> Clone for TotalVecMap<V, A> {
     fn clone(&self) -> Self {
@@ -50,6 +52,12 @@ impl<K: PartialOrd, V: PartialOrd, A: Array<Item = (K, V)>> PartialOrd for Total
 impl<K: Ord, V: Ord, A: Array<Item = (K, V)>> Ord for TotalVecMap<V, A> {
     fn cmp(&self, other: &Self) -> Ordering {
         (&self.0, &self.1).cmp(&(&other.0, &other.1))
+    }
+}
+
+impl<K, V: Default, A: Array<Item = (K, V)>> Default for TotalVecMap<V, A> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
     }
 }
 
@@ -273,7 +281,7 @@ impl<K: Ord + Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
             b_default: &that.1,
             r_default: &r_default,
         };
-        let r = SmallVecMergeState::merge(self.0.as_slice(), that.0.as_slice(), op);
+        let r = SmallVecMergeState::merge(self.0.as_ref(), that.0.as_ref(), op);
         Self(VecMap::new(r), r_default)
     }
 }
@@ -300,7 +308,7 @@ impl<K: Ord + Clone, V: Eq + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
             f,
             r_default: &r_default,
         };
-        let r = SmallVecMergeState::merge(self.0.as_slice(), that.0.as_slice(), op);
+        let r = SmallVecMergeState::merge(self.0.as_ref(), that.0.as_ref(), op);
         Self(VecMap::new(r), r_default)
     }
 }
@@ -348,14 +356,14 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     type Ref = (BTreeMap<i32, i32>, i32);
-    type Test = TotalVecMap2<i32, i32>;
+    type Test = TotalVecMap1<i32, i32>;
 
     fn from_ref(r: Ref) -> Test {
         let (elements, default) = r;
         Test::new(elements.clone().into(), default)
     }
 
-    impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap2<K, V> {
+    impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap1<K, V> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             TotalVecMap::new(Arbitrary::arbitrary(g), Arbitrary::arbitrary(g))
         }

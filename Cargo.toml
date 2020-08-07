@@ -1,15 +1,18 @@
 [package]
 name = "vec-collections"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>"]
-description = "Rust collections that are newtype wrappers around vectors"
+description = "Rust collections that are newtype wrappers around smallvec"
 repository = "https://github.com/rklaehn/vec-collections"
 license = "MIT OR Apache-2.0"
-keywords = ["succinct", "vector", "array"]
+keywords = ["succinct", "vector", "array", "smallvec"]
 categories = ["data-structures"]
 edition = "2018"
 readme = "README.md"
 homepage = "https://github.com/rklaehn"
+
+[features]
+inplace = []
 
 [dependencies]
 sorted-iter = "0.1.5"
@@ -22,7 +25,7 @@ maplit = "1.0.2"
 quickcheck_macros = "0.8.0"
 testdrop = "0.1.2"
 lazy_static = "1.4.0"
-rand = "0.7.2"
+rand = "0.7.3"
 num-traits = "0.2.8"
 serde_json = "1.0.41"
 criterion = "0.3.0"

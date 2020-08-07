@@ -1,28 +1,27 @@
-//! A map based on a `SmallVec<(K, V)>` of key value pairs.
-//!
-//! An advantage of this map compared to e.g. BTreeMap is that small maps will be stored inline without allocations.
-//! Larger maps will be stored using a single object on the heap.
-//!
-//! A disadvante is that insertion and removal of single mappings is very slow (O(N)) for large maps.
-//!
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
     iterators::SliceIterator,
-    merge_state::{InPlaceMergeState, MergeStateMut, SmallVecMergeState},
+    merge_state::{MergeStateMut, SmallVecMergeState},
     VecSet,
 };
+
+use crate::merge_state::InPlaceMergeState;
 use smallvec::{Array, SmallVec};
 use std::{
     borrow::Borrow, cmp::Ordering, collections::BTreeMap, fmt::Debug, hash::Hash,
     iter::FromIterator,
 };
 
-/// A map backed by a [`SmallVec`](smallvec::SmallVec) of key value pairs.
+/// A map backed by a [SmallVec] of key value pairs.
+///
+/// [SmallVec]: https://docs.rs/smallvec/1.4.1/smallvec/struct.SmallVec.html
 pub struct VecMap<A: Array>(SmallVec<A>);
 
-/// Type alias for a VecMap with up to 2 mappings with inline storage.
-pub type VecMap2<K, V> = VecMap<[(K, V); 2]>;
+/// Type alias for a [VecMap](struct.VecMap) with up to 1 mapping with inline storage.
+///
+/// This is a good default, since for usize sized keys and values, 1 mapping is the max you can fit in without making the struct larger.
+pub type VecMap1<K, V> = VecMap<[(K, V); 1]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecMap<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -355,8 +354,8 @@ impl<A: Array> VecMap<A> {
     }
 
     /// the underlying memory as a slice of key value pairs
-    pub fn as_slice(&self) -> &[A::Item] {
-        self.0.as_slice()
+    fn as_slice(&self) -> &[A::Item] {
+        self.0.as_ref()
     }
 
     /// retain all pairs matching a predicate
@@ -368,7 +367,7 @@ impl<A: Array> VecMap<A> {
         SliceIterator(self.0.as_slice())
     }
 
-    pub fn into_sorted_vec(self) -> SmallVec<A> {
+    pub fn into_inner(self) -> SmallVec<A> {
         self.0
     }
 }
@@ -389,7 +388,9 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
     ) {
         InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
     }
+}
 
+impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
     /// lookup of a mapping. Time complexity is O(log N). Binary search.
     pub fn get<Q>(&self, key: &Q) -> Option<&V>
     where
@@ -419,10 +420,10 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
 impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
     // pub fn outer_join_with<W: Clone, R, F: Fn(OuterJoinArg<&K, &V, &W>)>(
     //     &self,
-    //     that: &VecMap2<K, W>,
+    //     that: &VecMap1<K, W>,
     //     f: F,
-    // ) -> VecMap2<K, R> {
-    //     VecMap2::<K, R>::new(VecMergeState::merge(
+    // ) -> VecMap1<K, R> {
+    //     VecMap1::<K, R>::new(VecMergeState::merge(
     //         self.0.as_slice(),
     //         that.0.as_slice(),
     //         OuterJoinWithOp(f),
@@ -438,8 +439,8 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         &self,
         that: &VecMap<B>,
         f: F,
-    ) -> VecMap2<K, R> {
-        VecMap2::<K, R>::new(SmallVecMergeState::merge(
+    ) -> VecMap1<K, R> {
+        VecMap1::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             OuterJoinOp(f),
@@ -453,10 +454,10 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         B: Array<Item = (K, W)>,
     >(
         &self,
-        that: &VecMap2<K, W>,
+        that: &VecMap1<K, W>,
         f: F,
-    ) -> VecMap2<K, R> {
-        VecMap2::<K, R>::new(SmallVecMergeState::merge(
+    ) -> VecMap1<K, R> {
+        VecMap1::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             LeftJoinOp(f),
@@ -472,8 +473,8 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         &self,
         that: &VecMap<B>,
         f: F,
-    ) -> VecMap2<K, R> {
-        VecMap2::<K, R>::new(SmallVecMergeState::merge(
+    ) -> VecMap1<K, R> {
+        VecMap1::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             RightJoinOp(f),
@@ -484,8 +485,8 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
         &self,
         that: &VecMap<B>,
         f: F,
-    ) -> VecMap2<K, R> {
-        VecMap2::<K, R>::new(SmallVecMergeState::merge(
+    ) -> VecMap1<K, R> {
+        VecMap1::<K, R>::new(SmallVecMergeState::merge(
             self.0.as_slice(),
             that.0.as_slice(),
             InnerJoinOp(f),
@@ -501,10 +502,10 @@ mod tests {
     use std::collections::BTreeMap;
     use OuterJoinArg::*;
 
-    type Test = VecMap2<i32, i32>;
+    type Test = VecMap1<i32, i32>;
     type Ref = BTreeMap<i32, i32>;
 
-    impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for VecMap2<K, V> {
+    impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for VecMap1<K, V> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let t: BTreeMap<K, V> = Arbitrary::arbitrary(g);
             t.into()

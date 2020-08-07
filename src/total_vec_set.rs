@@ -6,12 +6,17 @@ use std::{
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Sub, SubAssign},
 };
 
+/// A [VecSet] with an additional flag so it can support negation.
+///
+/// This way it is possible to represent e.g. the set of all u64 except 1.
+///
+/// [VecSet]: struct.VecSet.html
 pub struct TotalVecSet<A: Array> {
     elements: VecSet<A>,
     negated: bool,
 }
 
-/// Type alias for a TotalVecSet with up to 2 elements with inline storage.
+/// Type alias for a [TotalVecSet](struct.TotalVecSet) with up to 2 elements with inline storage.
 pub type TotalVecSet2<T> = TotalVecSet<[T; 2]>;
 
 impl<T: Clone, A: Array<Item = T>> Clone for TotalVecSet<A> {
@@ -329,8 +334,8 @@ mod tests {
 
     fn binary_op(a: &Test, b: &Test, r: &Test, op: impl Fn(bool, bool) -> bool) -> bool {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
-        samples.extend(a.elements.as_slice().iter().cloned());
-        samples.extend(b.elements.as_slice().iter().cloned());
+        samples.extend(a.elements.as_ref().iter().cloned());
+        samples.extend(b.elements.as_ref().iter().cloned());
         samples.insert(std::i64::MIN);
         samples.iter().all(|e| {
             let expected = op(a.contains(e), b.contains(e));
@@ -347,8 +352,8 @@ mod tests {
 
     fn binary_property(a: &Test, b: &Test, r: bool, op: impl Fn(bool, bool) -> bool) -> bool {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
-        samples.extend(a.elements.as_slice().iter().cloned());
-        samples.extend(b.elements.as_slice().iter().cloned());
+        samples.extend(a.elements.as_ref().iter().cloned());
+        samples.extend(b.elements.as_ref().iter().cloned());
         samples.insert(std::i64::MIN);
         if r {
             samples.iter().all(|e| {

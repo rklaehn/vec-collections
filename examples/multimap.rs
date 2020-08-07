@@ -1,13 +1,14 @@
 use std::iter::FromIterator;
-use vec_collections::{VecMap2, VecSet2};
+use vec_collections::{VecMap1, VecSet2};
 
 #[derive(Debug)]
-struct Multimap<K, V>(VecMap2<K, VecSet2<V>>);
+struct Multimap<K, V>(VecMap1<K, VecSet2<V>>);
 
 impl<K: Eq + Ord + 'static, V: Eq + Ord + Clone> Multimap<K, V> {
     fn single(key: K, value: V) -> Self {
         Multimap(vec![(key, VecSet2::single(value))].into_iter().collect())
     }
+
     fn combine_with(&mut self, rhs: Multimap<K, V>) {
         self.0.combine_with(rhs.0, |a, b| &a | &b)
     }
@@ -15,7 +16,7 @@ impl<K: Eq + Ord + 'static, V: Eq + Ord + Clone> Multimap<K, V> {
 
 impl<K, V> Default for Multimap<K, V> {
     fn default() -> Self {
-        Self(VecMap2::default())
+        Self(VecMap1::default())
     }
 }
 
@@ -30,11 +31,11 @@ impl<K: Eq + Ord + 'static, V: Clone + Eq + Ord> FromIterator<(K, V)> for Multim
 }
 
 #[derive(Debug)]
-struct BiMultimap<K, V>(VecMap2<K, VecSet2<V>>, VecMap2<V, VecSet2<K>>);
+struct BiMultimap<K, V>(VecMap1<K, VecSet2<V>>, VecMap1<V, VecSet2<K>>);
 
 impl<K, V> Default for BiMultimap<K, V> {
     fn default() -> Self {
-        Self(VecMap2::default(), VecMap2::default())
+        Self(VecMap1::default(), VecMap1::default())
     }
 }
 

@@ -2,7 +2,7 @@ use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
     iterators::SortedIter,
-    merge_state::{BoolOpMergeState, InPlaceMergeState, MergeStateMut, SmallVecMergeState},
+    merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
 use smallvec::{Array, SmallVec};
 use std::{
@@ -13,6 +13,8 @@ use std::{
     iter::FromIterator,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
 };
+
+use crate::merge_state::InPlaceMergeState;
 
 struct SetUnionOp;
 struct SetIntersectionOp;
@@ -25,10 +27,32 @@ struct SetDiffOpt;
 /// can hold without allocating. VecSet is just a wrapper around a [SmallVec], so it does not have additional memory
 /// overhead.
 ///
-/// Sets support comparison operations ([is_disjoint], [is_subset], [is_superset]) and set combine operations
-/// ([bitand], [bitor], [bitxor], [sub]).
-/// They also support in place operations ([bitand_assign], [bitor_assign], [bitxor_assign], [sub_assign]) that will
-/// try to avoid allocations.
+/// Sets support comparison operations (
+/// [is_disjoint](#method.is_disjoint),
+/// [is_subset](#method.is_subset),
+/// [is_superset](#method.is_superset)
+/// ) and set combine operations
+/// (
+/// [bitand](https://doc.rust-lang.org/std/ops/trait.BitAnd.html),
+/// [bitor](https://doc.rust-lang.org/std/ops/trait.BitOr.html),
+/// [bitxor](https://doc.rust-lang.org/std/ops/trait.BitXor.html),
+/// [sub](https://doc.rust-lang.org/std/ops/trait.Sub.html)
+/// ).
+/// They also support in place operations
+/// (
+/// [bitand_assign](https://doc.rust-lang.org/std/ops/trait.BitAndAssign.html),
+/// [bitor_assign](https://doc.rust-lang.org/std/ops/trait.BitOrAssign.html),
+/// [bitxor_assign](https://doc.rust-lang.org/std/ops/trait.BitXorAssign.html),
+/// [sub_assign](https://doc.rust-lang.org/std/ops/trait.SubAssign.html)
+/// ) that will try to avoid allocations.
+///
+/// # Creation
+///
+/// The best way to create a VecSet is to use FromIterator, via collect.
+/// ```
+/// use vec_collections::VecSet;
+/// let a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
+/// ```
 ///
 /// # General usage
 /// ```
@@ -36,7 +60,7 @@ struct SetDiffOpt;
 /// let a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
 /// println!("{}", a.is_disjoint(&b)); // true
-/// let c = &a | &b;
+/// let c = &a | &b; // underlying smallvec will spill over to the heap
 /// println!("{}", c.contains(&5)); // true
 /// ```
 ///
@@ -44,16 +68,32 @@ struct SetDiffOpt;
 /// ```
 /// use vec_collections::VecSet;
 /// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
-/// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
-/// a &= b;
-/// println!("{}", a.contains(&5)); // true
+/// let b: VecSet<[u32; 4]> = (2..6).collect(); // does not allocate
+/// a &= b; // in place intersection, will yield 2..4, will not allocate
+/// println!("{}", a.contains(&3)); // true
 /// ```
 ///
-/// [SmallVec]: smallvec::SmallVec
+/// # Accessing the elements as a slice
+///
+/// Since a VecSet is a succinct collection, you can get a reference to the contents as a slice.
+///
+/// ## Example: choosing a random element
+/// ```
+/// use vec_collections::VecSet;
+/// use rand::seq::SliceRandom;
+/// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
+/// let mut rng = rand::thread_rng();
+/// let e = a.as_ref().choose(&mut rng).unwrap();
+/// println!("{}", e);
+/// ```
+///
+/// [SmallVec]: https://docs.rs/smallvec/1.4.1/smallvec/struct.SmallVec.html
 #[derive(Default)]
 pub struct VecSet<A: Array>(SmallVec<A>);
 
-/// Type alias for a VecSet with up to 2 elements with inline storage.
+/// Type alias for a [VecSet](struct.VecSet) with up to 2 elements with inline storage.
+///
+/// This is a good default, since for usize sized types, 2 is the max you can fit in without making the struct larger.
 pub type VecSet2<T> = VecSet<[T; 2]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecSet<A> {
@@ -114,7 +154,7 @@ impl<A: Array> VecSet<A> {
         SortedIter::new(self.0.iter())
     }
     /// The underlying memory as a slice.
-    pub fn as_slice(&self) -> &[A::Item] {
+    fn as_slice(&self) -> &[A::Item] {
         &self.0
     }
     /// The number of elements in the set.
@@ -128,6 +168,10 @@ impl<A: Array> VecSet<A> {
     /// true if the set is empty.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+    /// Returns the wrapped SmallVec.
+    pub fn into_inner(self) -> SmallVec<A> {
+        self.0
     }
 }
 
@@ -210,7 +254,7 @@ impl<A: Array> Into<Vec<A::Item>> for VecSet<A> {
 
 impl<A: Array> Into<SmallVec<A>> for VecSet<A> {
     fn into(self) -> SmallVec<A> {
-        self.0
+        self.into_inner()
     }
 }
 
