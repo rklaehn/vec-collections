@@ -69,7 +69,7 @@ pub fn creation(c: &mut Criterion) {
 pub fn lookup(c: &mut Criterion) {
     let mut group = c.benchmark_group("lookup");
     let mut rand = rand::rngs::StdRng::from_seed([0u8; 32]);
-    for i in (100u64..=10000).step_by(100) {
+    for i in (100u64..=1000).step_by(100) {
         let mut values = (0..i).collect::<Vec<_>>();
         values.shuffle(&mut rand);
 

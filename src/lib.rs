@@ -91,3 +91,5 @@ pub use total_vec_map::*;
 pub use total_vec_set::*;
 pub use vec_map::*;
 pub use vec_set::*;
+
+pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
