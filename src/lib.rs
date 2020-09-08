@@ -6,7 +6,7 @@
 //!
 //! It happens very frequently that you have collections that have on average just a very small number of elements. If you know
 //! the maximum size or even the maximum _typical_ size in advance, you can use this crate to store such collections without allocations.
-//! For a larger number of elements, the underlying [SmallVec] will allocate the elements on the heap.
+//! For a larger number of elements, the underlying [SmallVec] will allocate the elements on the heap as a single allocation.
 //!
 //! ## Read-heavy collections
 //!
@@ -18,8 +18,8 @@
 //! # Performance
 //!
 //! Performance for bulk creation as well as lookup is better than [BTreeMap]/[BTreeSet] and comparable with [HashMap]/[HashSet] for
-//! types with a cheap [Ord] instance, like primitive types. Performance for insertion or removal of individual elements to/from large
-//! collections is bad, however. This is not the intended use case.
+//! types with a cheap [Ord] instance, like primitive types, and small to medium sizes. Performance for insertion or removal of
+//! individual elements to/from large collections is bad, however. This is not the intended use case.
 //!
 //! # Collections overview
 //!
