@@ -1,10 +1,12 @@
 use crate::VecSet;
-use smallvec::Array;
-use std::{
+use core::{
+    fmt,
     fmt::{Debug, Write},
     hash::Hash,
+    mem,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Sub, SubAssign},
 };
+use smallvec::Array;
 
 /// A [VecSet] with an additional flag so it can support negation.
 ///
@@ -29,7 +31,7 @@ impl<T: Clone, A: Array<Item = T>> Clone for TotalVecSet<A> {
 }
 
 impl<T: Hash, A: Array<Item = T>> Hash for TotalVecSet<A> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
         self.elements.hash(state);
         self.negated.hash(state);
     }
@@ -44,7 +46,7 @@ impl<T: PartialEq, A: Array<Item = T>> PartialEq for TotalVecSet<A> {
 impl<T: Eq, A: Array<Item = T>> Eq for TotalVecSet<A> {}
 
 impl<T: Debug, A: Array<Item = T>> Debug for TotalVecSet<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.negated {
             f.write_char('!')?;
         }
@@ -172,7 +174,7 @@ impl<T: Ord, A: Array<Item = T>> BitAndAssign for TotalVecSet<A> {
             // remove elements from that
             (true, false) => {
                 let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
+                mem::swap(&mut that.elements, &mut self.elements);
                 self.elements -= that.elements;
                 self.negated = false;
             }
@@ -212,7 +214,7 @@ impl<T: Ord, A: Array<Item = T>> BitOrAssign for TotalVecSet<A> {
             // remove holes from that
             (false, true) => {
                 let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
+                mem::swap(&mut that.elements, &mut self.elements);
                 self.elements -= that.elements;
                 self.negated = true;
             }
@@ -282,7 +284,7 @@ impl<T: Ord, A: Array<Item = T>> SubAssign for TotalVecSet<A> {
             // union of elements
             (true, true) => {
                 let mut that = that;
-                std::mem::swap(&mut that.elements, &mut self.elements);
+                mem::swap(&mut that.elements, &mut self.elements);
                 self.elements -= that.elements;
                 self.negated = false;
             }
@@ -336,7 +338,7 @@ mod tests {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
         samples.extend(a.elements.as_ref().iter().cloned());
         samples.extend(b.elements.as_ref().iter().cloned());
-        samples.insert(std::i64::MIN);
+        samples.insert(core::i64::MIN);
         samples.iter().all(|e| {
             let expected = op(a.contains(e), b.contains(e));
             let actual = r.contains(e);
@@ -354,7 +356,7 @@ mod tests {
         let mut samples: BTreeSet<i64> = BTreeSet::new();
         samples.extend(a.elements.as_ref().iter().cloned());
         samples.extend(b.elements.as_ref().iter().cloned());
-        samples.insert(std::i64::MIN);
+        samples.insert(core::i64::MIN);
         if r {
             samples.iter().all(|e| {
                 let expected = op(a.contains(e), b.contains(e));

@@ -1,9 +1,9 @@
-use smallvec::SmallVec;
-use std::{
+use core::{
     cmp::{min, Ordering},
     marker::PhantomData,
     ops::DerefMut,
 };
+use smallvec::SmallVec;
 
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
@@ -188,9 +188,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::fmt::Debug;
     use quickcheck_macros::quickcheck;
     use std::collections::*;
-    use std::fmt::Debug;
 
     /// just a helper to get good output when a check fails
     fn unary_op<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {

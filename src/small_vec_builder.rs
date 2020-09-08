@@ -1,8 +1,8 @@
 //! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
+use core::{cmp, fmt, fmt::Debug, mem, ptr};
 use smallvec::{Array, SmallVec};
-use std::fmt::Debug;
 
 /// builds a SmallVec out of itself
 pub struct InPlaceSmallVecBuilder<A: Array> {
@@ -15,7 +15,7 @@ pub struct InPlaceSmallVecBuilder<A: Array> {
 }
 
 impl<T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let InPlaceSmallVecBuilder { s0, t1, v } = self;
         let s1 = v.len();
         let cap = v.capacity();
@@ -72,7 +72,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
             let cap = v.capacity();
             // just move source to the end without any concern about dropping
             unsafe {
-                std::ptr::copy(v.as_ptr().add(s0), v.as_mut_ptr().add(cap - sn), sn);
+                core::ptr::copy(v.as_ptr().add(s0), v.as_mut_ptr().add(cap - sn), sn);
                 v.set_len(cap);
             }
             // move s0
@@ -100,19 +100,19 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     }
 
     fn push_unsafe(&mut self, value: A::Item) {
-        unsafe { std::ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
+        unsafe { ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
         self.t1 += 1;
     }
 
     /// Consume `n` elements from the source. If `take` is true they will be added to the target,
     /// else they will be dropped.
     pub fn consume(&mut self, n: usize, take: bool) {
-        let n = std::cmp::min(n, self.source_slice().len());
+        let n = cmp::min(n, self.source_slice().len());
         let v = self.v.as_mut_ptr();
         if take {
             if self.t1 != self.s0 {
                 unsafe {
-                    std::ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                    ptr::copy(v.add(self.s0), v.add(self.t1), n);
                 }
             }
             self.t1 += n;
@@ -121,7 +121,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
             for _ in 0..n {
                 unsafe {
                     self.s0 += 1;
-                    std::ptr::drop_in_place(v.add(self.s0 - 1));
+                    ptr::drop_in_place(v.add(self.s0 - 1));
                 }
             }
         }
@@ -131,12 +131,12 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     /// They will be immediately dropped!
     #[allow(dead_code)]
     pub fn skip(&mut self, n: usize) {
-        let n = std::cmp::min(n, self.source_slice().len());
+        let n = cmp::min(n, self.source_slice().len());
         let v = self.v.as_mut_ptr();
         for _ in 0..n {
             unsafe {
                 self.s0 += 1;
-                std::ptr::drop_in_place(v.add(self.s0 - 1));
+                ptr::drop_in_place(v.add(self.s0 - 1));
             }
         }
     }
@@ -145,11 +145,11 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     /// If n is larger than the size of the remaining source, this will only copy all remaining elements in source.
     #[allow(dead_code)]
     pub fn take(&mut self, n: usize) {
-        let n = std::cmp::min(n, self.source_slice().len());
+        let n = cmp::min(n, self.source_slice().len());
         if self.t1 != self.s0 {
             unsafe {
                 let v = self.v.as_mut_ptr();
-                std::ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                ptr::copy(v.add(self.s0), v.add(self.t1), n);
             }
         }
         self.t1 += n;
@@ -160,7 +160,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     pub fn pop_front(&mut self) -> Option<A::Item> {
         if self.s0 < self.v.len() {
             self.s0 += 1;
-            Some(unsafe { std::ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
+            Some(unsafe { ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
         } else {
             None
         }
@@ -182,9 +182,9 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
         // drop the source part
         self.drop_source();
         // tear out the v
-        let v = std::mem::replace(&mut self.v, unsafe { std::mem::zeroed() });
+        let v = mem::replace(&mut self.v, unsafe { mem::zeroed() });
         // forget the rest to prevent drop to run on uninitialized data
-        std::mem::forget(self);
+        mem::forget(self);
         v
     }
 }
@@ -224,7 +224,7 @@ mod tests {
             ids.push(id);
         }
         let fb = f(a, b);
-        std::mem::drop(fb);
+        mem::drop(fb);
         for id in ids {
             td.assert_drop(id);
         }

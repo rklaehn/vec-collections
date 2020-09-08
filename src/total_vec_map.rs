@@ -3,15 +3,18 @@ use crate::{
     merge_state::SmallVecMergeState,
     vec_map::VecMap,
 };
-use num_traits::{Bounded, One, Zero};
-use smallvec::Array;
-use std::{
+use core::{
     borrow::Borrow,
+    cmp,
     cmp::Ordering,
+    fmt,
     fmt::Debug,
+    hash,
     hash::Hash,
     ops::{Add, Div, Index, Mul, Neg, Sub},
 };
+use num_traits::{Bounded, One, Zero};
+use smallvec::Array;
 
 /// A [VecMap] with default value.
 ///
@@ -30,7 +33,7 @@ impl<K: Clone, V: Clone, A: Array<Item = (K, V)>> Clone for TotalVecMap<V, A> {
 }
 
 impl<K: Hash, V: Hash, A: Array<Item = (K, V)>> Hash for TotalVecMap<V, A> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
@@ -87,7 +90,7 @@ impl<K, V, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
 }
 
 impl<K: Debug, V: Debug, A: Array<Item = (K, V)>> Debug for TotalVecMap<V, A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TotalVecMap")
             .field("values", &self.0)
             .field("default", &self.1)
@@ -288,10 +291,10 @@ impl<K: Ord + Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
 
 impl<K: Ord + Clone, V: Ord + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     pub fn supremum(&self, that: &Self) -> Self {
-        self.combine_ref(that, |a, b| std::cmp::max(a, b).clone())
+        self.combine_ref(that, |a, b| cmp::max(a, b).clone())
     }
     pub fn infimum(&self, that: &Self) -> Self {
-        self.combine_ref(that, |a, b| std::cmp::min(a, b).clone())
+        self.combine_ref(that, |a, b| cmp::min(a, b).clone())
     }
 }
 
@@ -395,7 +398,7 @@ mod tests {
         }
 
         fn supremum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| std::cmp::max(a, b)));
+            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::max(a, b)));
             let a1 = from_ref(a.clone());
             let b1 = from_ref(b.clone());
             let actual = a1.supremum(&b1);
@@ -403,7 +406,7 @@ mod tests {
         }
 
         fn infimum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| std::cmp::min(a, b)));
+            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::min(a, b)));
             let a1 = from_ref(a.clone());
             let b1 = from_ref(b.clone());
             let actual = a1.infimum(&b1);

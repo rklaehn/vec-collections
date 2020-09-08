@@ -7,11 +7,11 @@ use crate::{
 };
 
 use crate::merge_state::InPlaceMergeState;
-use smallvec::{Array, SmallVec};
-use std::{
-    borrow::Borrow, cmp::Ordering, collections::BTreeMap, fmt::Debug, hash::Hash,
-    iter::FromIterator,
+use core::{
+    borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator,
 };
+use smallvec::{Array, SmallVec};
+use std::collections::BTreeMap;
 
 /// A map backed by a [SmallVec] of key value pairs.
 ///
@@ -24,7 +24,7 @@ pub struct VecMap<A: Array>(SmallVec<A>);
 pub type VecMap1<K, V> = VecMap<[(K, V); 1]>;
 
 impl<T: Debug, A: Array<Item = T>> Debug for VecMap<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_set().entries(self.as_slice().iter()).finish()
     }
 }
@@ -36,7 +36,7 @@ impl<T: Clone, A: Array<Item = T>> Clone for VecMap<A> {
 }
 
 impl<T: Hash, A: Array<Item = T>> Hash for VecMap<A> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
@@ -386,7 +386,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         that: VecMap<B>,
         f: F,
     ) {
-        InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, std::marker::PhantomData));
+        InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, core::marker::PhantomData));
     }
 }
 

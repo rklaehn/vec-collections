@@ -1,4 +1,5 @@
-use std::{collections::BTreeSet, fmt::Debug};
+use core::fmt::Debug;
+use std::collections::BTreeSet;
 
 /// A support trait for testing any kind of collection.
 ///

@@ -1,4 +1,4 @@
-use std::iter::FromIterator;
+use core::iter::FromIterator;
 use vec_collections::{VecMap1, VecSet2};
 
 #[derive(Debug)]

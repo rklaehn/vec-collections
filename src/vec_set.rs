@@ -6,21 +6,21 @@ use crate::{
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
 #[cfg(feature = "serde")]
+use core::marker::PhantomData;
+use core::{
+    cmp::Ordering,
+    fmt, hash,
+    hash::Hash,
+    iter::FromIterator,
+    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
+};
+#[cfg(feature = "serde")]
 use serde::{
     de::{Deserialize, Deserializer, SeqAccess, Visitor},
     ser::{Serialize, SerializeSeq, Serializer},
 };
 use smallvec::{Array, SmallVec};
-#[cfg(feature = "serde")]
-use std::marker::PhantomData;
-use std::{
-    cmp::Ordering,
-    collections::BTreeSet,
-    fmt,
-    hash::Hash,
-    iter::FromIterator,
-    ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
-};
+use std::collections::BTreeSet;
 
 struct SetUnionOp;
 struct SetIntersectionOp;
@@ -115,7 +115,7 @@ impl<T: Clone, A: Array<Item = T>> Clone for VecSet<A> {
 }
 
 impl<T: Hash, A: Array<Item = T>> Hash for VecSet<A> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.0.hash(state)
     }
 }
@@ -156,7 +156,7 @@ impl<A: Array> VecSet<A> {
         Self::new_unsafe(SmallVec::new())
     }
     /// An iterator that returns references to the items of this set in sorted order
-    pub fn iter(&self) -> SortedIter<std::slice::Iter<A::Item>> {
+    pub fn iter(&self) -> SortedIter<core::slice::Iter<A::Item>> {
         SortedIter::new(self.0.iter())
     }
     /// The underlying memory as a slice.
@@ -254,7 +254,7 @@ where
 
 impl<'a, A: Array> IntoIterator for &'a VecSet<A> {
     type Item = &'a A::Item;
-    type IntoIter = SortedIter<std::slice::Iter<'a, A::Item>>;
+    type IntoIter = SortedIter<core::slice::Iter<'a, A::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -541,7 +541,6 @@ mod test {
     use crate::obey::*;
     use num_traits::PrimInt;
     use quickcheck::*;
-    use std::collections::BTreeSet;
 
     impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {

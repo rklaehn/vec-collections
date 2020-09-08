@@ -1,9 +1,8 @@
 use crate::binary_merge::{EarlyOut, MergeOperation, MergeStateRead};
 use crate::iterators::SliceIterator;
 use crate::small_vec_builder::{InPlaceSmallVecBuilder, SmallVecIntoIter};
+use core::{default::Default, fmt, fmt::Debug};
 use smallvec::{Array, SmallVec};
-use std::default::Default;
-use std::fmt::Debug;
 
 /// A typical write part for the merge state
 pub(crate) trait MergeStateMut: MergeStateRead {
@@ -61,7 +60,7 @@ impl<'a, T, A: Array<Item = T>, B: Array<Item = T>> MergeStateMut for InPlaceMer
 impl<'a, A: Array, B: Array> InPlaceMergeState<A, B> {
     pub fn merge<O: MergeOperation<Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
         let mut t: SmallVec<A> = Default::default();
-        std::mem::swap(a, &mut t);
+        core::mem::swap(a, &mut t);
         let mut state = Self::new(t, b);
         o.merge(&mut state);
         *a = state.result();
@@ -76,7 +75,7 @@ pub(crate) struct BoolOpMergeState<'a, A, B> {
 }
 
 impl<'a, A: Debug, B: Debug> Debug for BoolOpMergeState<'a, A, B> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "a: {:?}, b: {:?} r: {}",
@@ -145,7 +144,7 @@ pub(crate) struct SmallVecMergeState<'a, A, B, Arr: Array> {
 }
 
 impl<'a, A: Debug, B: Debug, Arr: Array> Debug for SmallVecMergeState<'a, A, B, Arr> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "a: {:?}, b: {:?}", self.a_slice(), self.b_slice(),)
     }
 }
