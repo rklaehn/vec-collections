@@ -252,6 +252,15 @@ where
     }
 }
 
+impl<'a, A: Array> IntoIterator for &'a VecSet<A> {
+    type Item = &'a A::Item;
+    type IntoIter = SortedIter<std::slice::Iter<'a, A::Item>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
 impl<A: Array> Into<Vec<A::Item>> for VecSet<A> {
     fn into(self) -> Vec<A::Item> {
         self.0.into_vec()
