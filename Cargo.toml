@@ -1,6 +1,6 @@
 [package]
 name = "vec-collections"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>"]
 description = "Rust collections that are newtype wrappers around smallvec"
 repository = "https://github.com/rklaehn/vec-collections"
@@ -12,7 +12,13 @@ readme = "README.md"
 homepage = "https://github.com/rklaehn"
 
 [features]
+default = ["inplace", "serde"]
 inplace = []
+
+[dependencies.serde]
+default-features = false
+optional = true
+version = "1"
 
 [dependencies]
 sorted-iter = "0.1"
@@ -29,8 +35,9 @@ rand = "0.7.3"
 num-traits = "0.2.8"
 serde_json = "1.0.41"
 criterion = "0.3.0"
+fnv = "1.0.7"
 
 [[bench]]
-# name = "set_comparison"
-name = "sort_dedup"
+name = "set_comparison"
+# name = "sort_dedup"
 harness = false

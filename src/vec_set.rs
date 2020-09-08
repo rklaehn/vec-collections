@@ -1,20 +1,26 @@
+use crate::merge_state::InPlaceMergeState;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
     iterators::SortedIter,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
+#[cfg(feature = "serde")]
+use serde::{
+    de::{Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, SerializeSeq, Serializer},
+};
 use smallvec::{Array, SmallVec};
+#[cfg(feature = "serde")]
+use std::marker::PhantomData;
 use std::{
     cmp::Ordering,
     collections::BTreeSet,
-    fmt::Debug,
+    fmt,
     hash::Hash,
     iter::FromIterator,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
 };
-
-use crate::merge_state::InPlaceMergeState;
 
 struct SetUnionOp;
 struct SetIntersectionOp;
@@ -96,8 +102,8 @@ pub struct VecSet<A: Array>(SmallVec<A>);
 /// This is a good default, since for usize sized types, 2 is the max you can fit in without making the struct larger.
 pub type VecSet2<T> = VecSet<[T; 2]>;
 
-impl<T: Debug, A: Array<Item = T>> Debug for VecSet<A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug, A: Array<Item = T>> fmt::Debug for VecSet<A> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_set().entries(self.iter()).finish()
     }
 }
@@ -420,6 +426,64 @@ impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetXorOp {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<A: Array> Serialize for VecSet<A>
+where
+    A::Item: Serialize,
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_seq(Some(self.len()))?;
+        for item in self.iter() {
+            state.serialize_element(&item)?;
+        }
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, A: Array> Deserialize<'de> for VecSet<A>
+where
+    A::Item: Deserialize<'de> + Ord,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_seq(VecSetVisitor {
+            phantom: PhantomData,
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+struct VecSetVisitor<A> {
+    phantom: PhantomData<A>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, A: Array> Visitor<'de> for VecSetVisitor<A>
+where
+    A::Item: Deserialize<'de> + Ord,
+{
+    type Value = VecSet<A>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a sequence")
+    }
+
+    fn visit_seq<B>(self, mut seq: B) -> Result<Self::Value, B::Error>
+    where
+        B: SeqAccess<'de>,
+    {
+        let len = seq.size_hint().unwrap_or(0);
+        let mut values = SmallVec::with_capacity(len);
+
+        while let Some(value) = seq.next_element()? {
+            values.push(value);
+        }
+        values.sort();
+        values.dedup();
+        Ok(VecSet(values))
+    }
+}
+
 // impl<T: Ord> BitAnd for VecSet<T> {
 //     type Output = VecSet<T>;
 //     fn bitand(mut self, that: Self) -> Self::Output {
@@ -470,7 +534,7 @@ mod test {
     use quickcheck::*;
     use std::collections::BTreeSet;
 
-    impl<T: Arbitrary + Ord + Copy + Default + Debug> Arbitrary for VecSet<[T; 2]> {
+    impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             Self::from_vec(Arbitrary::arbitrary(g))
         }
@@ -496,6 +560,12 @@ mod test {
     type Reference = BTreeSet<i64>;
 
     quickcheck! {
+
+        fn serde_roundtrip(reference: Test) -> bool {
+            let bytes = serde_json::to_vec(&reference).unwrap();
+            let deser = serde_json::from_slice(&bytes).unwrap();
+            reference == deser
+        }
 
         fn is_disjoint_sample(a: Test, b: Test) -> bool {
             binary_property_test(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
