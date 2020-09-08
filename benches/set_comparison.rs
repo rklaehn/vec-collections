@@ -100,28 +100,28 @@ pub fn lookup(c: &mut Criterion) {
         let coll: VecSet2<u64> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("vs_lookup", i),
-            &(coll, &values[0..10]),
+            &(coll, &values[0..lookup]),
             |b, coll| b.iter(|| vs_contains(black_box(&coll.0), &coll.1)),
         );
 
         let coll: BTreeSet<u64> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("bs_lookup", i),
-            &(coll, &values[0..10]),
+            &(coll, &values[0..lookup]),
             |b, coll| b.iter(|| bs_contains(black_box(&coll.0), &coll.1)),
         );
 
         let coll: HashSet<u64> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("hs_lookup", i),
-            &(coll, &values[0..10]),
+            &(coll, &values[0..lookup]),
             |b, coll| b.iter(|| hs_contains(black_box(&coll.0), &coll.1)),
         );
 
         let coll: FnvHashSet<u64> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("fh_lookup", i),
-            &(coll, &values[0..10]),
+            &(coll, &values[0..lookup]),
             |b, coll| b.iter(|| fh_contains(black_box(&coll.0), &coll.1)),
         );
     }

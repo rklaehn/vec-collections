@@ -10,44 +10,62 @@
 
 # About
 
-Order based collections that are backed by smallvec.
+<!-- cargo-sync-readme start -->
 
-# When to use this crate
+This crate provides collections (sets and maps) that wrap [SmallVec].
 
-The collections in this crate are [succinct data structures], having only a small constant overhead over their contents. They will therefore be a good choice if the data size in memory is the most important concern.
+# Use cases
 
-They will also be very efficient for collections with a small number of elements. E.g. if you have a set of u32 that you know will rarely exceed 4 elements, you can use a VecSet backed by a SmallVec<[u32; 4]> and have no allocations at all unless you exceed 4 elements.
+## Small collections
 
-They will have superior performance to the standard ordered collection for bulk creation using [collect] and for lookup. For cases with a fast [Ord] implementation (e.g. primitive types, random byte arrays), creation and lookup performance will even be superior to the standard hash based collections.
+It happens very frequently that you have collections that have on average just a very small number of elements. If you know
+the maximum size or even the maximum _typical_ size in advance, you can use this crate to store such collections without allocations.
+For a larger number of elements, the underlying [SmallVec] will allocate the elements on the heap.
 
-The downside is that update operations (e.g. insert, removal) have O(N) performance. So if you have a case where you have a collection that is large and is frequently updated after creation, performance will be *very* bad. You have been warned.
+## Read-heavy collections
 
-# Creation
+Another very frequent pattern is that you have a possibly large collection that is being created once and then used readonly for
+a long time. E.g. lookup tables. In these cases, ease of adding individual new elements is less important than compact in-memory
+representation and lookup performance. This crate provides succinct collections that have only a very small constant overhead over
+the contents of the collections.
 
-[VecSet] and [VecMap] support FromIterator for creation using collect
+# Performance
 
-# Operations
+Performance for bulk creation as well as lookup is better than [BTreeMap]/[BTreeSet] and comparable with [HashMap]/[HashSet] for
+types with a cheap [Ord] instance, like primitive types. Performance for insertion or removal of individual elements to/from large
+collections is bad, however. This is not the intended use case.
 
-# Benchmarks
+# Collections overview
 
-There are some very basic benchmarks in this crate, which can be run using `cargo bench`.
+## [VecSet]
 
+Provides a set backed by a [SmallVec] of elements.
 
+## [VecMap]
 
-# History
+Provides a map backed by a [SmallVec] of key value pairs.
 
-This is a port of [array based collections] from Scala to Rust. Here is a [blog post](http://rklaehn.github.io/2015/12/18/array-based-immutable-collections/) from ages ago explaining the motivation.
+## [TotalVecSet]
 
-A straight port would have been pretty easy, but I have tried to make the port more rusty by offering in-place operations that do not allocate.
+A [VecSet] with an additional flag so it can support negation. This way it is possible to represent e.g. the set of all u64 except 1.
 
-The core algorithm that is used for all operations is a minimum comparison merge algorithm that requires fast random access
-to the elements of a collection, which you of course have in case of a slice or a vec. The minimum comparison merge algorithm
-will be useful as soon as the cost of a comparison is large compared to the cost of a copy, but you will still get very good
-performance in the case where the comparision is roughly the same cost as a copy.
+## [TotalVecMap]
 
-This is also a bit of a nursery for things I am currently working on.
+A [VecMap] with an additional default value, so lookup is a total function.
 
-[collect]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.collect
-[succinct data structures]: https://en.wikipedia.org/wiki/Succinct_data_structure
+# Unsafe
+
+The in place operations use unsafe code. If that is a problem for you, let me know and I can hide them behind a feature.
+
+[SmallVec]: https://docs.rs/smallvec/1.4.1/smallvec/struct.SmallVec.html
+[VecSet]: struct.VecSet.html
+[VecMap]: struct.VecMap.html
+[TotalVecSet]: struct.TotalVecSet
+[TotalVecMap]: struct.TotalVecMap
 [Ord]: https://doc.rust-lang.org/std/cmp/trait.Ord.html
-[array based collections]: https://github.com/rklaehn/abc
+[BTreeSet]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
+[BTreeMap]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
+[HashSet]: https://doc.rust-lang.org/std/collections/struct.HashSet.html
+[HashMap]: https://doc.rust-lang.org/std/collections/struct.HashMap.html
+
+<!-- cargo-sync-readme end -->
