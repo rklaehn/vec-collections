@@ -1,3 +1,4 @@
+#[allow(clippy::suspicious_op_assign_impl)]
 use crate::VecSet;
 use core::{
     fmt,

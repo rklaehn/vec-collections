@@ -1,3 +1,4 @@
+use crate::merge_state::InPlaceMergeState;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
@@ -5,10 +6,13 @@ use crate::{
     merge_state::{MergeStateMut, SmallVecMergeState},
     VecSet,
 };
-
-use crate::merge_state::InPlaceMergeState;
-use core::{
-    borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator,
+#[cfg(feature = "serde")]
+use core::marker::PhantomData;
+use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
+#[cfg(feature = "serde")]
+use serde::{
+    de::{Deserialize, Deserializer, MapAccess, Visitor},
+    ser::{Serialize, SerializeMap, Serializer},
 };
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeMap;
@@ -494,6 +498,65 @@ impl<K: Ord + Clone, V: Clone, A: Array<Item = (K, V)>> VecMap<A> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<K, V, A: Array<Item = (K, V)>> Serialize for VecMap<A>
+where
+    K: Serialize,
+    V: Serialize,
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut state = serializer.serialize_map(Some(self.len()))?;
+        for (k, v) in self.0.iter() {
+            state.serialize_entry(&k, &v)?;
+        }
+        state.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, K, V, A: Array<Item = (K, V)>> Deserialize<'de> for VecMap<A>
+where
+    K: Deserialize<'de> + Ord + PartialEq + Clone,
+    V: Deserialize<'de>,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_map(VecMapVisitor {
+            phantom: PhantomData,
+        })
+    }
+}
+
+#[cfg(feature = "serde")]
+struct VecMapVisitor<K, V, A> {
+    phantom: PhantomData<(K, V, A)>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, K, V, A> Visitor<'de> for VecMapVisitor<K, V, A>
+where
+    A: Array<Item = (K, V)>,
+    K: Deserialize<'de> + Ord + PartialEq + Clone,
+    V: Deserialize<'de>,
+{
+    type Value = VecMap<A>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("a map")
+    }
+
+    fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<Self::Value, M::Error> {
+        let len = map.size_hint().unwrap_or(0);
+        let mut values: SmallVec<A> = SmallVec::with_capacity(len);
+
+        while let Some(value) = map.next_entry::<K, V>()? {
+            values.push(value);
+        }
+        values.sort_by_key(|x: &(K, V)| x.0.clone());
+        values.dedup_by_key(|x: &mut (K, V)| x.0.clone());
+        Ok(VecMap(values))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +594,14 @@ mod tests {
     }
 
     quickcheck! {
+
+        #[cfg(feature = "serde")]
+        fn serde_roundtrip(reference: Ref) -> bool {
+            let bytes = serde_json::to_vec(&reference).unwrap();
+            let deser = serde_json::from_slice(&bytes).unwrap();
+            reference == deser
+        }
+
         fn outer_join(a: Ref, b: Ref) -> bool {
             let expected: Test = outer_join_reference(&a, &b).into();
             let a: Test = a.into();
