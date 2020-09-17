@@ -15,15 +15,15 @@ homepage = "https://github.com/rklaehn"
 default = ["inplace", "serde"]
 inplace = []
 
-[dependencies.serde]
-default-features = false
-optional = true
-version = "1"
-
 [dependencies]
 sorted-iter = "0.1"
 num-traits = "0.2"
 smallvec = "1.4"
+
+[dependencies.serde]
+default-features = false
+optional = true
+version = "1"
 
 [dev-dependencies]
 quickcheck = "0.8"
@@ -36,6 +36,10 @@ num-traits = "0.2.8"
 serde_json = "1.0.41"
 criterion = "0.3.0"
 fnv = "1.0.7"
+jemallocator = "0.3.2"
+jemalloc-ctl = "0.3.3"
+anyhow = "1.0.32"
+stats_alloc = "0.1.8"
 
 [[bench]]
 name = "set_comparison"
