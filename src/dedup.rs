@@ -3,7 +3,7 @@ use core::{
     marker::PhantomData,
     ops::DerefMut,
 };
-use smallvec::SmallVec;
+use smallvec::{Array, SmallVec};
 
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
@@ -72,21 +72,18 @@ struct SortAndDedup<I, T, F> {
     sorted: usize,
     /// comparison
     cmp: F,
-    /// total number of unsorted elements that have been added
-    count: usize,
     /// which element to keep in case of duplicates
     keep: Keep,
 
     _t: PhantomData<T>,
 }
 
-pub fn sort_and_dedup<I: Iterator>(iter: I) -> Vec<I::Item>
+pub fn sort_and_dedup<A: Array, I: Iterator<Item = A::Item>>(iter: I) -> SmallVec<A>
 where
     I::Item: Ord,
 {
-    let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
-        data: Vec::with_capacity(iter.size_hint().0),
-        count: 0,
+    let mut agg: SortAndDedup<SmallVec<A>, I::Item, _> = SortAndDedup {
+        data: SmallVec::<A>::with_capacity(min(iter.size_hint().0, 16)),
         sorted: 0,
         cmp: |a: &I::Item, b: &I::Item| a.cmp(b),
         keep: Keep::First,
@@ -106,7 +103,6 @@ where
 {
     let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
         data: Vec::with_capacity(min(iter.size_hint().0, 16)),
-        count: 0,
         sorted: 0,
         cmp: |a: &I::Item, b: &I::Item| key(a).cmp(&key(b)),
         keep,
@@ -143,7 +139,6 @@ where
     }
 
     fn push(&mut self, elem: T) {
-        self.count += 1;
         if self.sorted == self.data.len() {
             if let Some(last) = self.data.last_mut() {
                 match (self.cmp)(last, &elem) {
@@ -203,13 +198,13 @@ mod tests {
 
     #[quickcheck]
     fn sort_and_dedup_check(x: Vec<i32>) -> bool {
-        let expected: Vec<i32> = x
+        let expected: SmallVec<[i32; 4]> = x
             .iter()
             .cloned()
             .collect::<BTreeSet<i32>>()
             .into_iter()
             .collect();
-        let actual = sort_and_dedup(x.into_iter());
+        let actual: SmallVec<[i32; 4]> = sort_and_dedup(x.into_iter());
         expected == actual
     }
 

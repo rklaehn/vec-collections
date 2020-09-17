@@ -356,12 +356,11 @@ impl<T: Ord, A: Array<Item = T>> From<BTreeSet<T>> for VecSet<A> {
 ///
 /// Worst case performance is O(log(n)^2 * n), but performance for already partially sorted collections will be
 /// significantly better. For a fully sorted collection, performance will be O(n).
-///
-/// The underlying array might be up to twice as large as needed after calling this method, so it might be a good
-/// idea to call [shrink_to_fit](shrink_to_fit) if you want to keep the set around for a long time.
 impl<T: Ord, A: Array<Item = T>> FromIterator<T> for VecSet<A> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        Self::from_vec(sort_and_dedup(iter.into_iter()))
+        let mut vec = sort_and_dedup(iter.into_iter());
+        vec.shrink_to_fit();
+        Self::new_unsafe(vec)
     }
 }
 
