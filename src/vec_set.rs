@@ -261,6 +261,15 @@ impl<'a, A: Array> IntoIterator for &'a VecSet<A> {
     }
 }
 
+impl<A: Array> IntoIterator for VecSet<A> {
+    type Item = A::Item;
+    type IntoIter = SortedIter<smallvec::IntoIter<A>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        SortedIter::new(self.0.into_iter())
+    }
+}
+
 impl<A: Array> Into<Vec<A::Item>> for VecSet<A> {
     fn into(self) -> Vec<A::Item> {
         self.0.into_vec()

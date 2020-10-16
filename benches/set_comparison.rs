@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fnv::FnvHashSet;
-use std::{collections::{BTreeSet, HashSet}};
+use std::collections::{BTreeSet, HashSet};
 use vec_collections::*;
 
 fn vs_create(v: &Vec<u32>) -> usize {
@@ -72,21 +72,29 @@ fn creation_bench(c: &mut Criterion, title: &str, range: impl Iterator<Item = u3
         let mut values = (0..i).collect::<Vec<_>>();
         values.shuffle(&mut rand);
 
-        group.bench_with_input(BenchmarkId::new("VecSet<[u32; 4]> create", i), &values, |b, values| {
-            b.iter(|| vs_create(black_box(values)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("VecSet<[u32; 4]> create", i),
+            &values,
+            |b, values| b.iter(|| vs_create(black_box(values))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("BTreeSet<u32> create", i), &values, |b, values| {
-            b.iter(|| bs_create(black_box(values)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("BTreeSet<u32> create", i),
+            &values,
+            |b, values| b.iter(|| bs_create(black_box(values))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("HashSet<u32> creaete", i), &values, |b, values| {
-            b.iter(|| hs_create(black_box(values)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("HashSet<u32> creaete", i),
+            &values,
+            |b, values| b.iter(|| hs_create(black_box(values))),
+        );
 
-        group.bench_with_input(BenchmarkId::new("FnvHashSet<u32> creaete", i), &values, |b, values| {
-            b.iter(|| fh_create(black_box(values)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("FnvHashSet<u32> creaete", i),
+            &values,
+            |b, values| b.iter(|| fh_create(black_box(values))),
+        );
     }
 }
 pub fn creation_medium(c: &mut Criterion) {
@@ -102,7 +110,9 @@ pub fn lookup_bench(c: &mut Criterion, title: &str, range: impl Iterator<Item = 
     for i in range {
         let mut values = (0..i).collect::<Vec<_>>();
         values.shuffle(&mut rand);
-        let lookup = (0..lookup).map(|x| values[x % values.len()]).collect::<Vec<_>>();
+        let lookup = (0..lookup)
+            .map(|x| values[x % values.len()])
+            .collect::<Vec<_>>();
 
         let coll: VecSet<[u32; 4]> = values.iter().cloned().collect();
         group.bench_with_input(
@@ -140,5 +150,11 @@ pub fn lookup_small(c: &mut Criterion) {
     lookup_bench(c, "small", 1..=10)
 }
 
-criterion_group!(benches, creation_small, lookup_small, creation_medium, lookup_medium);
+criterion_group!(
+    benches,
+    creation_small,
+    lookup_small,
+    creation_medium,
+    lookup_medium
+);
 criterion_main!(benches);

@@ -65,6 +65,14 @@ impl<T: Ord, A: Array<Item = T>> Ord for VecMap<A> {
     }
 }
 
+impl<'a, A: Array> IntoIterator for &'a VecMap<A> {
+    type Item = &'a A::Item;
+    type IntoIter = core::slice::Iter<'a, A::Item>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
 impl<A: Array> IntoIterator for VecMap<A> {
     type Item = A::Item;
     type IntoIter = smallvec::IntoIter<A>;
