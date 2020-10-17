@@ -550,6 +550,16 @@ mod test {
     use num_traits::PrimInt;
     use quickcheck::*;
 
+    #[test]
+    fn drop_pointer_being_freed_was_not_allocated() {
+        let mut tags: VecSet<[Box<str>; 4]> = VecSet::default();
+        let e = [VecSet::<[Box<str>; 4]>::single("a".into())];
+        for a in e.iter() {
+            tags.extend(a.iter().cloned());
+        }
+        std::mem::drop(tags);
+    }
+
     impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             Self::from_vec(Arbitrary::arbitrary(g))
