@@ -1,6 +1,6 @@
 use crate::binary_merge::{EarlyOut, MergeOperation, MergeStateRead};
 use crate::iterators::SliceIterator;
-use crate::small_vec_builder::{InPlaceSmallVecBuilder, SmallVecIntoIter};
+use crate::small_vec_builder::InPlaceSmallVecBuilder;
 use core::{default::Default, fmt, fmt::Debug};
 use smallvec::{Array, SmallVec};
 
@@ -14,14 +14,14 @@ pub(crate) trait MergeStateMut: MergeStateRead {
 
 pub(crate) struct InPlaceMergeState<A: Array, B: Array> {
     pub a: InPlaceSmallVecBuilder<A>,
-    pub b: SmallVecIntoIter<B>,
+    pub b: smallvec::IntoIter<B>,
 }
 
 impl<A: Array, B: Array> InPlaceMergeState<A, B> {
     fn new(a: SmallVec<A>, b: SmallVec<B>) -> Self {
         Self {
             a: a.into(),
-            b: SmallVecIntoIter::new(b),
+            b: b.into_iter(),
         }
     }
     fn result(self) -> SmallVec<A> {
