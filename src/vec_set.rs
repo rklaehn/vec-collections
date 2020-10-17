@@ -553,11 +553,10 @@ mod test {
     #[test]
     fn drop_pointer_being_freed_was_not_allocated() {
         let mut tags: VecSet<[Box<str>; 4]> = VecSet::default();
-        let e = [VecSet::<[Box<str>; 4]>::single("a".into())];
-        for a in e.iter() {
-            tags.extend(a.iter().cloned());
-        }
+        tags |= VecSet::<[Box<str>; 4]>::single("a".into());
+        println!("before drop!");
         std::mem::drop(tags);
+        println!("after drop!");
     }
 
     impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
