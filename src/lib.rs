@@ -82,11 +82,14 @@ mod vec_map;
 mod dedup;
 mod iterators;
 
+mod macros;
+
 #[cfg(test)]
 mod obey;
 
 mod small_vec_builder;
 
+pub use macros::*;
 pub use total_vec_map::*;
 pub use total_vec_set::*;
 pub use vec_map::*;

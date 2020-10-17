@@ -382,9 +382,28 @@ impl<A: Array> VecMap<A> {
     pub fn into_inner(self) -> SmallVec<A> {
         self.0
     }
+
+    /// Creates a vecmap with a single item
+    pub fn single(item: A::Item) -> Self {
+        Self(smallvec::smallvec![item])
+    }
 }
 
 impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        match self.0.binary_search_by(|(k, _)| k.cmp(&key)) {
+            Ok(index) => {
+                let mut elem = (key, value);
+                std::mem::swap(&mut elem, &mut self.0[index]);
+                Some(elem.1)
+            }
+            Err(ip) => {
+                self.0.insert(ip, (key, value));
+                None
+            }
+        }
+    }
+
     /// in-place merge with another map of the same type. The merge is right-biased, so on collisions the values
     /// from the rhs will win.
     pub fn merge_with<B: Array<Item = (K, V)>>(&mut self, rhs: VecMap<B>) {
