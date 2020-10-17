@@ -550,6 +550,16 @@ mod test {
     use num_traits::PrimInt;
     use quickcheck::*;
 
+    #[test]
+    fn drop_pointer_being_freed_was_not_allocated() {
+        // this test might look completely pointless, but at some point this
+        // caused an evil "pointer being freed was not allocated".
+        let mut tags: VecSet<[Box<str>; 4]> = VecSet::default();
+        tags.bitor_assign(VecSet::<[Box<str>; 4]>::single("a".into()));
+        let sv = tags.into_inner();
+        std::mem::drop(sv);
+    }
+
     impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             Self::from_vec(Arbitrary::arbitrary(g))
