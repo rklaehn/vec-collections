@@ -627,7 +627,7 @@ mod tests {
     quickcheck! {
 
         #[cfg(feature = "serde")]
-        fn serde_roundtrip(reference: Ref) -> bool {
+        fn serde_roundtrip(reference: Test) -> bool {
             let bytes = serde_json::to_vec(&reference).unwrap();
             let deser = serde_json::from_slice(&bytes).unwrap();
             reference == deser

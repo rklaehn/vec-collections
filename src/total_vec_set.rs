@@ -1,4 +1,3 @@
-#[allow(clippy::suspicious_op_assign_impl)]
 use crate::VecSet;
 use core::{
     fmt,
@@ -6,6 +5,11 @@ use core::{
     hash::Hash,
     mem,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Sub, SubAssign},
+};
+#[cfg(feature = "serde")]
+use serde::{
+    de::{Deserialize, Deserializer},
+    ser::{Serialize, Serializer},
 };
 use smallvec::Array;
 
@@ -21,6 +25,27 @@ pub struct TotalVecSet<A: Array> {
 
 /// Type alias for a [TotalVecSet](struct.TotalVecSet) with up to 2 elements with inline storage.
 pub type TotalVecSet2<T> = TotalVecSet<[T; 2]>;
+
+#[cfg(feature = "serde")]
+impl<A: Array> Serialize for TotalVecSet<A>
+where
+    A::Item: Serialize,
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (&self.elements, &self.negated).serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, A: Array> Deserialize<'de> for TotalVecSet<A>
+where
+    A::Item: Deserialize<'de> + Ord + PartialEq + Clone,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (elements, negated) = <(VecSet<A>, bool)>::deserialize(deserializer)?;
+        Ok(Self::new(elements, negated))
+    }
+}
 
 impl<T: Clone, A: Array<Item = T>> Clone for TotalVecSet<A> {
     fn clone(&self) -> Self {
@@ -375,6 +400,13 @@ mod tests {
     }
 
     quickcheck! {
+
+        #[cfg(feature = "serde")]
+        fn serde_roundtrip(reference: Test) -> bool {
+            let bytes = serde_json::to_vec(&reference).unwrap();
+            let deser = serde_json::from_slice(&bytes).unwrap();
+            reference == deser
+        }
 
         fn is_disjoint_sample(a: Test, b: Test) -> bool {
             binary_property(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
