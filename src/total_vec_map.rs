@@ -14,6 +14,11 @@ use core::{
     ops::{Add, Div, Index, Mul, Neg, Sub},
 };
 use num_traits::{Bounded, One, Zero};
+#[cfg(feature = "serde")]
+use serde::{
+    de::{Deserialize, Deserializer},
+    ser::{Serialize, Serializer},
+};
 use smallvec::Array;
 
 /// A [VecMap] with default value.
@@ -22,6 +27,29 @@ use smallvec::Array;
 ///
 /// [VecMap]: struct.VecMap.html
 pub struct TotalVecMap<V, A: Array>(VecMap<A>, V);
+
+#[cfg(feature = "serde")]
+impl<K, V, A: Array<Item = (K, V)>> Serialize for TotalVecMap<V, A>
+where
+    K: Serialize,
+    V: Serialize,
+{
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        (&self.0, &self.1).serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, K, V, A: Array<Item = (K, V)>> Deserialize<'de> for TotalVecMap<V, A>
+where
+    K: Deserialize<'de> + Ord + PartialEq + Clone,
+    V: Deserialize<'de> + Eq,
+{
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (map, default) = <(VecMap<A>, V)>::deserialize(deserializer)?;
+        Ok(Self::new(map, default))
+    }
+}
 
 /// Type alias for a [TotalVecMap](struct.TotalVecMap) with up to 1 mappings with inline storage.
 pub type TotalVecMap1<K, V> = TotalVecMap<V, [(K, V); 1]>;
@@ -388,6 +416,13 @@ mod tests {
     }
 
     quickcheck! {
+
+        #[cfg(feature = "serde")]
+        fn serde_roundtrip(reference: Test) -> bool {
+            let bytes = serde_json::to_vec(&reference).unwrap();
+            let deser = serde_json::from_slice(&bytes).unwrap();
+            reference == deser
+        }
 
         fn index(a: Ref, key: i32) -> bool {
             let x = from_ref(a.clone());
