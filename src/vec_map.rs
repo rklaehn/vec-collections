@@ -1,4 +1,3 @@
-use crate::merge_state::InPlaceMergeState;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
@@ -6,6 +5,7 @@ use crate::{
     merge_state::{MergeStateMut, SmallVecMergeState},
     VecSet,
 };
+use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
 #[cfg(feature = "serde")]
 use core::marker::PhantomData;
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
@@ -67,17 +67,17 @@ impl<T: Ord, A: Array<Item = T>> Ord for VecMap<A> {
 
 impl<'a, A: Array> IntoIterator for &'a VecMap<A> {
     type Item = &'a A::Item;
-    type IntoIter = core::slice::Iter<'a, A::Item>;
+    type IntoIter = VecMapIter<core::slice::Iter<'a, A::Item>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.iter()
     }
 }
 
 impl<A: Array> IntoIterator for VecMap<A> {
     type Item = A::Item;
-    type IntoIter = smallvec::IntoIter<A>;
+    type IntoIter = VecMapIter<smallvec::IntoIter<A>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        VecMapIter::new(self.0.into_iter())
     }
 }
 
@@ -386,6 +386,10 @@ impl<A: Array> VecMap<A> {
     /// Creates a vecmap with a single item
     pub fn single(item: A::Item) -> Self {
         Self(smallvec::smallvec![item])
+    }
+
+    pub fn iter(&self) -> VecMapIter<core::slice::Iter<A::Item>> {
+        VecMapIter::new(self.0.iter())
     }
 }
 

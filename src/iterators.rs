@@ -1,16 +1,42 @@
-pub struct SortedIter<I> {
+/// An interator that is guaranteed to be sorted by item
+pub struct VecSetIter<I> {
     i: I,
 }
 
-impl<I> sorted_iter::sorted_iterator::SortedByItem for SortedIter<I> {}
+impl<I> sorted_iter::sorted_iterator::SortedByItem for VecSetIter<I> {}
 
-impl<I: Iterator> SortedIter<I> {
+impl<I: Iterator> VecSetIter<I> {
     pub(crate) fn new(i: I) -> Self {
         Self { i }
     }
 }
 
-impl<I: Iterator> Iterator for SortedIter<I> {
+impl<I: Iterator> Iterator for VecSetIter<I> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.i.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.i.size_hint()
+    }
+}
+
+/// An interator that is guaranteed to be sorted by key
+pub struct VecMapIter<I> {
+    i: I,
+}
+
+impl<I> sorted_iter::sorted_pair_iterator::SortedByKey for VecMapIter<I> {}
+
+impl<I: Iterator> VecMapIter<I> {
+    pub(crate) fn new(i: I) -> Self {
+        Self { i }
+    }
+}
+
+impl<I: Iterator> Iterator for VecMapIter<I> {
     type Item = I::Item;
 
     fn next(&mut self) -> Option<Self::Item> {

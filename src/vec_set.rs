@@ -2,7 +2,7 @@ use crate::merge_state::InPlaceMergeState;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
-    iterators::SortedIter,
+    iterators::VecSetIter,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
 #[cfg(feature = "serde")]
@@ -156,8 +156,8 @@ impl<A: Array> VecSet<A> {
         Self::new_unsafe(SmallVec::new())
     }
     /// An iterator that returns references to the items of this set in sorted order
-    pub fn iter(&self) -> SortedIter<core::slice::Iter<A::Item>> {
-        SortedIter::new(self.0.iter())
+    pub fn iter(&self) -> VecSetIter<core::slice::Iter<A::Item>> {
+        VecSetIter::new(self.0.iter())
     }
     /// The underlying memory as a slice.
     fn as_slice(&self) -> &[A::Item] {
@@ -254,7 +254,7 @@ where
 
 impl<'a, A: Array> IntoIterator for &'a VecSet<A> {
     type Item = &'a A::Item;
-    type IntoIter = SortedIter<core::slice::Iter<'a, A::Item>>;
+    type IntoIter = VecSetIter<core::slice::Iter<'a, A::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -263,10 +263,10 @@ impl<'a, A: Array> IntoIterator for &'a VecSet<A> {
 
 impl<A: Array> IntoIterator for VecSet<A> {
     type Item = A::Item;
-    type IntoIter = SortedIter<smallvec::IntoIter<A>>;
+    type IntoIter = VecSetIter<smallvec::IntoIter<A>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        SortedIter::new(self.0.into_iter())
+        VecSetIter::new(self.0.into_iter())
     }
 }
 
