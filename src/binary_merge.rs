@@ -1,5 +1,10 @@
 use core::cmp::Ordering;
 
+/// Threshold above which we use the minimum comparison merge
+/// For very small collections, the tape merge has a similar number of comparisons
+/// and requires less state.
+const MCM_THRESHOLD: usize = 8;
+
 /// The read part of the merge state that is needed for the binary merge algorithm
 /// it just needs random access for the remainder of a and b
 ///
@@ -35,6 +40,12 @@ pub(crate) trait MergeOperation<M: MergeStateRead> {
     fn collision(&self, m: &mut M) -> EarlyOut;
     fn cmp(&self, a: &M::A, b: &M::B) -> Ordering;
     /// merge `an` elements from a and `bn` elements from b into the result
+    ///
+    /// This is a minimum comparison merge that has some overhead, so it is only worth
+    /// it for larger collections and if the comparison operation is expensive.
+    ///
+    /// It does make a big difference e.g. when merging a very large and a very small sequence,
+    /// or two disjoint sequences.
     fn merge0(&self, m: &mut M, an: usize, bn: usize) -> EarlyOut {
         if an == 0 {
             if bn > 0 {
@@ -72,9 +83,36 @@ pub(crate) trait MergeOperation<M: MergeStateRead> {
         }
         Some(())
     }
+    /// This is the classical tape merge algorithm, useful for when either
+    /// the number of elements is small or the comparison operation is very cheap.
+    fn tape_merge(&self, m: &mut M) -> EarlyOut {
+        while !m.a_slice().is_empty() && !m.b_slice().is_empty() {
+            // very convoluted way to access the first element.
+            let a = &m.a_slice()[0];
+            let b = &m.b_slice()[0];
+            // calling the various ops advances the pointers
+            match self.cmp(a, b) {
+                Ordering::Equal => self.collision(m)?,
+                Ordering::Less => self.from_a(m, 1)?,
+                Ordering::Greater => self.from_b(m, 1)?,
+            }
+        }
+        if !m.a_slice().is_empty() {
+            self.from_a(m, m.a_slice().len())?;
+        }
+        if !m.b_slice().is_empty() {
+            self.from_b(m, m.b_slice().len())?;
+        }
+        Some(())
+    }
     fn merge(&self, m: &mut M) {
-        let a1 = m.a_slice().len();
-        let b1 = m.b_slice().len();
-        self.merge0(m, a1, b1);
+        let an = m.a_slice().len();
+        let bn = m.b_slice().len();
+        // only use the minimum comparison merge when it is worth it
+        if an > MCM_THRESHOLD || bn > MCM_THRESHOLD {
+            self.merge0(m, an, bn);
+        } else {
+            self.tape_merge(m);
+        }
     }
 }

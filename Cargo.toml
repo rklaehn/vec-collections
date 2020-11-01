@@ -44,3 +44,7 @@ stats_alloc = "0.1.8"
 name = "set_comparison"
 # name = "sort_dedup"
 harness = false
+
+[[bench]]
+name = "set_ops"
+harness = false
