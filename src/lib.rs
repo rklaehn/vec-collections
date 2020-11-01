@@ -73,11 +73,13 @@ mod test_macros;
 mod binary_merge;
 mod merge_state;
 
-mod total_vec_set;
+mod vec_map;
 mod vec_set;
 
+#[cfg(total)]
 mod total_vec_map;
-mod vec_map;
+#[cfg(total)]
+mod total_vec_set;
 
 mod dedup;
 mod iterators;
@@ -89,10 +91,11 @@ mod obey;
 
 mod small_vec_builder;
 
+pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
 pub use macros::*;
+#[cfg(total)]
 pub use total_vec_map::*;
+#[cfg(total)]
 pub use total_vec_set::*;
 pub use vec_map::*;
 pub use vec_set::*;
-
-pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
