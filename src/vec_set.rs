@@ -189,10 +189,16 @@ where
     ///
     /// The time complexity of this is O(N), so building a large set using single element inserts will be slow!
     /// Prefer using [from_iter](from_iter) when building a large VecSet from elements.
-    pub fn insert(&mut self, that: A::Item) {
+    pub fn insert(&mut self, that: A::Item) -> bool {
         match self.0.binary_search(&that) {
-            Ok(index) => self.0[index] = that,
-            Err(index) => self.0.insert(index, that),
+            Ok(index) => {
+                self.0[index] = that;
+                false
+            }
+            Err(index) => {
+                self.0.insert(index, that);
+                true
+            }
         }
     }
 
@@ -200,10 +206,13 @@ where
     ///
     /// The time complexity of this is O(N), so removing many elements using single element removes inserts will be slow!
     /// Prefer using [retain](retain) when removing a large number of elements.
-    pub fn remove(&mut self, that: &A::Item) {
+    pub fn remove(&mut self, that: &A::Item) -> bool {
         if let Ok(index) = self.0.binary_search(&that) {
             self.0.remove(index);
-        };
+            true
+        } else {
+            false
+        }
     }
 
     /// Retain all elements matching a predicate.
