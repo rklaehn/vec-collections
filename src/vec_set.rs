@@ -2,9 +2,11 @@ use crate::merge_state::InPlaceMergeState;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
-    iterators::VecSetIter,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
+
+pub use crate::iterators::VecSetIter;
+
 #[cfg(feature = "serde")]
 use core::marker::PhantomData;
 use core::{
