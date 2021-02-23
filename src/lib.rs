@@ -99,3 +99,4 @@ pub use total_vec_map::*;
 pub use total_vec_set::*;
 pub use vec_map::*;
 pub use vec_set::*;
+pub use smallvec::Array;
