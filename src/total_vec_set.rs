@@ -129,9 +129,9 @@ impl<T: Ord, A: Array<Item = T>> TotalVecSet<A> {
 
     pub fn insert(&mut self, that: T) {
         if !self.negated {
-            self.elements.insert(that)
+            self.elements.insert(that);
         } else {
-            self.elements.remove(&that)
+            self.elements.remove(&that);
         }
     }
 
@@ -161,9 +161,9 @@ impl<T: Ord, A: Array<Item = T>> TotalVecSet<A> {
 impl<T: Ord + Clone, A: Array<Item = T>> TotalVecSet<A> {
     pub fn remove(&mut self, that: &T) {
         if self.negated {
-            self.elements.insert(that.clone())
+            self.elements.insert(that.clone());
         } else {
-            self.elements.remove(that)
+            self.elements.remove(that);
         }
     }
 }

@@ -67,6 +67,6 @@ impl<K: Default + Clone + Eq + Ord + 'static, V: Default + Clone + Eq + Ord + 's
 }
 
 fn main() {
-    let x: Multimap<u32, u32> = [(0, 0), (0, 1), (1, 0)].iter().cloned().collect();
-    let y: BiMultimap<u32, u32> = [(0, 0), (0, 1), (1, 0)].iter().cloned().collect();
+    let _x: Multimap<u32, u32> = [(0, 0), (0, 1), (1, 0)].iter().cloned().collect();
+    let _y: BiMultimap<u32, u32> = [(0, 0), (0, 1), (1, 0)].iter().cloned().collect();
 }
