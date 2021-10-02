@@ -532,10 +532,10 @@ where
 }
 
 #[cfg(feature = "rkyv")]
-impl<S, A> rkyv::Serialize<S> for VecSet<A>
+impl<S, T, A> rkyv::Serialize<S> for VecSet<A>
 where
-    A: Array,
-    A::Item: rkyv::Archive + rkyv::Serialize<S>,
+    A: Array<Item = T>,
+    T: rkyv::Archive + rkyv::Serialize<S>,
     S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
 {
     fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
@@ -544,11 +544,10 @@ where
 }
 
 #[cfg(feature = "rkyv")]
-impl<A, D> rkyv::Deserialize<VecSet<A>, D>
-    for ArchivedVecSet<<<A as Array>::Item as rkyv::Archive>::Archived>
+impl<D, T, A> rkyv::Deserialize<VecSet<A>, D> for ArchivedVecSet<T::Archived>
 where
-    A: Array,
-    A::Item: rkyv::Archive,
+    A: Array<Item = T>,
+    T: rkyv::Archive,
     D: rkyv::Fallible + ?Sized,
     [<<A as Array>::Item as rkyv::Archive>::Archived]:
         rkyv::DeserializeUnsized<[<A as Array>::Item], D>,

@@ -12,7 +12,7 @@ readme = "README.md"
 homepage = "https://github.com/rklaehn"
 
 [features]
-default = ["inplace", "serde", "rkyv", "rkyv_validated"]
+default = ["inplace", "serde"]
 inplace = []
 total = []
 rkyv_validated = ["rkyv", "bytecheck"]
