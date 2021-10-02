@@ -104,7 +104,7 @@ where
     let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
         data: Vec::with_capacity(min(iter.size_hint().0, 16)),
         sorted: 0,
-        cmp: |a: &I::Item, b: &I::Item| key(a).cmp(&key(b)),
+        cmp: |a: &I::Item, b: &I::Item| key(a).cmp(key(b)),
         keep,
         _t: PhantomData,
     };

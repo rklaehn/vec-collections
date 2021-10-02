@@ -33,7 +33,7 @@ impl<'a, A: Array, B: Array> MergeStateRead for InPlaceMergeState<A, B> {
     type A = A::Item;
     type B = B::Item;
     fn a_slice(&self) -> &[A::Item] {
-        &self.a.source_slice()
+        self.a.source_slice()
     }
     fn b_slice(&self) -> &[B::Item] {
         self.b.as_slice()

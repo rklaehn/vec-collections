@@ -210,7 +210,7 @@ where
     /// The time complexity of this is O(N), so removing many elements using single element removes inserts will be slow!
     /// Prefer using [retain](retain) when removing a large number of elements.
     pub fn remove(&mut self, that: &A::Item) -> bool {
-        if let Ok(index) = self.0.binary_search(&that) {
+        if let Ok(index) = self.0.binary_search(that) {
             self.0.remove(index);
             true
         } else {
@@ -282,15 +282,15 @@ impl<A: Array> IntoIterator for VecSet<A> {
     }
 }
 
-impl<A: Array> Into<Vec<A::Item>> for VecSet<A> {
-    fn into(self) -> Vec<A::Item> {
-        self.0.into_vec()
+impl<A: Array> From<VecSet<A>> for Vec<A::Item> {
+    fn from(value: VecSet<A>) -> Self {
+        value.0.into_vec()
     }
 }
 
-impl<A: Array> Into<SmallVec<A>> for VecSet<A> {
-    fn into(self) -> SmallVec<A> {
-        self.into_inner()
+impl<A: Array> From<VecSet<A>> for SmallVec<A> {
+    fn from(value: VecSet<A>) -> Self {
+        value.into_inner()
     }
 }
 

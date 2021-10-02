@@ -1,7 +1,8 @@
+#[cfg(feature = "total")]
+use crate::iterators::SliceIterator;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
-    iterators::SliceIterator,
     merge_state::{MergeStateMut, SmallVecMergeState},
     VecSet,
 };
@@ -177,9 +178,9 @@ impl<A: Array> AsRef<[A::Item]> for VecMap<A> {
     }
 }
 
-impl<A: Array> Into<SmallVec<A>> for VecMap<A> {
-    fn into(self) -> SmallVec<A> {
-        self.0
+impl<A: Array> From<VecMap<A>> for SmallVec<A> {
+    fn from(value: VecMap<A>) -> Self {
+        value.0
     }
 }
 
@@ -376,6 +377,7 @@ impl<A: Array> VecMap<A> {
         self.0.retain(|entry| f(entry))
     }
 
+    #[cfg(feature = "total")]
     pub(crate) fn slice_iter(&self) -> SliceIterator<A::Item> {
         SliceIterator(self.0.as_slice())
     }
