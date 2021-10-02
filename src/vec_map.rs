@@ -590,6 +590,7 @@ where
 }
 
 #[cfg(feature = "rkyv")]
+#[repr(transparent)]
 pub struct ArchivedVecMap<K, V>(rkyv::vec::ArchivedVec<(K, V)>);
 
 #[cfg(feature = "rkyv")]
