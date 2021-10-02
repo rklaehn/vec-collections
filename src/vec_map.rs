@@ -6,16 +6,17 @@ use crate::{
     VecSet,
 };
 use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
-#[cfg(feature = "serde")]
-use core::marker::PhantomData;
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
-#[cfg(feature = "serde")]
-use serde::{
-    de::{Deserialize, Deserializer, MapAccess, Visitor},
-    ser::{Serialize, SerializeMap, Serializer},
-};
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeMap;
+#[cfg(feature = "serde")]
+use ::{
+    core::marker::PhantomData,
+    serde::{
+        de::{Deserialize, Deserializer, MapAccess, Visitor},
+        ser::{Serialize, SerializeMap, Serializer},
+    },
+};
 
 /// A map backed by a [SmallVec] of key value pairs.
 ///

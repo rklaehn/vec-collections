@@ -7,8 +7,6 @@ use crate::{
 
 pub use crate::iterators::VecSetIter;
 
-#[cfg(feature = "serde")]
-use core::marker::PhantomData;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -16,13 +14,16 @@ use core::{
     iter::FromIterator,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
 };
-#[cfg(feature = "serde")]
-use serde::{
-    de::{Deserialize, Deserializer, SeqAccess, Visitor},
-    ser::{Serialize, SerializeSeq, Serializer},
-};
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeSet;
+#[cfg(feature = "serde")]
+use {
+    core::marker::PhantomData,
+    serde::{
+        de::{Deserialize, Deserializer, SeqAccess, Visitor},
+        ser::{Serialize, SerializeSeq, Serializer},
+    },
+};
 
 struct SetUnionOp;
 struct SetIntersectionOp;
@@ -512,6 +513,95 @@ where
     }
 }
 
+#[cfg(feature = "rkyv")]
+pub struct ArchivedVecSet<T>(rkyv::vec::ArchivedVec<T>);
+
+#[cfg(feature = "rkyv")]
+impl<A> rkyv::Archive for VecSet<A>
+where
+    A: Array,
+    A::Item: rkyv::Archive,
+{
+    type Archived = ArchivedVecSet<<A::Item as rkyv::Archive>::Archived>;
+
+    type Resolver = rkyv::vec::VecResolver;
+
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        rkyv::vec::ArchivedVec::resolve_from_slice(self.0.as_slice(), pos, resolver, &mut (*out).0);
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<S, A> rkyv::Serialize<S> for VecSet<A>
+where
+    A: Array,
+    A::Item: rkyv::Archive + rkyv::Serialize<S>,
+    S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer,
+{
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        rkyv::vec::ArchivedVec::serialize_from_slice(self.0.as_ref(), serializer)
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<A, D> rkyv::Deserialize<VecSet<A>, D>
+    for ArchivedVecSet<<<A as Array>::Item as rkyv::Archive>::Archived>
+where
+    A: Array,
+    A::Item: rkyv::Archive,
+    D: rkyv::Fallible + ?Sized,
+    [<<A as Array>::Item as rkyv::Archive>::Archived]:
+        rkyv::DeserializeUnsized<[<A as Array>::Item], D>,
+{
+    fn deserialize(&self, deserializer: &mut D) -> Result<VecSet<A>, D::Error> {
+        // todo: replace this with SmallVec once smallvec support for rkyv lands on crates.io
+        let items: Vec<A::Item> = self.0.deserialize(deserializer)?;
+        Ok(VecSet(items.into()))
+    }
+}
+
+/// Validation error for a range set
+#[cfg(feature = "rkyv_validated")]
+#[derive(Debug)]
+pub enum ArchivedVecSetError {
+    /// error with the individual elements of the VecSet
+    ValueCheckError,
+    /// elements were not properly ordered
+    OrderCheckError,
+}
+
+#[cfg(feature = "rkyv_validated")]
+impl std::error::Error for ArchivedVecSetError {}
+
+#[cfg(feature = "rkyv_validated")]
+impl std::fmt::Display for ArchivedVecSetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[cfg(feature = "rkyv_validated")]
+impl<C: ?Sized, T> bytecheck::CheckBytes<C> for ArchivedVecSet<T>
+where
+    T: Ord,
+    bool: bytecheck::CheckBytes<C>,
+    rkyv::vec::ArchivedVec<T>: bytecheck::CheckBytes<C>,
+{
+    type Error = ArchivedVecSetError;
+    unsafe fn check_bytes<'a>(
+        value: *const Self,
+        context: &mut C,
+    ) -> Result<&'a Self, Self::Error> {
+        let values = &(*value).0;
+        rkyv::vec::ArchivedVec::<T>::check_bytes(values, context)
+            .map_err(|_| ArchivedVecSetError::ValueCheckError)?;
+        if !values.iter().zip(values.iter().skip(1)).all(|(a, b)| a < b) {
+            return Err(ArchivedVecSetError::OrderCheckError);
+        };
+        Ok(&*value)
+    }
+}
+
 // impl<T: Ord> BitAnd for VecSet<T> {
 //     type Output = VecSet<T>;
 //     fn bitand(mut self, that: Self) -> Self::Output {
@@ -603,6 +693,31 @@ mod test {
             let bytes = serde_json::to_vec(&reference).unwrap();
             let deser = serde_json::from_slice(&bytes).unwrap();
             reference == deser
+        }
+
+        #[cfg(feature = "rkyv")]
+        fn rkyv_roundtrip_unvalidated(a: Test) -> bool {
+            use rkyv::*;
+            use ser::Serializer;
+            let mut serializer = ser::serializers::AllocSerializer::<256>::default();
+            serializer.serialize_value(&a).unwrap();
+            let bytes = serializer.into_serializer().into_inner();
+            let archived = unsafe { rkyv::archived_root::<Test>(&bytes) };
+            let deserialized: Test = archived.deserialize(&mut Infallible).unwrap();
+            a == deserialized
+        }
+
+        #[cfg(feature = "rkyv_validated")]
+        #[quickcheck]
+        fn rkyv_roundtrip_validated(a: Test) -> bool {
+            use rkyv::*;
+            use ser::Serializer;
+            let mut serializer = ser::serializers::AllocSerializer::<256>::default();
+            serializer.serialize_value(&a).unwrap();
+            let bytes = serializer.into_serializer().into_inner();
+            let archived = rkyv::check_archived_root::<Test>(&bytes).unwrap();
+            let deserialized: Test = archived.deserialize(&mut Infallible).unwrap();
+            a == deserialized
         }
 
         fn is_disjoint_sample(a: Test, b: Test) -> bool {
