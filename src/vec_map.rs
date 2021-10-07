@@ -213,26 +213,6 @@ impl<'a, K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V
     }
 }
 
-struct RightBiasedUnionOp;
-
-impl<'a, K: Ord, V, I: MergeStateMut<A = (K, V), B = (K, V)>> MergeOperation<I>
-    for RightBiasedUnionOp
-{
-    fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
-        a.0.cmp(&b.0)
-    }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.advance_a(n, true)
-    }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
-        m.advance_b(n, true)
-    }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.advance_a(1, false)?;
-        m.advance_b(1, true)
-    }
-}
-
 pub enum OuterJoinArg<K, A, B> {
     Left(K, A),
     Right(K, B),
@@ -243,10 +223,6 @@ struct OuterJoinOp<F>(F);
 struct LeftJoinOp<F>(F);
 struct RightJoinOp<F>(F);
 struct InnerJoinOp<F>(F);
-
-// struct OuterJoinWithOp<F>(F);
-
-// type InPlacePairMergeState<'a, K, A, B> = UnsafeInPlaceMergeState<(K, A), (K, B)>;
 
 impl<K: Ord, V, A: Array<Item = (K, V)>> FromIterator<(K, V)> for VecMap<A> {
     fn from_iter<I: IntoIterator<Item = A::Item>>(iter: I) -> Self {
@@ -278,15 +254,8 @@ impl<A: Array> From<VecMap<A>> for SmallVec<A> {
     }
 }
 
-impl<
-        'a,
-        K: Ord + Clone,
-        V,
-        W,
-        R,
-        A: Array<Item = (K, R)>,
-        F: Fn(OuterJoinArg<&K, &V, &W>) -> Option<R>,
-    > MergeOperation<SmallVecMergeState<'a, (K, V), (K, W), A>> for OuterJoinOp<F>
+impl<'a, K, V, W, R, A, F> MergeOperation<SmallVecMergeState<'a, (K, V), (K, W), A>>
+    for OuterJoinOp<F>
 where
     K: Ord + Clone,
     A: Array<Item = (K, R)>,
@@ -360,6 +329,48 @@ where
         Some(())
     }
     fn collision(&self, m: &mut InPlaceMergeStateRef<'a, A, (K, W)>) -> EarlyOut {
+        if let Some((k, v)) = m.a.pop_front() {
+            if let Some((_, w)) = m.b.next() {
+                if let Some(v) = (self.0)(OuterJoinArg::Both(&k, v, w)) {
+                    m.a.push((k, v));
+                }
+            }
+        }
+        Some(())
+    }
+}
+
+impl<'a, K, V, W, F, A, B> MergeOperation<InPlaceMergeState<'a, A, B>> for OuterJoinOp<F>
+where
+    A: Array<Item = (K, V)>,
+    B: Array<Item = (K, W)>,
+    K: Ord,
+    F: Fn(OuterJoinArg<&K, V, W>) -> Option<V>,
+{
+    fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
+        a.0.cmp(&b.0)
+    }
+    fn from_a(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> EarlyOut {
+        for _ in 0..n {
+            if let Some((k, v)) = m.a.pop_front() {
+                if let Some(v) = (self.0)(OuterJoinArg::Left(&k, v)) {
+                    m.a.push((k, v));
+                }
+            }
+        }
+        Some(())
+    }
+    fn from_b(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> EarlyOut {
+        for _ in 0..n {
+            if let Some((k, b)) = m.b.next() {
+                if let Some(v) = (self.0)(OuterJoinArg::Right(&k, b)) {
+                    m.a.push((k, v));
+                }
+            }
+        }
+        Some(())
+    }
+    fn collision(&self, m: &mut InPlaceMergeState<'a, A, B>) -> EarlyOut {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(v) = (self.0)(OuterJoinArg::Both(&k, v, w)) {
@@ -677,8 +688,8 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
 
     /// in-place merge with another map of the same type. The merge is right-biased, so on collisions the values
     /// from the rhs will win.
-    pub fn merge_with<B: Array<Item = (K, V)>>(&mut self, rhs: VecMap<B>) {
-        InPlaceMergeState::merge(&mut self.0, rhs.0, RightBiasedUnionOp)
+    pub fn merge_with<B: Array<Item = (K, V)>>(&mut self, that: VecMap<B>) {
+        self.combine_with(that, |_, r| r)
     }
 
     /// in-place combine with another map of the same type. The given function allows to select the value in case
@@ -688,7 +699,13 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         that: VecMap<B>,
         f: F,
     ) {
-        InPlaceMergeState::merge(&mut self.0, that.0, CombineOp(f, core::marker::PhantomData));
+        InPlaceMergeState::merge(&mut self.0, that.0, OuterJoinOp(move |arg: OuterJoinArg<&K, V, V>| {
+            Some(match arg {
+                OuterJoinArg::Left(_, v) => v,
+                OuterJoinArg::Right(_, v) => v,
+                OuterJoinArg::Both(_, v, w) => f(v, w),
+            })
+        }));
     }
 }
 
