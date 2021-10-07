@@ -365,8 +365,8 @@ impl<A: Array> From<VecSet<A>> for SmallVec<A> {
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<Arr> {
-    type Output = VecSet<Arr>;
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<A> {
+    type Output = VecSet<A>;
     fn bitand(self, that: &VecSet<B>) -> Self::Output {
         self.intersection(that)
     }
@@ -399,9 +399,23 @@ impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<VecSet<B>> for
     }
 }
 
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<&VecSet<B>>
+    for VecSet<A>
+{
+    fn bitand_assign(&mut self, that: &VecSet<B>) {
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetIntersectionOp);
+    }
+}
+
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<VecSet<B>> for VecSet<A> {
     fn bitor_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<&VecSet<B>> for VecSet<A> {
+    fn bitor_assign(&mut self, that: &VecSet<B>) {
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp);
     }
 }
 
@@ -411,9 +425,23 @@ impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<VecSet<B>> for
     }
 }
 
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<&VecSet<B>>
+    for VecSet<A>
+{
+    fn bitxor_assign(&mut self, that: &VecSet<B>) {
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetXorOp);
+    }
+}
+
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> SubAssign<VecSet<B>> for VecSet<A> {
     fn sub_assign(&mut self, that: VecSet<B>) {
         InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> SubAssign<&VecSet<B>> for VecSet<A> {
+    fn sub_assign(&mut self, that: &VecSet<B>) {
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt);
     }
 }
 

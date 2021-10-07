@@ -699,13 +699,17 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         that: VecMap<B>,
         f: F,
     ) {
-        InPlaceMergeState::merge(&mut self.0, that.0, OuterJoinOp(move |arg: OuterJoinArg<&K, V, V>| {
-            Some(match arg {
-                OuterJoinArg::Left(_, v) => v,
-                OuterJoinArg::Right(_, v) => v,
-                OuterJoinArg::Both(_, v, w) => f(v, w),
-            })
-        }));
+        InPlaceMergeState::merge(
+            &mut self.0,
+            that.0,
+            OuterJoinOp(move |arg: OuterJoinArg<&K, V, V>| {
+                Some(match arg {
+                    OuterJoinArg::Left(_, v) => v,
+                    OuterJoinArg::Right(_, v) => v,
+                    OuterJoinArg::Both(_, v, w) => f(v, w),
+                })
+            }),
+        );
     }
 }
 
