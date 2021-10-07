@@ -12,24 +12,21 @@ pub(crate) trait MergeStateMut: MergeStateRead {
     fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut;
 }
 
-pub(crate) struct InPlaceMergeState<A: Array, B: Array> {
-    pub a: InPlaceSmallVecBuilder<A>,
+pub(crate) struct InPlaceMergeState<'a, A: Array, B: Array> {
+    pub a: InPlaceSmallVecBuilder<'a, A>,
     pub b: smallvec::IntoIter<B>,
 }
 
-impl<A: Array, B: Array> InPlaceMergeState<A, B> {
-    fn new(a: SmallVec<A>, b: SmallVec<B>) -> Self {
+impl<'a, A: Array, B: Array> InPlaceMergeState<'a, A, B> {
+    fn new(a: &'a mut SmallVec<A>, b: SmallVec<B>) -> Self {
         Self {
             a: a.into(),
             b: b.into_iter(),
         }
     }
-    fn result(self) -> SmallVec<A> {
-        self.a.into_vec()
-    }
 }
 
-impl<'a, A: Array, B: Array> MergeStateRead for InPlaceMergeState<A, B> {
+impl<'a, A: Array, B: Array> MergeStateRead for InPlaceMergeState<'a, A, B> {
     type A = A::Item;
     type B = B::Item;
     fn a_slice(&self) -> &[A::Item] {
@@ -40,7 +37,7 @@ impl<'a, A: Array, B: Array> MergeStateRead for InPlaceMergeState<A, B> {
     }
 }
 
-impl<'a, T, A: Array<Item = T>, B: Array<Item = T>> MergeStateMut for InPlaceMergeState<A, B> {
+impl<'a, T, A: Array<Item = T>, B: Array<Item = T>> MergeStateMut for InPlaceMergeState<'a, A, B> {
     fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
         self.a.consume(n, take);
         Some(())
@@ -57,13 +54,10 @@ impl<'a, T, A: Array<Item = T>, B: Array<Item = T>> MergeStateMut for InPlaceMer
     }
 }
 
-impl<'a, A: Array, B: Array> InPlaceMergeState<A, B> {
-    pub fn merge<O: MergeOperation<Self>>(a: &mut SmallVec<A>, b: SmallVec<B>, o: O) {
-        let mut t: SmallVec<A> = Default::default();
-        core::mem::swap(a, &mut t);
-        let mut state = Self::new(t, b);
+impl<'a, A: Array, B: Array> InPlaceMergeState<'a, A, B> {
+    pub fn merge<O: MergeOperation<Self>>(a: &'a mut SmallVec<A>, b: SmallVec<B>, o: O) {
+        let mut state = Self::new(a, b);
         o.merge(&mut state);
-        *a = state.result();
     }
 }
 

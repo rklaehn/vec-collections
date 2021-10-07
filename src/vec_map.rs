@@ -98,8 +98,8 @@ impl<A: Array> From<VecMap<A>> for VecSet<A> {
 
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
-impl<K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V) -> V>
-    MergeOperation<InPlaceMergeState<A, B>> for CombineOp<F, K>
+impl<'a, K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V) -> V>
+    MergeOperation<InPlaceMergeState<'a, A, B>> for CombineOp<F, K>
 {
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
