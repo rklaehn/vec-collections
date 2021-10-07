@@ -63,8 +63,8 @@ impl<'a, A: Array, B: Array> InPlaceMergeState<'a, A, B> {
 
 /// An in place merge state where the rhs is a reference
 pub(crate) struct InPlaceMergeStateRef<'a, A: Array, B> {
-    a: InPlaceSmallVecBuilder<'a, A>,
-    b: SliceIterator<'a, B>,
+    pub(crate) a: InPlaceSmallVecBuilder<'a, A>,
+    pub(crate) b: SliceIterator<'a, B>,
 }
 
 impl<'a, A: Array, B> InPlaceMergeStateRef<'a, A, B> {

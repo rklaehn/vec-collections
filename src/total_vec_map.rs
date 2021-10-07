@@ -1,7 +1,7 @@
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::SmallVecMergeState,
-    vec_map::VecMap,
+    vec_map::{AbstractVecMap, VecMap},
 };
 use core::{
     borrow::Borrow,
