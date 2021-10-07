@@ -1,4 +1,4 @@
-use crate::VecSet;
+use crate::{AbstractVecSet, VecSet};
 use core::{
     fmt,
     fmt::{Debug, Write},
