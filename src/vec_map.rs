@@ -654,7 +654,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         }
     }
 
-    fn inner_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
+    pub fn inner_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
     where
         K: Ord + Clone,
         F: Fn(&K, V, &W) -> Option<V>,
@@ -662,7 +662,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), InnerJoinOp(f))
     }
 
-    fn left_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
+    pub fn left_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
     where
         K: Ord + Clone,
         F: Fn(&K, V, Option<&W>) -> Option<V>,
@@ -670,7 +670,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), LeftJoinOp(f))
     }
 
-    fn right_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
+    pub fn right_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
     where
         K: Ord + Clone,
         F: Fn(&K, Option<V>, &W) -> Option<V>,
@@ -678,7 +678,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), RightJoinOp(f))
     }
 
-    fn outer_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
+    pub fn outer_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
     where
         K: Ord + Clone,
         F: Fn(OuterJoinArg<&K, V, &W>) -> Option<V>,
