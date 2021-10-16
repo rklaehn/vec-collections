@@ -80,6 +80,8 @@ mod vec_set;
 mod total_vec_map;
 #[cfg(feature = "total")]
 mod total_vec_set;
+#[cfg(feature = "radixtree")]
+mod radix_tree;
 
 mod dedup;
 mod iterators;
@@ -98,5 +100,7 @@ pub use smallvec::Array;
 pub use total_vec_map::*;
 #[cfg(feature = "total")]
 pub use total_vec_set::*;
+#[cfg(feature = "radixtree")]
+pub use radix_tree::*;
 pub use vec_map::*;
 pub use vec_set::*;

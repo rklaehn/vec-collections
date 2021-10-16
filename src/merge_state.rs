@@ -12,6 +12,10 @@ pub(crate) trait MergeStateMut: MergeStateRead {
     fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut;
 }
 
+pub(crate) trait MutateInput: MergeStateMut {
+    fn source_slices_mut(&mut self) -> (&mut [Self::A], &[Self::B]);
+}
+
 pub(crate) struct InPlaceMergeState<A: Array, B: Array> {
     pub a: InPlaceSmallVecBuilder<A>,
     pub b: smallvec::IntoIter<B>,
