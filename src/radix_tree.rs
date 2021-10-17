@@ -65,7 +65,7 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     max
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RadixTree<K, V> {
     prefix: Fragment<K>,
     value: Option<V>,
@@ -107,8 +107,8 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
         let n = common_prefix(&l_prefix, &r_prefix);
         if n == l_prefix.len() && n == r_prefix.len() {
             // prefixes are identical
-            !((l.value().is_some() && !r.value().is_some())
-                || BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp))
+            (!l.value().is_some() || r.value().is_some())
+                && !BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp)
         } else if n == l_prefix.len() {
             // l is a prefix of r - shorten r_prefix
             let r_prefix = &r_prefix[n..];
@@ -182,18 +182,12 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         }
     }
 
-    pub fn prepend(self, prefix: &[K]) -> Self {
-        if prefix.is_empty() {
-            self
-        } else {
+    pub fn prepend(&mut self, prefix: &[K]) {
+        if !prefix.is_empty() {
             let mut prefix1 = SmallVec::new();
             prefix1.extend_from_slice(prefix);
             prefix1.extend_from_slice(self.prefix());
-            Self {
-                prefix: prefix1.into(),
-                value: self.value,
-                children: self.children,
-            }
+            self.prefix = prefix1.into();
         }
     }
 
@@ -202,8 +196,9 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     }
 
     /// create an artificial split at offset n
+    /// splitting at n >= prefix.len() is an error
     fn split(&mut self, n: usize) {
-        assert!(n > 0 && n < self.prefix().len());
+        assert!(n < self.prefix().len());
         let first = self.prefix()[..n].into();
         let rest = self.prefix()[n..].into();
         let mut split = Self {
@@ -217,6 +212,16 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.children.push(child);
     }
 
+    /// removes degenerate node again
+    fn unsplit(&mut self) {
+        // a single child and no own value is degenerate
+        if self.children.len() == 1 && self.value.is_none() {
+            let mut child = self.children.pop().unwrap();
+            child.prepend(&self.prefix);
+            *self = child;
+        }
+    }
+
     fn clone_shortened(&self, n: usize) -> Self {
         assert!(n < self.prefix().len());
         let mut res = self.clone();
@@ -225,7 +230,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     }
 
     pub fn union_with(&mut self, that: &RadixTree<K, V>) {
-        self.combine_with(that, |l, r| {
+        self.outer_combine_with(that, |l, r| {
             if l.is_none() {
                 if r.is_some() {
                     *l = r.clone();
@@ -234,16 +239,20 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         })
     }
 
-    fn combine_with(&mut self, that: &Self, f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
+    pub fn intersection_with(&mut self, that: &RadixTree<K, V>) {
+        self.inner_combine_with(that, |_, _| {})
+    }
+
+    fn outer_combine_with(&mut self, that: &Self, f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
             f(&mut self.value, that.value());
-            self.combine_children_with(that.children(), f);
+            self.outer_combine_children_with(that.children(), f);
         } else if n == self.prefix().len() {
             // self is a prefix of that
             let that = that.clone_shortened(n);
-            self.combine_children_with(&[that], f);
+            self.outer_combine_children_with(&[that], f);
         } else if n == that.prefix().len() {
             // that is a prefix of self
             // split at the offset, then merge in that
@@ -252,17 +261,19 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
             // self now has the same prefix as that, so just repeat the code
             // from where prefixes are identical
             f(&mut self.value, that.value());
-            self.combine_children_with(that.children(), f);
+            self.outer_combine_children_with(that.children(), f);
+            self.unsplit();
         } else {
             assert!(n > 0);
             // disjoint
             self.split(n);
             self.children.push(that.clone_shortened(n));
             self.children.sort_by_key(|x| x.prefix()[0]);
+            self.unsplit();
         }
     }
 
-    fn combine_children_with(
+    fn outer_combine_children_with(
         &mut self,
         rhs: &[Self],
         f: impl Fn(&mut Option<V>, &Option<V>) + Copy,
@@ -272,7 +283,50 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         let mut tmp = Vec::new();
         std::mem::swap(&mut self.children, &mut tmp);
         let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, MergeOp(f));
+        InPlaceMergeStateRef::merge(&mut t, &rhs, OuterCombineOp(f));
+        self.children = t.into_vec()
+    }
+
+    fn inner_combine_with(&mut self, that: &RadixTree<K, V>, f: impl Fn(&mut V, &V) + Copy) {
+        let n = common_prefix(self.prefix(), that.prefix());
+        if n == self.prefix().len() && n == that.prefix().len() {
+            // prefixes are identical
+            if let (Some(v), Some(w)) = (&mut self.value, that.value()) {
+                f(v, w);
+            } else {
+                self.value = None;
+            }
+            self.inner_combine_children_with(that.children(), f);
+        } else if n == self.prefix().len() {
+            // self is a prefix of that
+            self.value = None;
+            let that = that.clone_shortened(n);
+            self.inner_combine_children_with(&[that], f);
+        } else if n == that.prefix().len() {
+            // that is a prefix of self
+            // split at the offset, then merge in that
+            // we must not swap sides!
+            self.split(n);
+            self.inner_combine_children_with(that.children(), f);
+            self.unsplit();
+        } else {
+            // disjoint
+            self.value = None;
+            self.children.clear();
+        }
+    }
+
+    fn inner_combine_children_with(
+        &mut self,
+        rhs: &[RadixTree<K, V>],
+        f: impl Fn(&mut V, &V) + Copy,
+    ) {
+        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
+        // so we convert into a smallvec, perform the ops there, then convert back.
+        let mut tmp = Vec::new();
+        std::mem::swap(&mut self.children, &mut tmp);
+        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, InnerCombineOp(f));
         self.children = t.into_vec()
     }
 }
@@ -333,9 +387,9 @@ where
 }
 
 /// In place merge operation
-struct MergeOp<F>(F);
+struct OuterCombineOp<F>(F);
 
-impl<'a, F, K, V, I> MergeOperation<I> for MergeOp<F>
+impl<'a, F, K, V, I> MergeOperation<I> for OuterCombineOp<F>
 where
     F: Fn(&mut Option<V>, &Option<V>) + Copy,
     V: Debug + Clone,
@@ -355,7 +409,39 @@ where
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
-        av.combine_with(bv, self.0);
+        av.outer_combine_with(bv, self.0);
+        // we have modified av in place. We are only going to take it over if it
+        // is non-empty, otherwise we skip it.
+        let take = !av.is_empty();
+        m.advance_a(1, take)?;
+        m.advance_b(1, false)
+    }
+}
+
+/// In place intersection operation
+struct InnerCombineOp<F>(F);
+
+impl<'a, K, V, F, I> MergeOperation<I> for InnerCombineOp<F>
+where
+    K: Ord + Copy + Debug,
+    V: Debug + Clone,
+    F: Fn(&mut V, &V) + Copy,
+    I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>,
+{
+    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, V>) -> Ordering {
+        a.prefix()[0].cmp(&b.prefix()[0])
+    }
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, false)
+    }
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        let (a, b) = m.source_slices_mut();
+        let av = &mut a[0];
+        let bv = &b[0];
+        av.inner_combine_with(bv, self.0);
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
@@ -377,14 +463,26 @@ mod tests {
         for key in keys {
             let x = RadixTree::single(key.as_bytes(), ());
             res.union_with(&x);
-        }
-        for key in keys {
-            assert!(res.contains_key(key.as_bytes()));
-            assert!(RadixTree::single(key.as_bytes(), ()).is_subset(&res));
+            // any set is subset of itself
+            assert!(res.is_subset(&res));
         }
         for key in nope {
             assert!(!res.contains_key(key.as_bytes()));
-            assert!(!RadixTree::single(key.as_bytes(), ()).is_subset(&res));
+            // keys not contained in the set must not be a subset
+            let mut t = RadixTree::single(key.as_bytes(), ());
+            assert!(!t.is_subset(&res));
+            t.intersection_with(&res);       
+            assert!(t.is_empty());
+        }
+        for key in keys {            
+            assert!(res.contains_key(key.as_bytes()));
+            // keys contained in the set must be a subset
+            assert!(RadixTree::single(key.as_bytes(), ()).is_subset(&res));
+            let mut t = RadixTree::single(key.as_bytes(), ());
+            assert!(t.is_subset(&res));
+            t.intersection_with(&res);
+            println!("{:?}", t);
+            assert!(t == RadixTree::single(key.as_bytes(), ()));
         }
     }
 }
