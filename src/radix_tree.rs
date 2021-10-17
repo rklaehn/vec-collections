@@ -100,39 +100,34 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
     }
 
     pub fn is_subset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        !Self::not_subset(self, self.prefix(), that, that.prefix())
+        Self::is_subset0(self, self.prefix(), that, that.prefix())
     }
 
-    fn not_subset<W: Debug>(
-        l: &Self,
-        l_prefix: &[K],
-        r: &RadixTree<K, W>,
-        r_prefix: &[K],
-    ) -> bool {
+    fn is_subset0<W: Debug>(l: &Self, l_prefix: &[K], r: &RadixTree<K, W>, r_prefix: &[K]) -> bool {
         let n = common_prefix(&l_prefix, &r_prefix);
         if n == l_prefix.len() && n == r_prefix.len() {
             // prefixes are identical
-            (l.value().is_some() && !r.value().is_some())
-                || BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp)
+            !((l.value().is_some() && !r.value().is_some())
+                || BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp))
         } else if n == l_prefix.len() {
             // l is a prefix of r - shorten r_prefix
             let r_prefix = &r_prefix[n..];
             // if l has a value but not r, we found one
             // if one or more of lc are not a subset of r, we are done
-            l.value.is_some()
-                || l.children()
+            !l.value.is_some()
+                && l.children()
                     .iter()
-                    .any(|lc| Self::not_subset(lc, lc.prefix(), r, r_prefix))
+                    .all(|lc| Self::is_subset0(lc, lc.prefix(), r, r_prefix))
         } else if n == r_prefix.len() {
             // r is a prefix of l - shorten L_prefix
             let l_prefix = &l_prefix[n..];
             // if l is a subset of none of rc, we are done
-            !r.children()
+            r.children()
                 .iter()
-                .any(|rc| !Self::not_subset(l, l_prefix, rc, rc.prefix()))
+                .any(|rc| Self::is_subset0(l, l_prefix, rc, rc.prefix()))
         } else {
             // disjoint
-            true
+            false
         }
     }
 
