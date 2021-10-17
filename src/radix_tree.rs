@@ -65,6 +65,16 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     max
 }
 
+trait AbstractRadixTree<K, V>: Sized {
+    fn prefix(&self) -> &[K];
+    fn value(&self) -> &Option<V>;
+    fn children(&self) -> &[Self];
+
+    fn is_empty(&self) -> bool {
+        self.value().is_none() && self.children().is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RadixTree<K, V> {
     prefix: Fragment<K>,
@@ -241,6 +251,11 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.left_combine_with(that, |_, _| false)
     }
 
+    /// outer combine of `self` tree with `that` tree
+    ///
+    /// outer means that elements that are in `self` but not in `that` or vice versa are copied.
+    /// for elements that are in both trees, it is possible to customize how they are combined.
+    /// `f` can mutate the value of `self` in place, or return false to remove the value.
     fn outer_combine_with(&mut self, that: &Self, f: impl Fn(&mut V, &V) -> bool + Copy) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
@@ -297,6 +312,11 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.children = t.into_vec()
     }
 
+    /// inner combine of `self` tree with `that` tree
+    ///
+    /// inner means that elements that are in `self` but not in `that` or vice versa are removed.
+    /// for elements that are in both trees, it is possible to customize how they are combined.
+    /// `f` can mutate the value of `self` in place, or return false to remove the value.
     fn inner_combine_with(
         &mut self,
         that: &RadixTree<K, V>,
@@ -346,6 +366,13 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.children = t.into_vec()
     }
 
+    /// Left combine of `self` tree with `that` tree
+    ///
+    /// Left means that elements that are in `self` but not in `that` are kept, but elements that
+    /// are in `that` but not in `self` are dropped.
+    /// 
+    /// For elements that are in both trees, it is possible to customize how they are combined.
+    /// `f` can mutate the value of `self` in place, or return false to remove the value.
     fn left_combine_with(&mut self, that: &RadixTree<K, V>, f: impl Fn(&mut V, &V) -> bool + Copy) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
