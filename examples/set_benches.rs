@@ -1,7 +1,7 @@
 extern crate vec_collections;
 
 use std::collections::{BTreeSet, HashSet};
-use vec_collections::VecSet2;
+use vec_collections::{AbstractVecSet, VecSet2};
 
 // #[macro_use]
 // extern crate lazy_static;

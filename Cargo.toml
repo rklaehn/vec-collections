@@ -12,9 +12,10 @@ readme = "README.md"
 homepage = "https://github.com/rklaehn"
 
 [features]
-default = ["inplace", "serde"]
+default = ["inplace", "serde", "radixtree"]
 inplace = []
 total = []
+radixtree = []
 rkyv_validated = ["rkyv", "bytecheck"]
 
 [dependencies]

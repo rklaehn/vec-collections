@@ -1,21 +1,21 @@
 //! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
-use core::{cmp, fmt, fmt::Debug, mem, ptr};
+use core::fmt::Debug;
 use smallvec::{Array, SmallVec};
 
 /// builds a SmallVec out of itself
-pub struct InPlaceSmallVecBuilder<A: Array> {
+pub struct InPlaceSmallVecBuilder<'a, A: Array> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
-    v: SmallVec<A>,
+    v: &'a mut SmallVec<A>,
     /// the end of the target area
     t1: usize,
     /// the start of the source area
     s0: usize,
 }
 
-impl<T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<A> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'a, T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<'a, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let InPlaceSmallVecBuilder { s0, t1, v } = self;
         let s1 = v.len();
         let cap = v.capacity();
@@ -29,8 +29,8 @@ impl<T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<A> {
 
 /// initializes the source part of this flip buffer with the given vector.
 /// The target part is initially empty.
-impl<A: Array> From<SmallVec<A>> for InPlaceSmallVecBuilder<A> {
-    fn from(value: SmallVec<A>) -> Self {
+impl<'a, A: Array> From<&'a mut SmallVec<A>> for InPlaceSmallVecBuilder<'a, A> {
+    fn from(value: &'a mut SmallVec<A>) -> Self {
         InPlaceSmallVecBuilder {
             v: value,
             s0: 0,
@@ -39,16 +39,13 @@ impl<A: Array> From<SmallVec<A>> for InPlaceSmallVecBuilder<A> {
     }
 }
 
-impl<A: Array> InPlaceSmallVecBuilder<A> {
-    #[allow(dead_code)]
+impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
     fn assert_invariants(&self) {
         assert!(self.t1 <= self.s0);
         assert!(self.s0 <= self.v.len());
         // assert!(self.v.len() <= self.v.capacity()); vec invariant
     }
-
     /// The current target part as a slice
-    #[allow(dead_code)]
     pub fn target_slice(&self) -> &[A::Item] {
         &self.v[..self.t1]
     }
@@ -58,7 +55,13 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
         &self.v[self.s0..]
     }
 
+    /// The current source part as a slice
+    pub fn source_slice_mut(&mut self) -> &mut [A::Item] {
+        &mut self.v[self.s0..]
+    }
+
     /// ensure that we have at least `capacity` space.
+    #[inline]
     fn reserve(&mut self, capacity: usize) {
         // ensure we have space!
         if self.t1 + capacity > self.s0 {
@@ -72,7 +75,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
             let cap = v.capacity();
             // just move source to the end without any concern about dropping
             unsafe {
-                core::ptr::copy(v.as_ptr().add(s0), v.as_mut_ptr().add(cap - sn), sn);
+                copy(v.as_mut_ptr(), s0, cap - sn, sn);
                 v.set_len(cap);
             }
             // move s0
@@ -81,6 +84,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     }
 
     /// Take at most `n` elements from `iter` to the target
+    #[inline]
     pub fn extend_from_iter<I: Iterator<Item = A::Item>>(&mut self, iter: &mut I, n: usize) {
         if n > 0 {
             self.reserve(n);
@@ -100,19 +104,20 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     }
 
     fn push_unsafe(&mut self, value: A::Item) {
-        unsafe { ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
+        unsafe { std::ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
         self.t1 += 1;
     }
 
     /// Consume `n` elements from the source. If `take` is true they will be added to the target,
     /// else they will be dropped.
+    #[inline]
     pub fn consume(&mut self, n: usize, take: bool) {
-        let n = cmp::min(n, self.source_slice().len());
+        let n = std::cmp::min(n, self.source_slice().len());
         let v = self.v.as_mut_ptr();
         if take {
             if self.t1 != self.s0 {
                 unsafe {
-                    ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                    copy(v, self.s0, self.t1, n);
                 }
             }
             self.t1 += n;
@@ -121,7 +126,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
             for _ in 0..n {
                 unsafe {
                     self.s0 += 1;
-                    ptr::drop_in_place(v.add(self.s0 - 1));
+                    std::ptr::drop_in_place(v.add(self.s0 - 1));
                 }
             }
         }
@@ -129,27 +134,24 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
 
     /// Skip up to `n` elements from source without adding them to the target.
     /// They will be immediately dropped!
-    #[allow(dead_code)]
     pub fn skip(&mut self, n: usize) {
-        let n = cmp::min(n, self.source_slice().len());
+        let n = std::cmp::min(n, self.source_slice().len());
         let v = self.v.as_mut_ptr();
         for _ in 0..n {
             unsafe {
                 self.s0 += 1;
-                ptr::drop_in_place(v.add(self.s0 - 1));
+                std::ptr::drop_in_place(v.add(self.s0 - 1));
             }
         }
     }
 
     /// Take up to `n` elements from source to target.
     /// If n is larger than the size of the remaining source, this will only copy all remaining elements in source.
-    #[allow(dead_code)]
     pub fn take(&mut self, n: usize) {
-        let n = cmp::min(n, self.source_slice().len());
+        let n = std::cmp::min(n, self.source_slice().len());
         if self.t1 != self.s0 {
             unsafe {
-                let v = self.v.as_mut_ptr();
-                ptr::copy(v.add(self.s0), v.add(self.t1), n);
+                copy(self.v.as_mut_ptr(), self.s0, self.t1, n);
             }
         }
         self.t1 += n;
@@ -160,7 +162,7 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
     pub fn pop_front(&mut self) -> Option<A::Item> {
         if self.s0 < self.v.len() {
             self.s0 += 1;
-            Some(unsafe { ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
+            Some(unsafe { std::ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
         } else {
             None
         }
@@ -176,25 +178,50 @@ impl<A: Array> InPlaceSmallVecBuilder<A> {
         self.s0 = self.t1;
         // shorten the source part
     }
+}
 
-    /// takes the target part of the flip buffer as a vec and drops the remaining source part, if any
-    pub fn into_vec(mut self) -> SmallVec<A> {
-        // drop the source part
-        self.drop_source();
-        // tear out the v
-        let v = mem::replace(&mut self.v, unsafe { mem::zeroed() });
-        // forget the rest to prevent drop to run on uninitialized data
-        mem::forget(self);
-        v
+impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A>
+where
+    A::Item: Clone,
+{
+    /// Take at most `n` elements from `iter` to the target
+    #[inline]
+    pub fn extend_from_ref_iter<I: Iterator<Item = &'a A::Item>>(
+        &mut self,
+        iter: &mut I,
+        n: usize,
+    ) {
+        if n > 0 {
+            self.reserve(n);
+            for _ in 0..n {
+                if let Some(value) = iter.next() {
+                    self.push_unsafe(value.clone())
+                }
+            }
+        }
     }
 }
 
-impl<A: Array> Drop for InPlaceSmallVecBuilder<A> {
+#[inline]
+unsafe fn copy<T>(v: *mut T, from: usize, to: usize, n: usize) {
+    // if to < from {
+    //     for i in 0..n {
+    //         std::ptr::write(v.add(to + i), std::ptr::read(v.add(from + i)));
+    //     }
+    // } else {
+    //     for i in (0..n).rev() {
+    //         std::ptr::write(v.add(to + i), std::ptr::read(v.add(from + i)));
+    //     }
+    // }
+    std::ptr::copy(v.add(from), v.add(to), n);
+}
+
+/// the purpose of drop is to clean up and make the SmallVec that we reference into a normal
+/// SmallVec again.
+impl<'a, A: Array> Drop for InPlaceSmallVecBuilder<'a, A> {
     fn drop(&mut self) {
         // drop the source part.
         self.drop_source();
-        // explicitly drop the target part.
-        self.v.clear();
     }
 }
 
@@ -208,7 +235,7 @@ mod tests {
 
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
-        F: Fn(SmallVec<Array<'a>>, SmallVec<Array<'a>>) -> InPlaceSmallVecBuilder<Array<'a>>,
+        F: Fn(SmallVec<Array<'a>>, SmallVec<Array<'a>>) -> (),
     {
         let mut a: SmallVec<Array<'a>> = SmallVec::new();
         let mut b: SmallVec<Array<'a>> = SmallVec::new();
@@ -223,8 +250,7 @@ mod tests {
             b.push(item);
             ids.push(id);
         }
-        let fb = f(a, b);
-        mem::drop(fb);
+        f(a, b);
         for id in ids {
             td.assert_drop(id);
         }
@@ -232,64 +258,60 @@ mod tests {
 
     #[test]
     fn drop_just_source() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| a.into())
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let _: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+        })
     }
 
     #[test]
     fn target_push_gap() {
-        everything_dropped(&TestDrop::new(), 10, |a, b| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, b| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             for x in b.into_iter() {
                 res.push(x);
             }
-            res
         })
     }
 
     #[test]
     fn source_move_some() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             res.take(3);
-            res
         })
     }
 
     #[test]
     fn source_move_all() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             res.take(10);
-            res
         })
     }
 
     #[test]
     fn source_drop_some() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             res.skip(3);
-            res
         })
     }
 
     #[test]
     fn source_drop_all() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             res.skip(10);
-            res
         })
     }
 
     #[test]
     fn source_pop_some() {
-        everything_dropped(&TestDrop::new(), 10, |a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = a.into();
+        everything_dropped(&TestDrop::new(), 10, |mut a, _| {
+            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
             res.pop_front();
             res.pop_front();
             res.pop_front();
-            res
         })
     }
 }

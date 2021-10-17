@@ -1,11 +1,11 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::cmp::Ordering;
 
 use smallvec::SmallVec;
 
-use crate::{binary_merge::{EarlyOut, MergeOperation}, merge_state::{InPlaceMergeState, MutateInput}};
+use crate::{AbstractVecSet, binary_merge::{EarlyOut, MergeOperation}, merge_state::{BoolOpMergeState, InPlaceMergeStateRef, MergeStateMut, MutateInput, SmallVecMergeState}};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Fragment<T>(Arc<[T]>);
+pub(crate) struct Fragment<T>(SmallVec<[T; 16]>);
 
 impl<T> AsRef<[T]>  for Fragment<T> {
     fn as_ref(&self) -> &[T] {
@@ -26,6 +26,11 @@ impl<'a, T: Clone> From<&'a [T]> for Fragment<T> {
         Self(value.into())
     }
 }
+impl<T> From<SmallVec<[T; 16]>> for Fragment<T> {
+    fn from(value: SmallVec<[T; 16]>) -> Self {
+        Self(value)
+    }
+}
 
 impl<T: Ord> Ord for Fragment<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -41,32 +46,24 @@ impl<T: Ord> PartialOrd for Fragment<T> {
 
 impl<T> Default for Fragment<T> {
     fn default() -> Self {
-        Self(Arc::new([]))
+        Self(SmallVec::new())
     }
 }
 
-fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> &'a [T] {
+fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     let max = a.len().min(b.len());
     for i in 0..max {
         if a[i] != b[i] {
-            return &a[..i];
+            return i;
         }
     }
-    &a[..max]
+    max
 }
 
 impl<T: Copy> Fragment<T> {
 
     fn key(&self) -> T {
         self.0[0]
-    }
-
-    fn new(value: &[T]) -> Option<Self> {
-        if !value.is_empty() {
-            Some(Self(value.into()))
-        } else {
-            None
-        }
     }
 }
 
@@ -87,40 +84,75 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
     }
 }
 
-impl<K: Ord + Copy, V: Clone> RadixTree<K, V> {
+impl<K: std::fmt::Debug + Ord + Copy, V> RadixTree<K, V> {
+
+    pub fn contains_key(&self, key: &[K]) -> bool {
+        self.intersects(&RadixTree::single(key, ()))
+    }
+
+    pub fn intersects<W>(&self, that: &RadixTree<K, W>) -> bool {
+        Self::intersects0(self, &self.prefix, that, &that.prefix)
+    }
+
+    fn intersects0<W>(l: &Self, l_prefix: &[K], r: &RadixTree<K, W>, r_prefix: &[K]) -> bool {
+        let n = common_prefix(&l_prefix, &r_prefix);
+        if n == l_prefix.len() && n == r_prefix.len() {
+            // prefixes are identical
+            (l.value.is_some() && r.value.is_some()) ||
+            Self::intersect_children(&l.children, &r.children)
+        } else if n == l_prefix.len() {
+            // l is a prefix of r
+            let r_prefix = &r_prefix[n..];
+            l.children.iter().any(|lc| {            
+                Self::intersects0(lc, &lc.prefix, r, r_prefix)
+            })
+        } else if n == r_prefix.len() {
+            // r is a prefix of l
+            let l_prefix = &l_prefix[n..];
+            r.children.iter().any(|rc| {
+                Self::intersects0(l, l_prefix, rc, &rc.prefix)
+            })
+        } else {
+            // disjoint
+            false
+        }
+    }
+
+    fn intersect_children<W>(l: &[Self], r: &[RadixTree<K, W>]) -> bool {
+        BoolOpMergeState::merge(l, r, IntersectOp)
+    }
+}
+
+impl<K: std::fmt::Debug + Ord + Copy, V: std::fmt::Debug + Clone> RadixTree<K, V> {
 
     pub fn leaf(value: V) -> Self {
         Self {
-            prefix: Fragment(Arc::new([])),
+            prefix: Fragment::default(),
             value: Some(value),
             children: Default::default(),
         }
     }
 
     pub fn single(key: &[K], value: V) -> Self {
-        Self::leaf(value).prefix(key)
+        Self {
+            prefix: key.into(),
+            value: Some(value),
+            children: Vec::new(),
+        }
     }
 
     pub fn prefix(self, prefix: &[K]) -> Self {
         if prefix.is_empty() {
             self
         } else {
-            let mut prefix1 = Vec::new();
+            let mut prefix1 = SmallVec::new();
             prefix1.extend_from_slice(prefix);
-            prefix1.extend_from_slice(self.prefix.as_ref());
+            prefix1.extend_from_slice(&self.prefix);
             Self {
-                prefix: prefix.into(),
+                prefix: prefix1.into(),
                 value: self.value,
                 children: self.children,
             }
-        }
-    }
-
-    fn non_empty(self) -> Option<Self> {
-        if !self.is_empty() {
-            Some(self)
-        } else {
-            None
         }
     }
 
@@ -128,67 +160,116 @@ impl<K: Ord + Copy, V: Clone> RadixTree<K, V> {
         self.value.is_none() && self.children.is_empty()
     }
 
-    fn take(&mut self) -> Self {
-        let mut res = Self::default();
-        std::mem::swap(self, &mut res);
+    /// create an artificial split at offset n
+    fn split(&mut self, n: usize) {
+        assert!(n > 0 && n < self.prefix.len());
+        let first = self.prefix[..n].into();
+        let rest = self.prefix[n..].into();
+        let mut split = Self {
+            prefix: first,
+            value: None,
+            children: Vec::new(),
+        };
+        std::mem::swap(self, &mut split);
+        let mut child = split;
+        child.prefix = rest;
+        self.children.push(child);
+    }
+
+    fn clone_shortened(&self, n: usize) -> Self {
+        assert!(n < self.prefix.len());
+        let mut res = self.clone();
+        res.prefix = res.prefix[n..].into();
         res
     }
 
-    pub fn combine_with(&mut self, that: &RadixTree<K, V>, f: &impl Fn(&mut Option<V>, &Option<V>)) {
-        let common = common_prefix(&self.prefix, &that.prefix);
-        if common.len() == self.prefix.len() && common.len() == that.prefix.len() {
+    pub fn union_with(&mut self, that: &RadixTree<K, V>) {
+        self.combine_with(that, |l, r| {
+            if l.is_none() {
+                if r.is_some() {
+                    *l = r.clone();
+                }
+            }
+        })
+    }
+
+    fn combine_with(&mut self, that: &Self, f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
+        let n = common_prefix(&self.prefix, &that.prefix);
+        if n == self.prefix.len() && n == that.prefix.len() {
             // prefixes are identical
             f(&mut self.value, &that.value);
             self.combine_children_with(&that.children, f);
-        } else if common.len() == self.prefix.len() {
+        } else if n == self.prefix.len() {
             // self is a prefix of that
-            let rest = self.prefix[common.len()..].into();           
-            let mut that = that.clone();
-            that.prefix = rest;
+            let that = that.clone_shortened(n);
             self.combine_children_with(&[that], f);
-        } else if common.len() == that.prefix.len() {
-            // that is a prefix of self 
-            let rest = self.prefix[common.len()..].into();           
-            let mut that = that.clone();
-            std::mem::swap(self, &mut that);
-            that.prefix = rest;
-            self.combine_children_with(&[that], f);
+        } else if n == that.prefix.len() {
+            // that is a prefix of self
+            // split at the offset, then merge in that
+            // we must not swap sides!
+            self.split(n);
+            // self now has the same prefix as that, so just repeat the code
+            // from where prefixes are identical
+            f(&mut self.value, &that.value);
+            self.combine_children_with(&that.children, f);
         } else {
+            assert!(n > 0);
             // disjoint
-            let n = common.len();
-            let common = common.into();
-            let lrest = self.prefix[n..].into();
-            let rrest = that.prefix[n..].into();
-            let mut l = self.take();
-            let mut r = that.clone();
-            l.prefix = lrest;
-            r.prefix = rrest;            
-            self.children = vec![l, r];
-            self.prefix = common;
+            self.split(n);
+            self.children.push(that.clone_shortened(n));
             self.children.sort_by_key(|x| x.prefix.key());
         }
     }
 
-    fn combine_children_with(&mut self, children: &[Self], f: &impl Fn(&mut Option<V>, &Option<V>)) {
-        let mut t = Vec::new();
-        std::mem::swap(&mut self.children, &mut t);
-        let mut t: SmallVec<[Self; 1]> = t.into();
-        InPlaceMergeState::from()
+    fn combine_children_with(&mut self, rhs: &[Self], f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
+        let mut tmp = Vec::new();
+        std::mem::swap(&mut self.children, &mut tmp);
+        let mut t =  SmallVec::<[Self; 1]>::from_vec(tmp);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, MergeOp(f));
+        self.children = t.into_vec()
     }
 }
 
+struct IntersectOp;
+
+impl<'a, K, V, W, I> MergeOperation<I>
+    for IntersectOp
+    where
+        K: Ord + Copy + std::fmt::Debug,
+        I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>
+{
+    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+        a.prefix.key().cmp(&b.prefix.key())
+    }
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, false)
+    }
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        let a = &m.a_slice()[0];
+        let b = &m.b_slice()[0];
+        // if this is true, we have found an intersection and can abort.
+        let take = a.intersects(b);
+        m.advance_a(1, take)?;
+        m.advance_b(1, false)
+    }
+}
+
+/// In place merge operation
 struct MergeOp<F>(F);
 
 impl<'a, F, K, V, I> MergeOperation<I>
     for MergeOp<F>
     where
-        F: Fn(&mut Option<V>, &Option<V>),
-        V: Clone,
-        K: Ord + Copy,
+        F: Fn(&mut Option<V>, &Option<V>) + Copy,
+        V: Clone + std::fmt::Debug,
+        K: Ord + Copy + std::fmt::Debug,
         I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>
 {
     fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, V>) -> Ordering {
-        a.prefix[0].cmp(&b.prefix[0])
+        a.prefix.key().cmp(&b.prefix.key())
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
         m.advance_a(n, true)
@@ -200,9 +281,28 @@ impl<'a, F, K, V, I> MergeOperation<I>
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
-        av.combine_with(bv, &self.0);
+        av.combine_with(bv, self.0);
         let take = !av.is_empty();
         m.advance_a(1, take)?;
         m.advance_b(1, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Instant;
+
+    use super::*;
+
+    #[test]
+    fn smoke_test() {
+        let mut a = RadixTree::single(b"aabbcc", ());
+        let b = RadixTree::single(b"aabb", ());
+        let c = RadixTree::single(b"aabbee", ());
+        println!("{:?}", a);
+        a.union_with(&b);
+        a.union_with(&c);
+        println!("{:?}", a);
+        println!("contains {}", a.contains_key(b"aabbccx"));
     }
 }
