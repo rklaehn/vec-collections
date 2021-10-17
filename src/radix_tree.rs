@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, fmt::Debug};
 
 use smallvec::SmallVec;
 
@@ -65,12 +65,6 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     max
 }
 
-impl<T: Copy> Fragment<T> {
-    fn key(&self) -> T {
-        self.0[0]
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct RadixTree<K, V> {
     prefix: Fragment<K>,
@@ -88,8 +82,7 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
     }
 }
 
-impl<K: Ord + Copy, V> RadixTree<K, V> {
-
+impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
     pub fn prefix(&self) -> &[K] {
         &self.prefix
     }
@@ -106,16 +99,58 @@ impl<K: Ord + Copy, V> RadixTree<K, V> {
         self.intersects(&RadixTree::single(key, ()))
     }
 
-    pub fn intersects<W>(&self, that: &RadixTree<K, W>) -> bool {
+    pub fn is_subset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
+        !Self::not_subset(self, self.prefix(), that, that.prefix())
+    }
+
+    fn not_subset<W: Debug>(
+        l: &Self,
+        l_prefix: &[K],
+        r: &RadixTree<K, W>,
+        r_prefix: &[K],
+    ) -> bool {
+        let n = common_prefix(&l_prefix, &r_prefix);
+        if n == l_prefix.len() && n == r_prefix.len() {
+            // prefixes are identical
+            (l.value().is_some() && !r.value().is_some())
+                || BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp)
+        } else if n == l_prefix.len() {
+            // l is a prefix of r - shorten r_prefix
+            let r_prefix = &r_prefix[n..];
+            // if l has a value but not r, we found one
+            // if one or more of lc are not a subset of r, we are done
+            l.value.is_some()
+                || l.children()
+                    .iter()
+                    .any(|lc| Self::not_subset(lc, lc.prefix(), r, r_prefix))
+        } else if n == r_prefix.len() {
+            // r is a prefix of l - shorten L_prefix
+            let l_prefix = &l_prefix[n..];
+            // if l is a subset of none of rc, we are done
+            !r.children()
+                .iter()
+                .any(|rc| !Self::not_subset(l, l_prefix, rc, rc.prefix()))
+        } else {
+            // disjoint
+            true
+        }
+    }
+
+    pub fn intersects<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
         Self::intersects0(self, self.prefix(), that, that.prefix())
     }
 
-    fn intersects0<W>(l: &Self, l_prefix: &[K], r: &RadixTree<K, W>, r_prefix: &[K]) -> bool {
+    fn intersects0<W: Debug>(
+        l: &Self,
+        l_prefix: &[K],
+        r: &RadixTree<K, W>,
+        r_prefix: &[K],
+    ) -> bool {
         let n = common_prefix(&l_prefix, &r_prefix);
         if n == l_prefix.len() && n == r_prefix.len() {
             // prefixes are identical
             (l.value().is_some() && r.value().is_some())
-                || Self::intersect_children(l.children(), r.children())
+                || BoolOpMergeState::merge(l.children(), r.children(), IntersectOp)
         } else if n == l_prefix.len() {
             // l is a prefix of r
             let r_prefix = &r_prefix[n..];
@@ -133,13 +168,9 @@ impl<K: Ord + Copy, V> RadixTree<K, V> {
             false
         }
     }
-
-    fn intersect_children<W>(l: &[Self], r: &[RadixTree<K, W>]) -> bool {
-        BoolOpMergeState::merge(l, r, IntersectOp)
-    }
 }
 
-impl<K: Ord + Copy, V: Clone> RadixTree<K, V> {
+impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     pub fn leaf(value: V) -> Self {
         Self {
             prefix: Fragment::default(),
@@ -255,8 +286,10 @@ struct IntersectOp;
 
 impl<'a, K, V, W, I> MergeOperation<I> for IntersectOp
 where
-    K: Ord + Copy,
+    K: Ord + Copy + Debug,
     I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    V: Debug,
+    W: Debug,
 {
     fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
@@ -276,6 +309,33 @@ where
         m.advance_b(1, false)
     }
 }
+struct NonSubsetOp;
+
+impl<'a, K, V, W, I> MergeOperation<I> for NonSubsetOp
+where
+    K: Ord + Copy + Debug,
+    I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    V: Debug,
+    W: Debug,
+{
+    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+        a.prefix()[0].cmp(&b.prefix()[0])
+    }
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, true)
+    }
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        let a = &m.a_slice()[0];
+        let b = &m.b_slice()[0];
+        // if this is true, we have found a value of a that is not in b, and we can abort
+        let take = !a.is_subset(b);
+        m.advance_a(1, take)?;
+        m.advance_b(1, false)
+    }
+}
 
 /// In place merge operation
 struct MergeOp<F>(F);
@@ -283,8 +343,8 @@ struct MergeOp<F>(F);
 impl<'a, F, K, V, I> MergeOperation<I> for MergeOp<F>
 where
     F: Fn(&mut Option<V>, &Option<V>) + Copy,
-    V: Clone,
-    K: Ord + Copy,
+    V: Debug + Clone,
+    K: Ord + Copy + Debug,
     I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>,
 {
     fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, V>) -> Ordering {
@@ -325,9 +385,11 @@ mod tests {
         }
         for key in keys {
             assert!(res.contains_key(key.as_bytes()));
+            assert!(RadixTree::single(key.as_bytes(), ()).is_subset(&res));
         }
         for key in nope {
             assert!(!res.contains_key(key.as_bytes()));
+            assert!(!RadixTree::single(key.as_bytes(), ()).is_subset(&res));
         }
     }
 }
