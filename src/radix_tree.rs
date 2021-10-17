@@ -230,13 +230,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     }
 
     pub fn union_with(&mut self, that: &RadixTree<K, V>) {
-        self.outer_combine_with(that, |l, r| {
-            if l.is_none() {
-                if r.is_some() {
-                    *l = r.clone();
-                }
-            }
-        })
+        self.outer_combine_with(that, |_, _| true)
     }
 
     pub fn intersection_with(&mut self, that: &RadixTree<K, V>) {
@@ -247,11 +241,19 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.left_combine_with(that, |_, _| false)
     }
 
-    fn outer_combine_with(&mut self, that: &Self, f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
+    fn outer_combine_with(&mut self, that: &Self, f: impl Fn(&mut V, &V) -> bool + Copy) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
-            f(&mut self.value, that.value());
+            if let Some(w) = that.value() {
+                if let Some(v) = &mut self.value {
+                    if !f(v, w) {
+                        self.value = None;
+                    }
+                } else {
+                    self.value = Some(w.clone())
+                }
+            }
             self.outer_combine_children_with(that.children(), f);
         } else if n == self.prefix().len() {
             // self is a prefix of that
@@ -264,7 +266,15 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
             self.split(n);
             // self now has the same prefix as that, so just repeat the code
             // from where prefixes are identical
-            f(&mut self.value, that.value());
+            if let Some(w) = that.value() {
+                if let Some(v) = &mut self.value {
+                    if !f(v, w) {
+                        self.value = None;
+                    }
+                } else {
+                    self.value = Some(w.clone())
+                }
+            }
             self.outer_combine_children_with(that.children(), f);
             self.unsplit();
         } else {
@@ -277,11 +287,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         }
     }
 
-    fn outer_combine_children_with(
-        &mut self,
-        rhs: &[Self],
-        f: impl Fn(&mut Option<V>, &Option<V>) + Copy,
-    ) {
+    fn outer_combine_children_with(&mut self, rhs: &[Self], f: impl Fn(&mut V, &V) -> bool + Copy) {
         // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
         // so we convert into a smallvec, perform the ops there, then convert back.
         let mut tmp = Vec::new();
@@ -344,12 +350,12 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
-            if let (Some(v), Some(w)) = (&mut self.value, that.value()) {
-                if !f(v, w) {
-                    self.value = None;
+            if let Some(w) = that.value() {
+                if let Some(v) = &mut self.value {
+                    if !f(v, w) {
+                        self.value = None;
+                    }
                 }
-            } else {
-                self.value = None;
             }
             self.left_combine_children_with(that.children(), f);
         } else if n == self.prefix().len() {
@@ -443,7 +449,7 @@ struct OuterCombineOp<F>(F);
 
 impl<'a, F, K, V, I> MergeOperation<I> for OuterCombineOp<F>
 where
-    F: Fn(&mut Option<V>, &Option<V>) + Copy,
+    F: Fn(&mut V, &V) -> bool + Copy,
     V: Debug + Clone,
     K: Ord + Copy + Debug,
     I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>,
@@ -557,6 +563,9 @@ mod tests {
             assert!(!t.is_subset(&res));
             t.intersection_with(&res);
             assert!(t.is_empty());
+            let mut dif = res.clone();
+            dif.difference_with(&RadixTree::single(key.as_bytes(), ()));
+            assert_eq!(dif, res);
         }
         for key in keys {
             assert!(res.contains_key(key.as_bytes()));
@@ -566,6 +575,9 @@ mod tests {
             assert!(t.is_subset(&res));
             t.intersection_with(&res);
             assert!(t == RadixTree::single(key.as_bytes(), ()));
+            let mut dif = res.clone();
+            dif.difference_with(&RadixTree::single(key.as_bytes(), ()));
+            assert!(!dif.contains_key(key.as_bytes()));
         }
     }
 }
