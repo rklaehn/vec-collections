@@ -112,9 +112,9 @@ where
 }
 
 impl<'a, A> MutateInput for InPlaceMergeStateRef<'a, A, A::Item>
-    where
-        A: Array,
-        A::Item: Clone,
+where
+    A: Array,
+    A::Item: Clone,
 {
     fn source_slices_mut(&mut self) -> (&mut [Self::A], &[Self::B]) {
         (self.a.source_slice_mut(), self.b.as_slice())

@@ -2,12 +2,18 @@ use std::cmp::Ordering;
 
 use smallvec::SmallVec;
 
-use crate::{AbstractVecSet, binary_merge::{EarlyOut, MergeOperation}, merge_state::{BoolOpMergeState, InPlaceMergeStateRef, MergeStateMut, MutateInput, SmallVecMergeState}};
+use crate::{
+    binary_merge::{EarlyOut, MergeOperation},
+    merge_state::{
+        BoolOpMergeState, InPlaceMergeStateRef, MergeStateMut, MutateInput, SmallVecMergeState,
+    },
+    AbstractVecSet,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Fragment<T>(SmallVec<[T; 16]>);
 
-impl<T> AsRef<[T]>  for Fragment<T> {
+impl<T> AsRef<[T]> for Fragment<T> {
     fn as_ref(&self) -> &[T] {
         self.0.as_ref()
     }
@@ -61,7 +67,6 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
 }
 
 impl<T: Copy> Fragment<T> {
-
     fn key(&self) -> T {
         self.0[0]
     }
@@ -85,7 +90,6 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
 }
 
 impl<K: std::fmt::Debug + Ord + Copy, V> RadixTree<K, V> {
-
     pub fn contains_key(&self, key: &[K]) -> bool {
         self.intersects(&RadixTree::single(key, ()))
     }
@@ -98,20 +102,20 @@ impl<K: std::fmt::Debug + Ord + Copy, V> RadixTree<K, V> {
         let n = common_prefix(&l_prefix, &r_prefix);
         if n == l_prefix.len() && n == r_prefix.len() {
             // prefixes are identical
-            (l.value.is_some() && r.value.is_some()) ||
-            Self::intersect_children(&l.children, &r.children)
+            (l.value.is_some() && r.value.is_some())
+                || Self::intersect_children(&l.children, &r.children)
         } else if n == l_prefix.len() {
             // l is a prefix of r
             let r_prefix = &r_prefix[n..];
-            l.children.iter().any(|lc| {            
-                Self::intersects0(lc, &lc.prefix, r, r_prefix)
-            })
+            l.children
+                .iter()
+                .any(|lc| Self::intersects0(lc, &lc.prefix, r, r_prefix))
         } else if n == r_prefix.len() {
             // r is a prefix of l
             let l_prefix = &l_prefix[n..];
-            r.children.iter().any(|rc| {
-                Self::intersects0(l, l_prefix, rc, &rc.prefix)
-            })
+            r.children
+                .iter()
+                .any(|rc| Self::intersects0(l, l_prefix, rc, &rc.prefix))
         } else {
             // disjoint
             false
@@ -124,7 +128,6 @@ impl<K: std::fmt::Debug + Ord + Copy, V> RadixTree<K, V> {
 }
 
 impl<K: std::fmt::Debug + Ord + Copy, V: std::fmt::Debug + Clone> RadixTree<K, V> {
-
     pub fn leaf(value: V) -> Self {
         Self {
             prefix: Fragment::default(),
@@ -221,10 +224,14 @@ impl<K: std::fmt::Debug + Ord + Copy, V: std::fmt::Debug + Clone> RadixTree<K, V
         }
     }
 
-    fn combine_children_with(&mut self, rhs: &[Self], f: impl Fn(&mut Option<V>, &Option<V>) + Copy) {
+    fn combine_children_with(
+        &mut self,
+        rhs: &[Self],
+        f: impl Fn(&mut Option<V>, &Option<V>) + Copy,
+    ) {
         let mut tmp = Vec::new();
         std::mem::swap(&mut self.children, &mut tmp);
-        let mut t =  SmallVec::<[Self; 1]>::from_vec(tmp);
+        let mut t = SmallVec::<[Self; 1]>::from_vec(tmp);
         InPlaceMergeStateRef::merge(&mut t, &rhs, MergeOp(f));
         self.children = t.into_vec()
     }
@@ -232,11 +239,10 @@ impl<K: std::fmt::Debug + Ord + Copy, V: std::fmt::Debug + Clone> RadixTree<K, V
 
 struct IntersectOp;
 
-impl<'a, K, V, W, I> MergeOperation<I>
-    for IntersectOp
-    where
-        K: Ord + Copy + std::fmt::Debug,
-        I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>
+impl<'a, K, V, W, I> MergeOperation<I> for IntersectOp
+where
+    K: Ord + Copy + std::fmt::Debug,
+    I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>,
 {
     fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
         a.prefix.key().cmp(&b.prefix.key())
@@ -260,13 +266,12 @@ impl<'a, K, V, W, I> MergeOperation<I>
 /// In place merge operation
 struct MergeOp<F>(F);
 
-impl<'a, F, K, V, I> MergeOperation<I>
-    for MergeOp<F>
-    where
-        F: Fn(&mut Option<V>, &Option<V>) + Copy,
-        V: Clone + std::fmt::Debug,
-        K: Ord + Copy + std::fmt::Debug,
-        I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>
+impl<'a, F, K, V, I> MergeOperation<I> for MergeOp<F>
+where
+    F: Fn(&mut Option<V>, &Option<V>) + Copy,
+    V: Clone + std::fmt::Debug,
+    K: Ord + Copy + std::fmt::Debug,
+    I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>,
 {
     fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, V>) -> Ordering {
         a.prefix.key().cmp(&b.prefix.key())
@@ -290,19 +295,23 @@ impl<'a, F, K, V, I> MergeOperation<I>
 
 #[cfg(test)]
 mod tests {
-    use std::time::Instant;
 
     use super::*;
 
     #[test]
     fn smoke_test() {
-        let mut a = RadixTree::single(b"aabbcc", ());
-        let b = RadixTree::single(b"aabb", ());
-        let c = RadixTree::single(b"aabbee", ());
-        println!("{:?}", a);
-        a.union_with(&b);
-        a.union_with(&c);
-        println!("{:?}", a);
-        println!("contains {}", a.contains_key(b"aabbccx"));
+        let mut res = RadixTree::default();
+        let keys = ["aabbcc", "aabb", "aabbee"];
+        let nope = ["xaabbcc", "aabbx", "aabbx", "aabbeex"];
+        for key in keys {
+            let x = RadixTree::single(key.as_bytes(), ());
+            res.union_with(&x);
+        }
+        for key in keys {
+            assert!(res.contains_key(key.as_bytes()));
+        }
+        for key in nope {
+            assert!(!res.contains_key(key.as_bytes()));
+        }
     }
 }

@@ -76,12 +76,12 @@ mod merge_state;
 mod vec_map;
 mod vec_set;
 
+#[cfg(feature = "radixtree")]
+mod radix_tree;
 #[cfg(feature = "total")]
 mod total_vec_map;
 #[cfg(feature = "total")]
 mod total_vec_set;
-#[cfg(feature = "radixtree")]
-mod radix_tree;
 
 mod dedup;
 mod iterators;
@@ -95,12 +95,12 @@ mod small_vec_builder;
 
 pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
 pub use macros::*;
+#[cfg(feature = "radixtree")]
+pub use radix_tree::*;
 pub use smallvec::Array;
 #[cfg(feature = "total")]
 pub use total_vec_map::*;
 #[cfg(feature = "total")]
 pub use total_vec_set::*;
-#[cfg(feature = "radixtree")]
-pub use radix_tree::*;
 pub use vec_map::*;
 pub use vec_set::*;
