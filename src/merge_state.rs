@@ -211,7 +211,7 @@ impl<'a, A: Debug, B: Debug, Arr: Array> Debug for SmallVecMergeState<'a, A, B, 
 }
 
 impl<'a, A, B, Arr: Array> SmallVecMergeState<'a, A, B, Arr> {
-    pub fn new(a: &'a [A], b: &'a [B], r: SmallVec<Arr>) -> Self {
+    fn new(a: &'a [A], b: &'a [B], r: SmallVec<Arr>) -> Self {
         Self {
             a: SliceIterator(a),
             b: SliceIterator(b),
