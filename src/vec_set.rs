@@ -1,5 +1,7 @@
 pub use crate::iterators::VecSetIter;
-use crate::merge_state::{InPlaceMergeState, InPlaceMergeStateRef};
+use crate::merge_state::{
+    CloneConverter, IdConverter, InPlaceMergeState, InPlaceMergeStateRef, NoConverter,
+};
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
@@ -141,6 +143,7 @@ pub trait AbstractVecSet<T: Ord> {
             self.as_slice(),
             that.as_slice(),
             SetUnionOp,
+            CloneConverter,
         ))
     }
 
@@ -152,6 +155,7 @@ pub trait AbstractVecSet<T: Ord> {
             self.as_slice(),
             that.as_slice(),
             SetIntersectionOp,
+            CloneConverter,
         ))
     }
 
@@ -163,6 +167,7 @@ pub trait AbstractVecSet<T: Ord> {
             self.as_slice(),
             that.as_slice(),
             SetXorOp,
+            CloneConverter,
         ))
     }
 
@@ -174,6 +179,7 @@ pub trait AbstractVecSet<T: Ord> {
             self.as_slice(),
             that.as_slice(),
             SetDiffOpt,
+            CloneConverter,
         ))
     }
 
@@ -395,7 +401,7 @@ impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> Sub<&VecSet<B>> for
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<VecSet<B>> for VecSet<A> {
     fn bitand_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp, IdConverter);
     }
 }
 
@@ -403,25 +409,25 @@ impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<&VecSe
     for VecSet<A>
 {
     fn bitand_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetIntersectionOp);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetIntersectionOp, CloneConverter);
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<VecSet<B>> for VecSet<A> {
     fn bitor_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp, IdConverter);
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<&VecSet<B>> for VecSet<A> {
     fn bitor_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp, CloneConverter);
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<VecSet<B>> for VecSet<A> {
     fn bitxor_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp, IdConverter);
     }
 }
 
@@ -429,19 +435,19 @@ impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<&VecSe
     for VecSet<A>
 {
     fn bitxor_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetXorOp);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetXorOp, CloneConverter);
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> SubAssign<VecSet<B>> for VecSet<A> {
     fn sub_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt, IdConverter);
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> SubAssign<&VecSet<B>> for VecSet<A> {
     fn sub_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt, CloneConverter);
     }
 }
 
@@ -706,6 +712,7 @@ where
             self.as_slice(),
             that.as_slice(),
             SetUnionOp,
+            CloneConverter,
         ))
     }
 
@@ -714,6 +721,7 @@ where
             self.as_slice(),
             that.as_slice(),
             SetIntersectionOp,
+            CloneConverter,
         ))
     }
 
@@ -722,6 +730,7 @@ where
             self.as_slice(),
             that.as_slice(),
             SetXorOp,
+            CloneConverter,
         ))
     }
 
@@ -730,23 +739,34 @@ where
             self.as_slice(),
             that.as_slice(),
             SetDiffOpt,
+            CloneConverter,
         ))
     }
 
     pub fn union_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetUnionOp);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetUnionOp, NoConverter);
     }
 
     pub fn intersection_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetIntersectionOp);
+        InPlaceMergeStateRef::merge(
+            &mut self.0,
+            &that.as_slice(),
+            SetIntersectionOp,
+            NoConverter,
+        );
     }
 
     pub fn xor_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetIntersectionOp);
+        InPlaceMergeStateRef::merge(
+            &mut self.0,
+            &that.as_slice(),
+            SetIntersectionOp,
+            NoConverter,
+        );
     }
 
     pub fn difference_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetDiffOpt);
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetDiffOpt, NoConverter);
     }
 }
 

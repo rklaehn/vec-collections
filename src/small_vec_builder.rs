@@ -4,6 +4,8 @@
 use core::fmt::Debug;
 use smallvec::{Array, SmallVec};
 
+use crate::merge_state::Converter;
+
 /// builds a SmallVec out of itself
 pub struct InPlaceSmallVecBuilder<'a, A: Array> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
@@ -85,12 +87,16 @@ impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
 
     /// Take at most `n` elements from `iter` to the target
     #[inline]
-    pub fn extend_from_iter<I: Iterator<Item = A::Item>>(&mut self, iter: &mut I, n: usize) {
+    pub fn extend_from_iter<I: Iterator, C: Converter<I::Item, A::Item>>(
+        &mut self,
+        iter: &mut I,
+        n: usize,
+    ) {
         if n > 0 {
             self.reserve(n);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
-                    self.push_unsafe(value)
+                    self.push_unsafe(C::convert(value))
                 }
             }
         }
@@ -186,7 +192,7 @@ where
 {
     /// Take at most `n` elements from `iter` to the target
     #[inline]
-    pub fn extend_from_ref_iter<I: Iterator<Item = &'a A::Item>>(
+    pub fn extend_from_ref_iter<I: Iterator, C: Converter<I::Item, A::Item>>(
         &mut self,
         iter: &mut I,
         n: usize,
@@ -195,7 +201,7 @@ where
             self.reserve(n);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
-                    self.push_unsafe(value.clone())
+                    self.push_unsafe(C::convert(value))
                 }
             }
         }

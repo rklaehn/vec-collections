@@ -3,7 +3,7 @@ use crate::iterators::SliceIterator;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
-    merge_state::{InPlaceMergeStateRef, MergeStateMut, SmallVecMergeState},
+    merge_state::{InPlaceMergeStateRef, MergeStateMut, NoConverter, SmallVecMergeState},
     VecSet,
 };
 use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
@@ -57,6 +57,7 @@ pub trait AbstractVecMap<K, V> {
             self.as_slice(),
             that.as_slice(),
             OuterJoinOp(f),
+            NoConverter,
         ))
     }
 
@@ -70,6 +71,7 @@ pub trait AbstractVecMap<K, V> {
             self.as_slice(),
             that.as_slice(),
             LeftJoinOp(f),
+            NoConverter,
         ))
     }
 
@@ -83,6 +85,7 @@ pub trait AbstractVecMap<K, V> {
             self.as_slice(),
             that.as_slice(),
             RightJoinOp(f),
+            NoConverter,
         ))
     }
 
@@ -96,6 +99,7 @@ pub trait AbstractVecMap<K, V> {
             self.as_slice(),
             that.as_slice(),
             InnerJoinOp(f),
+            NoConverter,
         ))
     }
 }
@@ -659,7 +663,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         K: Ord + Clone,
         F: Fn(&K, V, &W) -> Option<V>,
     {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), InnerJoinOp(f))
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), InnerJoinOp(f), NoConverter)
     }
 
     pub fn left_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
@@ -667,7 +671,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         K: Ord + Clone,
         F: Fn(&K, V, Option<&W>) -> Option<V>,
     {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), LeftJoinOp(f))
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), LeftJoinOp(f), NoConverter)
     }
 
     pub fn right_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
@@ -675,7 +679,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         K: Ord + Clone,
         F: Fn(&K, Option<V>, &W) -> Option<V>,
     {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), RightJoinOp(f))
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), RightJoinOp(f), NoConverter)
     }
 
     pub fn outer_join_with<W, F>(&mut self, that: &impl AbstractVecMap<K, W>, f: F)
@@ -683,7 +687,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
         K: Ord + Clone,
         F: Fn(OuterJoinArg<&K, V, &W>) -> Option<V>,
     {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), OuterJoinOp(f))
+        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), OuterJoinOp(f), NoConverter)
     }
 
     /// in-place merge with another map of the same type. The merge is right-biased, so on collisions the values
@@ -709,6 +713,7 @@ impl<K: Ord + 'static, V, A: Array<Item = (K, V)>> VecMap<A> {
                     OuterJoinArg::Both(_, v, w) => f(v, w),
                 })
             }),
+            NoConverter,
         );
     }
 }
