@@ -1,12 +1,13 @@
 use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
 
+#[cfg(feature = "rkyv")]
+mod rkyv;
 use smallvec::SmallVec;
 
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::{
-        BoolOpMergeState, CloneConverter, InPlaceMergeStateRef, MergeStateMut, MutateInput,
-        NoConverter,
+        BoolOpMergeState, Converter, InPlaceMergeStateRef, MergeStateMut, MutateInput, NoConverter,
     },
 };
 
@@ -68,7 +69,7 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
 
 pub trait AbstractRadixTree<K, V>: Sized {
     fn prefix(&self) -> &[K];
-    fn value(&self) -> &Option<V>;
+    fn value(&self) -> Option<&V>;
     fn children(&self) -> &[Self];
 
     fn is_empty(&self) -> bool {
@@ -121,6 +122,10 @@ pub trait AbstractRadixTree<K, V>: Sized {
     {
         is_subset0(that, that.prefix(), self, self.prefix())
     }
+    fn clone_shortened(&self, n: usize) -> RadixTree<K, V>
+    where
+        K: Clone,
+        V: Clone;
 }
 
 impl<K, V> AbstractRadixTree<K, V> for RadixTree<K, V> {
@@ -128,12 +133,25 @@ impl<K, V> AbstractRadixTree<K, V> for RadixTree<K, V> {
         &self.prefix
     }
 
-    fn value(&self) -> &Option<V> {
-        &self.value
+    fn value(&self) -> Option<&V> {
+        self.value.as_ref()
     }
 
     fn children(&self) -> &[Self] {
         &self.children
+    }
+
+    fn clone_shortened(&self, n: usize) -> RadixTree<K, V>
+    where
+        K: Clone,
+        V: Clone,
+    {
+        assert!(n < self.prefix().len());
+        RadixTree {
+            prefix: self.prefix()[n..].into(),
+            value: self.value.clone(),
+            children: self.children.clone(),
+        }
     }
 }
 
@@ -312,6 +330,19 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
     }
 }
 
+struct RadixTreeConverter;
+
+impl<T, K, V> Converter<&T, RadixTree<K, V>> for RadixTreeConverter
+where
+    K: Clone,
+    V: Clone,
+    T: AbstractRadixTree<K, V>,
+{
+    fn convert(value: &T) -> RadixTree<K, V> {
+        value.clone_shortened(0)
+    }
+}
+
 fn is_subset0<K: Ord + Copy + Debug, V: Debug, W: Debug>(
     l: &impl AbstractRadixTree<K, V>,
     l_prefix: &[K],
@@ -441,17 +472,17 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     }
 
     /// Left biased union with another tree of the same key and value type
-    pub fn union_with(&mut self, that: &RadixTree<K, V>) {
+    pub fn union_with(&mut self, that: &impl AbstractRadixTree<K, V>) {
         self.outer_combine_with(that, |_, _| true)
     }
 
     /// Intersection with another tree of the same key type
-    pub fn intersection_with<W: Clone + Debug>(&mut self, that: &RadixTree<K, W>) {
+    pub fn intersection_with<W: Clone + Debug>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.inner_combine_with(that, |_, _| true)
     }
 
     /// Difference with another tree of the same key type
-    pub fn difference_with<W: Clone + Debug>(&mut self, that: &RadixTree<K, W>) {
+    pub fn difference_with<W: Clone + Debug>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.left_combine_with(that, |_, _| false)
     }
 
@@ -460,7 +491,11 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     /// outer means that elements that are in `self` but not in `that` or vice versa are copied.
     /// for elements that are in both trees, it is possible to customize how they are combined.
     /// `f` can mutate the value of `self` in place, or return false to remove the value.
-    fn outer_combine_with(&mut self, that: &Self, f: impl Fn(&mut V, &V) -> bool + Copy) {
+    fn outer_combine_with(
+        &mut self,
+        that: &impl AbstractRadixTree<K, V>,
+        f: impl Fn(&mut V, &V) -> bool + Copy,
+    ) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
@@ -504,13 +539,17 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         self.unsplit();
     }
 
-    fn outer_combine_children_with(&mut self, rhs: &[Self], f: impl Fn(&mut V, &V) -> bool + Copy) {
+    fn outer_combine_children_with(
+        &mut self,
+        rhs: &[impl AbstractRadixTree<K, V>],
+        f: impl Fn(&mut V, &V) -> bool + Copy,
+    ) {
         // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
         // so we convert into a smallvec, perform the ops there, then convert back.
         let mut tmp = Vec::new();
         std::mem::swap(&mut self.children, &mut tmp);
         let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, OuterCombineOp(f), CloneConverter);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, OuterCombineOp(f), RadixTreeConverter);
         self.children = t.into_vec()
     }
 
@@ -521,7 +560,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     /// `f` can mutate the value of `self` in place, or return false to remove the value.
     fn inner_combine_with<W: Clone + Debug>(
         &mut self,
-        that: &RadixTree<K, W>,
+        that: &impl AbstractRadixTree<K, W>,
         f: impl Fn(&mut V, &W) -> bool + Copy,
     ) {
         let n = common_prefix(self.prefix(), that.prefix());
@@ -556,7 +595,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
 
     fn inner_combine_children_with<W: Clone + Debug>(
         &mut self,
-        rhs: &[RadixTree<K, W>],
+        rhs: &[impl AbstractRadixTree<K, W>],
         f: impl Fn(&mut V, &W) -> bool + Copy,
     ) {
         // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
@@ -564,7 +603,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         let mut tmp = Vec::new();
         std::mem::swap(&mut self.children, &mut tmp);
         let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, InnerCombineOp(f), NoConverter);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, InnerCombineOp(f, PhantomData), NoConverter);
         self.children = t.into_vec()
     }
 
@@ -577,7 +616,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     /// `f` can mutate the value of `self` in place, or return false to remove the value.
     fn left_combine_with<W: Debug + Clone>(
         &mut self,
-        that: &RadixTree<K, W>,
+        that: &impl AbstractRadixTree<K, W>,
         f: impl Fn(&mut V, &W) -> bool + Copy,
     ) {
         let n = common_prefix(self.prefix(), that.prefix());
@@ -607,7 +646,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
 
     fn left_combine_children_with<W: Debug + Clone>(
         &mut self,
-        rhs: &[RadixTree<K, W>],
+        rhs: &[impl AbstractRadixTree<K, W>],
         f: impl Fn(&mut V, &W) -> bool + Copy,
     ) {
         // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
@@ -615,7 +654,7 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
         let mut tmp = Vec::new();
         std::mem::swap(&mut self.children, &mut tmp);
         let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, LeftCombineOp(f), NoConverter);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, LeftCombineOp(f, PhantomData), NoConverter);
         self.children = t.into_vec()
     }
 }
@@ -687,9 +726,10 @@ where
     F: Fn(&mut V, &V) -> bool + Copy,
     V: Debug + Clone,
     K: Ord + Copy + Debug,
-    I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, V>>,
+    I: MutateInput<A = RadixTree<K, V>>,
+    I::B: AbstractRadixTree<K, V>,
 {
-    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, V>) -> Ordering {
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
@@ -712,17 +752,18 @@ where
 }
 
 /// In place intersection operation
-struct InnerCombineOp<F>(F);
+struct InnerCombineOp<F, P>(F, PhantomData<P>);
 
-impl<'a, K, V, W, F, I> MergeOperation<I> for InnerCombineOp<F>
+impl<'a, K, V, W, F, I> MergeOperation<I> for InnerCombineOp<F, W>
 where
     K: Ord + Copy + Debug,
     V: Debug + Clone,
     W: Debug + Clone,
     F: Fn(&mut V, &W) -> bool + Copy,
-    I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    I: MutateInput<A = RadixTree<K, V>>,
+    I::B: AbstractRadixTree<K, W>,
 {
-    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+    fn cmp(&self, a: &RadixTree<K, V>, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
@@ -745,17 +786,18 @@ where
 }
 
 /// In place intersection operation
-struct LeftCombineOp<F>(F);
+struct LeftCombineOp<F, P>(F, PhantomData<P>);
 
-impl<'a, K, V, W, F, I> MergeOperation<I> for LeftCombineOp<F>
+impl<'a, K, V, W, F, I> MergeOperation<I> for LeftCombineOp<F, W>
 where
     K: Ord + Copy + Debug,
     V: Debug + Clone,
     W: Debug + Clone,
     F: Fn(&mut V, &W) -> bool + Copy,
-    I: MutateInput<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    I: MutateInput<A = RadixTree<K, V>>,
+    I::B: AbstractRadixTree<K, W>,
 {
-    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {

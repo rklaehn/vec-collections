@@ -12,7 +12,7 @@ readme = "README.md"
 homepage = "https://github.com/rklaehn"
 
 [features]
-default = ["inplace", "serde", "radixtree"]
+default = ["inplace", "serde", "radixtree", "rkyv"]
 inplace = []
 total = []
 radixtree = []
@@ -39,7 +39,9 @@ criterion = "0.3.0"
 fnv = "1.0.7"
 anyhow = "1.0.32"
 stats_alloc = "0.1.8"
-rkyv = { version = "0.7.18", features = ["validation"] }
+rkyv = { version = "0.7.19", features = ["validation", "smallvec"] }
+hex = "0.4.3"
+hexdump = "0.1.1"
 
 [[bench]]
 name = "set_comparison"

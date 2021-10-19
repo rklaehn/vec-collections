@@ -29,6 +29,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61604a8f862e1d5c3229fdd78f8b02c68dcf73a4c4b05fd636d12240aaa242c1"
 
 [[package]]
+name = "arrayvec"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -142,7 +148,7 @@ dependencies = [
  "clap",
  "criterion-plot",
  "csv",
- "itertools",
+ "itertools 0.10.1",
  "lazy_static",
  "num-traits",
  "oorandom",
@@ -164,7 +170,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d00996de9f2f7559f7f4dc286073197f83e92256a59ed395f9aac01fe717da57"
 dependencies = [
  "cast",
- "itertools",
+ "itertools 0.10.1",
 ]
 
 [[package]]
@@ -306,6 +312,28 @@ checksum = "62b467343b94ba476dcb2500d242dadbb39557df889310ac77c5d99100aaac33"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hexdump"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e40283dadb02f3af778878be1d717b17b4e4ab92e1d935ab03a730b0542905f2"
+dependencies = [
+ "arrayvec",
+ "itertools 0.4.19",
+]
+
+[[package]]
+name = "itertools"
+version = "0.4.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4a9b56eb56058f43dc66e58f40a214b2ccbc9f3df51861b63d51dec7b65bc3f"
 
 [[package]]
 name = "itertools"
@@ -732,9 +760,9 @@ dependencies = [
 
 [[package]]
 name = "rkyv"
-version = "0.7.18"
+version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f371763528cb5a45ff01879d08355c39d49b849e2e6e665989abe3262997bde0"
+checksum = "d1dc21ea9c98042443aaf7a19c341d98d814cd106582d2dd9fbe5da8e14774dd"
 dependencies = [
  "bytecheck",
  "hashbrown",
@@ -742,13 +770,14 @@ dependencies = [
  "rend",
  "rkyv_derive",
  "seahash",
+ "smallvec",
 ]
 
 [[package]]
 name = "rkyv_derive"
-version = "0.7.18"
+version = "0.7.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97fc962ad6ffbcc218212c465318c7c151221474350b281b4912f4890ea590b5"
+checksum = "c73b640a4016b265097672e8200cb8bc876beb3a0cdb7b76efd515f1cfbf15b3"
 dependencies = [
  "proc-macro2 1.0.29",
  "quote 1.0.9",
@@ -926,6 +955,8 @@ dependencies = [
  "bytecheck",
  "criterion",
  "fnv",
+ "hex",
+ "hexdump",
  "lazy_static",
  "maplit",
  "num-traits",
