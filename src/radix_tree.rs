@@ -80,7 +80,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         K: Ord + Copy + Debug,
         V: Debug,
     {
-        RadixTree::intersects0(self, self.prefix(), that, that.prefix())
+        intersects0(self, self.prefix(), that, that.prefix())
     }
 
     fn is_disjoint<W: Debug>(&self, that: &RadixTree<K, W>) -> bool
@@ -104,6 +104,22 @@ pub trait AbstractRadixTree<K, V>: Sized {
         V: Debug,
     {
         self.intersects(&RadixTree::single(key, ()))
+    }
+
+    fn is_subset<W: Debug>(&self, that: &impl AbstractRadixTree<K, W>) -> bool
+    where
+        K: Ord + Copy + Debug,
+        V: Debug,
+    {
+        is_subset0(self, self.prefix(), that, that.prefix())
+    }
+
+    fn is_superset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool
+    where
+        K: Ord + Copy + Debug,
+        V: Debug,
+    {
+        is_subset0(that, that.prefix(), self, self.prefix())
     }
 }
 
@@ -291,73 +307,70 @@ impl<K, V> RadixTree<K, V> {
 }
 
 impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
-    pub fn is_subset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        RadixTree::is_subset0(self, self.prefix(), that, that.prefix())
-    }
-
-    pub fn is_superset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        RadixTree::is_subset0(that, that.prefix(), self, self.prefix())
-    }
-
     pub fn empty() -> Self {
         Self::default()
     }
+}
 
-    fn is_subset0<W: Debug>(l: &Self, l_prefix: &[K], r: &RadixTree<K, W>, r_prefix: &[K]) -> bool {
-        let n = common_prefix(l_prefix, r_prefix);
-        if n == l_prefix.len() && n == r_prefix.len() {
-            // prefixes are identical
-            (!l.value().is_some() || r.value().is_some())
-                && !BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp)
-        } else if n == l_prefix.len() {
-            // l is a prefix of r - shorten r_prefix
-            let r_prefix = &r_prefix[n..];
-            // if l has a value but not r, we found one
-            // if one or more of lc are not a subset of r, we are done
-            l.value.is_none()
-                && l.children()
-                    .iter()
-                    .all(|lc| Self::is_subset0(lc, lc.prefix(), r, r_prefix))
-        } else if n == r_prefix.len() {
-            // r is a prefix of l - shorten L_prefix
-            let l_prefix = &l_prefix[n..];
-            // if l is a subset of none of rc, we are done
-            r.children()
+fn is_subset0<K: Ord + Copy + Debug, V: Debug, W: Debug>(
+    l: &impl AbstractRadixTree<K, V>,
+    l_prefix: &[K],
+    r: &impl AbstractRadixTree<K, W>,
+    r_prefix: &[K],
+) -> bool {
+    let n = common_prefix(l_prefix, r_prefix);
+    if n == l_prefix.len() && n == r_prefix.len() {
+        // prefixes are identical
+        (!l.value().is_some() || r.value().is_some())
+            && !BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp(PhantomData))
+    } else if n == l_prefix.len() {
+        // l is a prefix of r - shorten r_prefix
+        let r_prefix = &r_prefix[n..];
+        // if l has a value but not r, we found one
+        // if one or more of lc are not a subset of r, we are done
+        l.value().is_none()
+            && l.children()
                 .iter()
-                .any(|rc| Self::is_subset0(l, l_prefix, rc, rc.prefix()))
-        } else {
-            // disjoint
-            false
-        }
+                .all(|lc| is_subset0(lc, lc.prefix(), r, r_prefix))
+    } else if n == r_prefix.len() {
+        // r is a prefix of l - shorten L_prefix
+        let l_prefix = &l_prefix[n..];
+        // if l is a subset of none of rc, we are done
+        r.children()
+            .iter()
+            .any(|rc| is_subset0(l, l_prefix, rc, rc.prefix()))
+    } else {
+        // disjoint
+        false
     }
+}
 
-    fn intersects0<W: Debug>(
-        l: &impl AbstractRadixTree<K, V>,
-        l_prefix: &[K],
-        r: &impl AbstractRadixTree<K, W>,
-        r_prefix: &[K],
-    ) -> bool {
-        let n = common_prefix(l_prefix, r_prefix);
-        if n == l_prefix.len() && n == r_prefix.len() {
-            // prefixes are identical
-            (l.value().is_some() && r.value().is_some())
-                || BoolOpMergeState::merge(l.children(), r.children(), IntersectOp(PhantomData))
-        } else if n == l_prefix.len() {
-            // l is a prefix of r
-            let r_prefix = &r_prefix[n..];
-            l.children()
-                .iter()
-                .any(|lc| Self::intersects0(lc, lc.prefix(), r, r_prefix))
-        } else if n == r_prefix.len() {
-            // r is a prefix of l
-            let l_prefix = &l_prefix[n..];
-            r.children()
-                .iter()
-                .any(|rc| Self::intersects0(l, l_prefix, rc, rc.prefix()))
-        } else {
-            // disjoint
-            false
-        }
+fn intersects0<K: Ord + Copy + Debug, V: Debug, W: Debug>(
+    l: &impl AbstractRadixTree<K, V>,
+    l_prefix: &[K],
+    r: &impl AbstractRadixTree<K, W>,
+    r_prefix: &[K],
+) -> bool {
+    let n = common_prefix(l_prefix, r_prefix);
+    if n == l_prefix.len() && n == r_prefix.len() {
+        // prefixes are identical
+        (l.value().is_some() && r.value().is_some())
+            || BoolOpMergeState::merge(l.children(), r.children(), IntersectOp(PhantomData))
+    } else if n == l_prefix.len() {
+        // l is a prefix of r
+        let r_prefix = &r_prefix[n..];
+        l.children()
+            .iter()
+            .any(|lc| intersects0(lc, lc.prefix(), r, r_prefix))
+    } else if n == r_prefix.len() {
+        // r is a prefix of l
+        let l_prefix = &l_prefix[n..];
+        r.children()
+            .iter()
+            .any(|rc| intersects0(l, l_prefix, rc, rc.prefix()))
+    } else {
+        // disjoint
+        false
     }
 }
 
@@ -636,16 +649,18 @@ where
         m.advance_b(1, false)
     }
 }
-struct NonSubsetOp;
+struct NonSubsetOp<V>(PhantomData<V>);
 
-impl<'a, K, V, W, I> MergeOperation<I> for NonSubsetOp
+impl<'a, K, V, W, I> MergeOperation<I> for NonSubsetOp<(K, V, W)>
 where
     K: Ord + Copy + Debug,
-    I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    I: MergeStateMut,
+    I::A: AbstractRadixTree<K, V>,
+    I::B: AbstractRadixTree<K, W>,
     V: Debug,
     W: Debug,
 {
-    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
