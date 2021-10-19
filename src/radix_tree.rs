@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, ops::Index, sync::Arc};
+use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, sync::Arc};
 
 use smallvec::SmallVec;
 
@@ -256,7 +256,15 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
     }
 
     pub fn is_subset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        Self::is_subset0(self, self.prefix(), that, that.prefix())
+        RadixTree::is_subset0(self, self.prefix(), that, that.prefix())
+    }
+
+    pub fn is_superset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
+        RadixTree::is_subset0(that, that.prefix(), self, self.prefix())
+    }
+
+    pub fn empty() -> Self {
+        Self::default()
     }
 
     fn is_subset0<W: Debug>(l: &Self, l_prefix: &[K], r: &RadixTree<K, W>, r_prefix: &[K]) -> bool {
@@ -920,75 +928,4 @@ mod test {
         println!("a.is_subset(b): {}", a.is_subset(&b));
         assert!(binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b));
     }
-}
-
-#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
-struct Fraction(SmallVec<[u8;8]>);
-
-impl Index<usize> for Fraction {
-    type Output = u8;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.0.get(index).unwrap_or(&0u8)
-    }
-}
-
-impl Fraction {
-    pub fn zero() -> Fraction {
-        Self::new(SmallVec::new())
-    }
-
-    fn new(mut data: SmallVec<[u8; 8]>) -> Self {
-        while data.last() == Some(&0u8) {
-            data.pop();
-        }
-        Self(data)
-    }
-
-    pub fn mid(&self, that: &Self) -> Self {
-        let n = self.0.len().max(that.0.len());
-        let mut res = SmallVec::with_capacity(n);
-        let mut carry = 0usize;
-        for i in (0..n).rev() {
-            carry += self[i] as usize;
-            carry += that[i] as usize;
-            res.push((carry & 0xff) as u8);
-            carry >>= 8;
-        }
-        res.reverse();
-        for i in 0..n {
-            let r = res[i];
-            res[i] = (r >> 1) + ((carry as u8) << 7);
-            carry = (r & 1) as usize;
-        }
-        if carry != 0 {
-            res.push(0x80);
-        }
-        Self::new(res)
-    }
-
-    pub fn succ(&self) -> Self {
-        let mut res = self.0.clone();
-        if res.iter().all(|x| *x == 0xff) {
-            let n = res.len().max(1);
-            res.extend((0..n).map(|_| 0u8));
-        }
-        for byte in res.iter_mut().rev() {            
-            *byte += 1;
-            if *byte != 0 {
-                break;
-            }
-        }
-        Self::new(res)
-    }
-}
-
-#[test]
-fn fraction_smoke() {
-    let t = Fraction::zero();
-    let u = t.succ();
-    let v = t.mid(&u);
-    assert!(t<u);
-    assert!(t<v && v<u);
-    println!("{:?} {:?} {:?}", t, u, v);
 }
