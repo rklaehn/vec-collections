@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, sync::Arc};
+use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
 
 use smallvec::SmallVec;
 
@@ -66,13 +66,58 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     max
 }
 
-trait AbstractRadixTree<K, V>: Sized {
+pub trait AbstractRadixTree<K, V>: Sized {
     fn prefix(&self) -> &[K];
     fn value(&self) -> &Option<V>;
     fn children(&self) -> &[Self];
 
     fn is_empty(&self) -> bool {
         self.value().is_none() && self.children().is_empty()
+    }
+
+    fn intersects<W: Debug>(&self, that: &impl AbstractRadixTree<K, W>) -> bool
+    where
+        K: Ord + Copy + Debug,
+        V: Debug,
+    {
+        RadixTree::intersects0(self, self.prefix(), that, that.prefix())
+    }
+
+    fn is_disjoint<W: Debug>(&self, that: &RadixTree<K, W>) -> bool
+    where
+        K: Ord + Copy + Debug,
+        V: Debug,
+    {
+        !self.intersects(that)
+    }
+
+    fn iter(&self) -> Iter<'_, K, V, Self>
+    where
+        K: Clone,
+    {
+        Iter::new(self)
+    }
+
+    fn contains_key(&self, key: &[K]) -> bool
+    where
+        K: Ord + Copy + Debug,
+        V: Debug,
+    {
+        self.intersects(&RadixTree::single(key, ()))
+    }
+}
+
+impl<K, V> AbstractRadixTree<K, V> for RadixTree<K, V> {
+    fn prefix(&self) -> &[K] {
+        &self.prefix
+    }
+
+    fn value(&self) -> &Option<V> {
+        &self.value
+    }
+
+    fn children(&self) -> &[Self] {
+        &self.children
     }
 }
 
@@ -113,20 +158,22 @@ impl<T> AsRef<[T]> for IterKey<T> {
     }
 }
 
-pub struct Iter<'a, K, V> {
+pub struct Iter<'a, K, V, T> {
     path: IterKey<K>,
-    stack: Vec<(&'a RadixTree<K, V>, usize)>,
+    stack: Vec<(&'a T, usize)>,
+    _v: PhantomData<V>,
 }
 
-impl<'a, K: Clone, V> Iter<'a, K, V> {
-    fn new(tree: &'a RadixTree<K, V>) -> Self {
+impl<'a, K: Clone, V, T: AbstractRadixTree<K, V>> Iter<'a, K, V, T> {
+    fn new(tree: &'a T) -> Self {
         Self {
             stack: vec![(tree, 0)],
             path: IterKey::new(tree.prefix()),
+            _v: PhantomData,
         }
     }
 
-    fn tree(&self) -> &'a RadixTree<K, V> {
+    fn tree(&self) -> &'a T {
         self.stack.last().unwrap().0
     }
 
@@ -138,14 +185,16 @@ impl<'a, K: Clone, V> Iter<'a, K, V> {
     }
 }
 
-impl<'a, K: Ord + Copy + Debug, V: Debug> Iterator for Iter<'a, K, V> {
+impl<'a, K: Ord + Copy + Debug, V: 'a + Debug, T: AbstractRadixTree<K, V>> Iterator
+    for Iter<'a, K, V, T>
+{
     type Item = (IterKey<K>, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.stack.is_empty() {
             if let Some(pos) = self.inc() {
-                if pos < self.tree().children.len() {
-                    let child = &self.tree().children[pos];
+                if pos < self.tree().children().len() {
+                    let child = &self.tree().children()[pos];
                     self.path.append(child.prefix());
                     self.stack.push((child, 0));
                 } else {
@@ -153,7 +202,7 @@ impl<'a, K: Ord + Copy + Debug, V: Debug> Iterator for Iter<'a, K, V> {
                     self.stack.pop();
                 }
             } else {
-                if let Some(value) = self.tree().value.as_ref() {
+                if let Some(value) = self.tree().value().as_ref() {
                     return Some((self.path.clone(), value));
                 }
             }
@@ -224,7 +273,6 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
 }
 
 impl<K, V> RadixTree<K, V> {
-
     pub fn prefix(&self) -> &[K] {
         &self.prefix
     }
@@ -242,19 +290,7 @@ impl<K, V> RadixTree<K, V> {
     }
 }
 
-impl<K: Clone, V> RadixTree<K, V> {
-
-    pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter::new(self)
-    }
-}
-
 impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
-
-    pub fn contains_key(&self, key: &[K]) -> bool {
-        self.intersects(&RadixTree::single(key, ()))
-    }
-
     pub fn is_subset<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
         RadixTree::is_subset0(self, self.prefix(), that, that.prefix())
     }
@@ -295,25 +331,17 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
         }
     }
 
-    pub fn intersects<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        Self::intersects0(self, self.prefix(), that, that.prefix())
-    }
-
-    pub fn is_disjoint<W: Debug>(&self, that: &RadixTree<K, W>) -> bool {
-        !self.intersects(that)
-    }
-
     fn intersects0<W: Debug>(
-        l: &Self,
+        l: &impl AbstractRadixTree<K, V>,
         l_prefix: &[K],
-        r: &RadixTree<K, W>,
+        r: &impl AbstractRadixTree<K, W>,
         r_prefix: &[K],
     ) -> bool {
         let n = common_prefix(l_prefix, r_prefix);
         if n == l_prefix.len() && n == r_prefix.len() {
             // prefixes are identical
             (l.value().is_some() && r.value().is_some())
-                || BoolOpMergeState::merge(l.children(), r.children(), IntersectOp)
+                || BoolOpMergeState::merge(l.children(), r.children(), IntersectOp(PhantomData))
         } else if n == l_prefix.len() {
             // l is a prefix of r
             let r_prefix = &r_prefix[n..];
@@ -579,16 +607,18 @@ impl<K: Ord + Copy + Debug, V: Debug + Clone> RadixTree<K, V> {
     }
 }
 
-struct IntersectOp;
+struct IntersectOp<T>(PhantomData<T>);
 
-impl<'a, K, V, W, I> MergeOperation<I> for IntersectOp
+impl<'a, K, V, W, I> MergeOperation<I> for IntersectOp<(K, V, W)>
 where
     K: Ord + Copy + Debug,
-    I: MergeStateMut<A = RadixTree<K, V>, B = RadixTree<K, W>>,
+    I: MergeStateMut,
+    I::A: AbstractRadixTree<K, V>,
+    I::B: AbstractRadixTree<K, W>,
     V: Debug,
     W: Debug,
 {
-    fn cmp(&self, a: &RadixTree<K, V>, b: &RadixTree<K, W>) -> Ordering {
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
     fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
