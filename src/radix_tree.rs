@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, sync::Arc};
+use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, ops::Index, sync::Arc};
 
 use smallvec::SmallVec;
 
@@ -92,8 +92,8 @@ impl<E: Ord + Copy + Debug, K: AsRef<[E]>, V: Debug + Clone> FromIterator<(K, V)
 pub struct IterKey<K>(Arc<Vec<K>>);
 
 impl<K: Clone> IterKey<K> {
-    fn new() -> Self {
-        Self(Arc::new(Vec::new()))
+    fn new(root: &[K]) -> Self {
+        Self(Arc::new(root.to_vec()))
     }
 
     fn append(&mut self, data: &[K]) {
@@ -122,7 +122,7 @@ impl<'a, K: Clone, V> Iter<'a, K, V> {
     fn new(tree: &'a RadixTree<K, V>) -> Self {
         Self {
             stack: vec![(tree, 0)],
-            path: IterKey::new(),
+            path: IterKey::new(tree.prefix()),
         }
     }
 
@@ -223,14 +223,7 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
     }
 }
 
-impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
-    pub fn values(&self) -> Values<'_, K, V> {
-        Values::new(self)
-    }
-
-    pub fn iter(&self) -> Iter<'_, K, V> {
-        Iter::new(self)
-    }
+impl<K, V> RadixTree<K, V> {
 
     pub fn prefix(&self) -> &[K] {
         &self.prefix
@@ -243,6 +236,20 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
     pub fn children(&self) -> &[Self] {
         &self.children
     }
+
+    pub fn values(&self) -> Values<'_, K, V> {
+        Values::new(self)
+    }
+}
+
+impl<K: Clone, V> RadixTree<K, V> {
+
+    pub fn iter(&self) -> Iter<'_, K, V> {
+        Iter::new(self)
+    }
+}
+
+impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
 
     pub fn contains_key(&self, key: &[K]) -> bool {
         self.intersects(&RadixTree::single(key, ()))
@@ -723,6 +730,7 @@ mod test {
 
     use super::*;
     use crate::obey::*;
+    use maplit::btreeset;
     use quickcheck::*;
 
     impl Arbitrary for RadixTree<u8, ()> {
@@ -734,7 +742,17 @@ mod test {
 
     impl TestSamples<Vec<u8>, bool> for RadixTree<u8, ()> {
         fn samples(&self, res: &mut BTreeSet<Vec<u8>>) {
-            res.insert(Vec::new());
+            res.insert(vec![]);
+            for (k, _) in self.iter() {
+                let a = k.as_ref().to_vec();
+                let mut b = a.clone();
+                let mut c = a.clone();
+                b.push(0);
+                c.pop();
+                res.insert(a);
+                res.insert(b);
+                res.insert(c);
+            }
         }
 
         fn at(&self, elem: Vec<u8>) -> bool {
@@ -755,7 +773,9 @@ mod test {
             binary_property_test(&a, &b, a.is_disjoint(&b), |a, b| !(a & b))
         }
 
-        fn is_subset_sample(a: Test, b: Test) -> bool {
+        fn is_subset_sample(a: Reference, b: Reference) -> bool {
+            let a = r2t(&a);
+            let b = r2t(&b);
             binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b)
         }
 
@@ -893,27 +913,82 @@ mod test {
         }
     }
 
-    fn differencex(a: Reference, b: Reference) -> bool {
-        let a = a.into_iter().take(2).collect();
-        let b = b.into_iter().take(2).collect();
-        let a1: Test = r2t(&a);
-        let b1: Test = r2t(&b);
-        let mut r1 = a1;
-        r1.difference_with(&b1);
-        let expected = r2t(&a.difference(&b).cloned().collect());
-        if expected != r1 {
-            println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
-        }
-        expected == r1
+    #[test]
+    fn is_subset_sample1() {
+        let a = r2t(&btreeset! { vec![1]});
+        let b = r2t(&btreeset! {});
+        println!("a.is_subset(b): {}", a.is_subset(&b));
+        assert!(binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b));
+    }
+}
+
+#[derive(PartialOrd, Ord, PartialEq, Eq, Debug, Clone)]
+struct Fraction(SmallVec<[u8;8]>);
+
+impl Index<usize> for Fraction {
+    type Output = u8;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.0.get(index).unwrap_or(&0u8)
+    }
+}
+
+impl Fraction {
+    pub fn zero() -> Fraction {
+        Self::new(SmallVec::new())
     }
 
-    #[test]
-    fn difference1() {
-        use maplit::btreeset;
-        let a = btreeset! {vec![1,0]};
-        let b = btreeset! {vec![1,1]};
-        println!("{:#?}", r2t(&a));
-        println!("{:#?}", r2t(&b));
-        assert!(differencex(a, b));
+    fn new(mut data: SmallVec<[u8; 8]>) -> Self {
+        while data.last() == Some(&0u8) {
+            data.pop();
+        }
+        Self(data)
     }
+
+    pub fn mid(&self, that: &Self) -> Self {
+        let n = self.0.len().max(that.0.len());
+        let mut res = SmallVec::with_capacity(n);
+        let mut carry = 0usize;
+        for i in (0..n).rev() {
+            carry += self[i] as usize;
+            carry += that[i] as usize;
+            res.push((carry & 0xff) as u8);
+            carry >>= 8;
+        }
+        res.reverse();
+        for i in 0..n {
+            let r = res[i];
+            res[i] = (r >> 1) + ((carry as u8) << 7);
+            carry = (r & 1) as usize;
+        }
+        if carry != 0 {
+            res.push(0x80);
+        }
+        Self::new(res)
+    }
+
+    pub fn succ(&self) -> Self {
+        let mut res = self.0.clone();
+        if res.iter().all(|x| *x == 0xff) {
+            let n = res.len().max(1);
+            res.extend((0..n).map(|_| 0u8));
+        }
+        for byte in res.iter_mut().rev() {            
+            *byte += 1;
+            if *byte != 0 {
+                break;
+            }
+        }
+        Self::new(res)
+    }
+}
+
+#[test]
+fn fraction_smoke() {
+    let t = Fraction::zero();
+    let u = t.succ();
+    let v = t.mid(&u);
+    assert!(t<u);
+    assert!(t<v && v<u);
+    println!("{:?} {:?} {:?}", t, u, v);
 }
