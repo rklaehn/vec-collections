@@ -1,6 +1,5 @@
 use crate::Fragment;
-use rkyv::{option::ArchivedOption, vec::ArchivedVec, Archived, DeserializeUnsized};
-use smallvec::SmallVec;
+use rkyv::{option::ArchivedOption, vec::ArchivedVec, DeserializeUnsized};
 
 use super::{AbstractRadixTree, RadixTree};
 
@@ -22,23 +21,6 @@ impl<K, V> AbstractRadixTree<K, V> for ArchivedRadixTree<K, V> {
 
     fn children(&self) -> &[Self] {
         &self.children
-    }
-
-    fn clone_shortened(&self, n: usize) -> RadixTree<K, V>
-    where
-        K: Clone,
-        V: Clone,
-    {
-        assert!(n < self.prefix().len());
-        RadixTree {
-            prefix: self.prefix()[n..].into(),
-            value: self.value().cloned(),
-            children: self
-                .children()
-                .iter()
-                .map(|x| x.clone_shortened(0))
-                .collect(),
-        }
     }
 }
 
@@ -121,11 +103,18 @@ where
 mod tests {
     use crate::{AbstractRadixTree, RadixTree};
 
+    fn mk_string(n: usize) -> String {
+        let text = n.to_string();
+        text.chars()
+            .flat_map(|c| std::iter::repeat(c).take(100))
+            .collect::<String>()
+    }
+
     #[test]
     fn archive_smoke() {
         let mut a = RadixTree::empty();
-        for i in 0..100 {
-            a.union_with(&RadixTree::single(i.to_string().as_bytes(), ()));
+        for i in 0..1000 {
+            a.union_with(&RadixTree::single(mk_string(i).as_bytes(), ()));
         }
         use rkyv::*;
         use ser::Serializer;
@@ -133,27 +122,18 @@ mod tests {
         serializer.serialize_value(&a).unwrap();
         let bytes = serializer.into_serializer().into_inner();
         let archived = unsafe { rkyv::archived_root::<RadixTree<u8, ()>>(&bytes) };
-        hexdump::hexdump(&bytes);
-        println!("{:#?}\n{}", a, hex::encode(&bytes));
+        println!("size:    {}", bytes.len());
         println!(
-            "archived root {:?}\n{:?}\n{:?}",
-            archived.prefix(),
-            archived.value(),
-            archived.children().len()
+            "key size:{}",
+            archived
+                .iter()
+                .map(|(k, v)| k.as_ref().len())
+                .sum::<usize>()
         );
-        println!(
-            "archived child 0 {:?}\n{:?}\n{:?}",
-            archived.children()[0].prefix(),
-            archived.children()[0].value(),
-            archived.children()[0].children().len()
-        );
-        println!(
-            "archived child 1 {:?}\n{:?}\n{:?}",
-            archived.children()[1].prefix(),
-            archived.children()[1].value(),
-            archived.children()[1].children().len()
-        );
+        // hexdump::hexdump(&bytes);
+        // println!("{:#?}", a);
+        // println!("{}", hex::encode(&bytes));
         let result: RadixTree<u8, ()> = archived.deserialize(&mut Infallible).unwrap();
-        println!("{:#?}", result);
+        // println!("{:#?}", result);
     }
 }

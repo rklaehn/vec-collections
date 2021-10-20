@@ -86,7 +86,7 @@ pub(crate) struct InPlaceMergeStateRef<'a, A: Array, B, C: Converter<&'a B, A::I
 }
 
 impl<'a, A: Array, B, C: Converter<&'a B, A::Item>> InPlaceMergeStateRef<'a, A, B, C> {
-    pub fn new(a: &'a mut SmallVec<A>, b: &'a impl AsRef<[B]>) -> Self {
+    fn new(a: &'a mut SmallVec<A>, b: &'a impl AsRef<[B]>) -> Self {
         Self {
             a: a.into(),
             b: SliceIterator(b.as_ref()),
@@ -144,7 +144,7 @@ impl<'a, A: Array, B: 'a, C: Converter<&'a B, A::Item>> InPlaceMergeStateRef<'a,
         a: &'a mut SmallVec<A>,
         b: &'a impl AsRef<[B]>,
         o: O,
-        _c: C,
+        c: C,
     ) {
         let mut state = Self::new(a, b);
         o.merge(&mut state);
@@ -251,7 +251,7 @@ impl<A> Converter<A, A> for IdConverter {
     }
 }
 
-/// A merge state where we build into a new vector
+/// A merge state where we build into a new smallvec
 pub(crate) struct SmallVecMergeState<'a, A, B, Arr: Array, C: Converter<&'a B, A> = NoConverter> {
     pub a: SliceIterator<'a, A>,
     pub b: SliceIterator<'a, B>,
@@ -319,6 +319,88 @@ impl<'a, A: Clone, B, Arr: Array<Item = A>, C: Converter<&'a B, A>> MergeStateMu
             self.r.reserve(n);
             for e in self.b.take_front(n).iter() {
                 self.r.push(C::convert(e))
+            }
+        } else {
+            self.b.drop_front(n);
+        }
+        Some(())
+    }
+}
+
+/// A merge state where we build into a new vec
+pub(crate) struct VecMergeState<'a, A, B, R, AC, BC> {
+    pub a: SliceIterator<'a, A>,
+    pub b: SliceIterator<'a, B>,
+    pub r: Vec<R>,
+    _c: PhantomData<(AC, BC)>,
+}
+
+impl<'a, A: Debug, B: Debug, R, AC, BC> Debug for VecMergeState<'a, A, B, R, AC, BC> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "a: {:?}, b: {:?}", self.a_slice(), self.b_slice(),)
+    }
+}
+
+impl<'a, A, B, R, AC: Converter<&'a A, R>, BC: Converter<&'a B, R>>
+    VecMergeState<'a, A, B, R, AC, BC>
+{
+    fn new(a: &'a [A], b: &'a [B], r: Vec<R>) -> Self {
+        Self {
+            a: SliceIterator(a),
+            b: SliceIterator(b),
+            r,
+            _c: PhantomData,
+        }
+    }
+
+    fn into_vec(self) -> Vec<R> {
+        self.r
+    }
+
+    pub fn merge<O: MergeOperation<Self>>(
+        a: &'a [A],
+        b: &'a [B],
+        o: O,
+        _ac: AC,
+        _bc: BC,
+    ) -> Vec<R> {
+        let t: Vec<R> = Vec::new();
+        let mut state = Self::new(a, b, t);
+        o.merge(&mut state);
+        state.into_vec()
+    }
+}
+
+impl<'a, A, B, R, AC, BC> MergeStateRead for VecMergeState<'a, A, B, R, AC, BC> {
+    type A = A;
+    type B = B;
+    fn a_slice(&self) -> &[A] {
+        self.a.as_slice()
+    }
+    fn b_slice(&self) -> &[B] {
+        self.b.as_slice()
+    }
+}
+
+impl<'a, A, B, R, AC: Converter<&'a A, R>, BC: Converter<&'a B, R>> MergeStateMut
+    for VecMergeState<'a, A, B, R, AC, BC>
+{
+    fn advance_a(&mut self, n: usize, take: bool) -> EarlyOut {
+        if take {
+            self.r.reserve(n);
+            for e in self.a.take_front(n).iter() {
+                self.r.push(AC::convert(e))
+            }
+        } else {
+            self.a.drop_front(n);
+        }
+        Some(())
+    }
+    fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
+        if take {
+            self.r.reserve(n);
+            for e in self.b.take_front(n).iter() {
+                self.r.push(BC::convert(e))
             }
         } else {
             self.b.drop_front(n);
