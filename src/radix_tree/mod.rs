@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
+use std::{borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
 
 #[cfg(feature = "rkyv")]
 mod rkyv;
@@ -17,6 +17,12 @@ pub(crate) struct Fragment<T>(SmallVec<[T; 16]>);
 
 impl<T> AsRef<[T]> for Fragment<T> {
     fn as_ref(&self) -> &[T] {
+        self.0.as_ref()
+    }
+}
+
+impl<T> Borrow<[T]> for Fragment<T> {
+    fn borrow(&self) -> &[T] {
         self.0.as_ref()
     }
 }
@@ -1324,7 +1330,7 @@ mod test {
             assert!(res.is_subset(&res));
         }
         for (key, _) in res.scan_prefix("aa".as_bytes()) {
-            println!("{:?}", key);
+            println!("{:?}", std::str::from_utf8(key.as_ref()).unwrap());
         }
         for key in nope {
             assert!(!res.contains_key(key.as_bytes()));
