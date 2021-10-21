@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
+use std::{ops::Deref, borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
 
 #[cfg(feature = "rkyv")]
 mod rkyv;
@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+/// A path fragment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Fragment<T>(SmallVec<[T; 16]>);
 
@@ -27,7 +28,7 @@ impl<T> Borrow<[T]> for Fragment<T> {
     }
 }
 
-impl<T> std::ops::Deref for Fragment<T> {
+impl<T> Deref for Fragment<T> {
     type Target = [T];
 
     fn deref(&self) -> &[T] {
@@ -64,14 +65,11 @@ impl<T> Default for Fragment<T> {
     }
 }
 
+// common prefix of two slices. 
 fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
-    let max = a.len().min(b.len());
-    for i in 0..max {
-        if a[i] != b[i] {
-            return i;
-        }
-    }
-    max
+    a.iter().zip(b)
+      .take_while(|(a, b)| a == b)
+      .count()
 }
 
 pub trait AbstractRadixTree<K, V>: Sized {
@@ -83,6 +81,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         self.value().is_none() && self.children().is_empty()
     }
 
+    /// true if two maps have values at the same keys
     fn intersects<W: Debug>(&self, that: &impl AbstractRadixTree<K, W>) -> bool
     where
         K: Ord + Copy + Debug,
@@ -91,6 +90,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         intersects(self, that)
     }
 
+    /// true if two maps have no values at the same keys
     fn is_disjoint<W: Debug>(&self, that: &RadixTree<K, W>) -> bool
     where
         K: Ord + Copy + Debug,
@@ -111,6 +111,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         K: Ord + Copy + Debug,
         V: Debug,
     {
+        // if we find a tree at exactly the location, and it has a value, we have a hit        
         if let FindResult::Found(tree) = find(self, key) {
             tree.value().is_some()
         } else {
@@ -118,6 +119,9 @@ pub trait AbstractRadixTree<K, V>: Sized {
         }
     }
 
+    /// true if the keys of self are a subset of the keys of that.
+    ///
+    /// a set is considered to be a subset of itself.
     fn is_subset<W: Debug>(&self, that: &impl AbstractRadixTree<K, W>) -> bool
     where
         K: Ord + Copy + Debug,
@@ -147,6 +151,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         }
     }
 
+    /// Outer combine this tree with another tree, using the given combine function
     fn outer_combine(
         &self,
         that: &impl AbstractRadixTree<K, V>,
@@ -159,6 +164,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         outer_combine(self, that, f)
     }
 
+    /// Inner combine this tree with another tree, using the given combine function
     fn inner_combine<W: Debug + Clone>(
         &self,
         that: &impl AbstractRadixTree<K, W>,
@@ -171,6 +177,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         inner_combine(self, that, f)
     }
 
+    /// An iterator for all pairs with a certain prefix
     fn scan_prefix<'a>(&'a self, prefix: &'a [K]) -> Iter<'a, K, V, Self>
     where
         K: Ord + Copy,
@@ -301,6 +308,7 @@ where
     }
 }
 
+/// Key for iteration
 #[derive(Debug, Clone)]
 pub struct IterKey<K>(Arc<Vec<K>>);
 
@@ -322,6 +330,20 @@ impl<K: Clone> IterKey<K> {
 
 impl<T> AsRef<[T]> for IterKey<T> {
     fn as_ref(&self) -> &[T] {
+        self.0.as_ref()
+    }
+}
+
+impl<T> Borrow<[T]> for IterKey<T> {
+    fn borrow(&self) -> &[T] {
+        self.0.as_ref()
+    }
+}
+
+impl<T> core::ops::Deref for IterKey<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
         self.0.as_ref()
     }
 }
