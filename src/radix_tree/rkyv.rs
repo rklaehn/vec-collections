@@ -2,6 +2,7 @@ use super::{AbstractRadixTree, Fragment, RadixTree};
 use lazy_init::LazyTransform;
 use rkyv::{option::ArchivedOption, vec::ArchivedVec, DeserializeUnsized};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LazyRadixTree<'a, K, V> {
     prefix: Fragment<K>,
     value: Option<V>,
