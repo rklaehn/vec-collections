@@ -1,7 +1,54 @@
-use crate::Fragment;
+use super::{AbstractRadixTree, Fragment, RadixTree};
+use lazy_init::LazyTransform;
 use rkyv::{option::ArchivedOption, vec::ArchivedVec, DeserializeUnsized};
 
-use super::{AbstractRadixTree, RadixTree};
+pub struct LazyRadixTree<'a, K, V> {
+    prefix: Fragment<K>,
+    value: Option<V>,
+    /// the children are lazy loaded at the time of first access.
+    children: LazyTransform<&'a [ArchivedRadixTree<K, V>], Vec<Self>>,
+}
+
+impl<K, V> From<RadixTree<K, V>> for LazyRadixTree<'static, K, V> {
+    fn from(value: RadixTree<K, V>) -> Self {
+        let RadixTree {
+            prefix,
+            value,
+            children,
+        } = value;
+        let m = children.into_iter().map(Self::from).collect::<Vec<_>>();
+        let children = LazyTransform::<&'static [ArchivedRadixTree<K, V>], Vec<Self>>::new(&[]);
+        children.get_or_create(|_| m);
+        Self {
+            prefix,
+            value,
+            children,
+        }
+    }
+}
+
+impl<'a, K: Clone, V: Clone> AbstractRadixTree<K, V> for LazyRadixTree<'a, K, V> {
+    fn prefix(&self) -> &[K] {
+        &self.prefix
+    }
+
+    fn value(&self) -> Option<&V> {
+        self.value.as_ref()
+    }
+
+    fn children(&self) -> &[Self] {
+        self.children.get_or_create(|children| {
+            children
+                .iter()
+                .map(|child| Self {
+                    prefix: child.prefix.as_ref().into(),
+                    value: child.value.as_ref().cloned(),
+                    children: LazyTransform::new(child.children.as_ref()),
+                })
+                .collect()
+        })
+    }
+}
 
 #[repr(C)]
 pub struct ArchivedRadixTree<K, V> {

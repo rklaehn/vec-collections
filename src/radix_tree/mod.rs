@@ -1,4 +1,7 @@
-use std::{ops::Deref, borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, sync::Arc};
+use std::{
+    borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, ops::Deref,
+    sync::Arc,
+};
 
 #[cfg(feature = "rkyv")]
 mod rkyv;
@@ -65,11 +68,9 @@ impl<T> Default for Fragment<T> {
     }
 }
 
-// common prefix of two slices. 
+// common prefix of two slices.
 fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
-    a.iter().zip(b)
-      .take_while(|(a, b)| a == b)
-      .count()
+    a.iter().zip(b).take_while(|(a, b)| a == b).count()
 }
 
 pub trait AbstractRadixTree<K, V>: Sized {
@@ -111,7 +112,7 @@ pub trait AbstractRadixTree<K, V>: Sized {
         K: Ord + Copy + Debug,
         V: Debug,
     {
-        // if we find a tree at exactly the location, and it has a value, we have a hit        
+        // if we find a tree at exactly the location, and it has a value, we have a hit
         if let FindResult::Found(tree) = find(self, key) {
             tree.value().is_some()
         } else {
@@ -1344,7 +1345,7 @@ mod test {
     fn smoke_test() {
         let mut res = RadixTree::default();
         let keys = ["aabbcc", "aabb", "aabbee"];
-        let nope = ["xaabbcc", "aabbx", "aabbx", "aabbeex"];        
+        let nope = ["xaabbcc", "aabbx", "aabbx", "aabbeex"];
         for key in keys {
             let x = RadixTree::single(key.as_bytes(), ());
             res.union_with(&x);
