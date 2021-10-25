@@ -1,13 +1,39 @@
+use crate::AbstractRadixTreeMut;
+
 use super::{AbstractRadixTree, Fragment, RadixTree};
 use lazy_init::LazyTransform;
 use rkyv::{option::ArchivedOption, vec::ArchivedVec, DeserializeUnsized};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V> {
     prefix: Fragment<K>,
     value: Option<V>,
     /// the children are lazy loaded at the time of first access.
     children: LazyTransform<&'a [ArchivedRadixTree<K, V>], Vec<Self>>,
+}
+
+impl<K: Clone, V: Clone> AbstractRadixTreeMut<K, V> for LazyRadixTree<'static, K, V> {
+    fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
+        let t = LazyTransform::<&'static [ArchivedRadixTree<K, V>], Vec<Self>>::new(&[]);
+        t.get_or_create(|_| children);
+        Self {
+            prefix,
+            value,
+            children: t,
+        }
+    }
+
+    fn value_mut(&mut self) -> &mut Option<V> {
+        &mut self.value
+    }
+
+    fn prefix_mut(&mut self) -> &mut Fragment<K> {
+        &mut self.prefix
+    }
+
+    fn children_mut(&mut self) -> &mut Vec<Self> {
+        todo!()
+    }
 }
 
 impl<K, V> From<RadixTree<K, V>> for LazyRadixTree<'static, K, V> {
@@ -28,7 +54,11 @@ impl<K, V> From<RadixTree<K, V>> for LazyRadixTree<'static, K, V> {
     }
 }
 
-impl<'a, K: Clone, V: Clone> AbstractRadixTree<K, V> for LazyRadixTree<'a, K, V> {
+impl<'a, K: Clone + 'static, V: Clone + 'static> AbstractRadixTree<K, V>
+    for LazyRadixTree<'a, K, V>
+{
+    type Materialized = LazyRadixTree<'static, K, V>;
+
     fn prefix(&self) -> &[K] {
         &self.prefix
     }
@@ -70,6 +100,8 @@ impl<K, V> AbstractRadixTree<K, V> for ArchivedRadixTree<K, V> {
     fn children(&self) -> &[Self] {
         &self.children
     }
+
+    type Materialized = RadixTree<K, V>;
 }
 
 fn offset_from<T, U>(base: *const T, p: *const U) -> usize {
