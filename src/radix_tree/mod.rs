@@ -93,17 +93,11 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         Self::new(Fragment::default(), Some(value), Default::default())
     }
 
-    fn single(key: &[K], value: V) -> Self
-    where
-        K: Clone,
-    {
+    fn single(key: &[K], value: V) -> Self {
         Self::new(key.into(), Some(value), Vec::new())
     }
 
-    fn prepend(&mut self, prefix: &[K])
-    where
-        K: Copy,
-    {
+    fn prepend(&mut self, prefix: &[K]) {
         if !prefix.is_empty() {
             let mut prefix1 = SmallVec::new();
             prefix1.extend_from_slice(prefix);
@@ -114,10 +108,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
 
     /// create an artificial split at offset n
     /// splitting at n >= prefix.len() is an error
-    fn split(&mut self, n: usize)
-    where
-        K: Clone,
-    {
+    fn split(&mut self, n: usize) {
         assert!(n < self.prefix().len());
         let first = self.prefix()[..n].into();
         let rest = self.prefix()[n..].into();
@@ -129,10 +120,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     }
 
     /// removes degenerate node again
-    fn unsplit(&mut self)
-    where
-        K: Copy,
-    {
+    fn unsplit(&mut self) {
         // a single child and no own value is degenerate
         if self.children().len() == 1 && self.value().is_none() {
             let mut child = self.children_mut().pop().unwrap();
@@ -142,11 +130,10 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     }
 
     /// Left biased union with another tree of the same key and value type
-    fn union_with(&mut self, that: &impl AbstractRadixTree<K, V, Materialized = Self::Materialized>)
-    where
-        K: Debug + Ord + Copy,
-        V: Debug + Clone,
-    {
+    fn union_with(
+        &mut self,
+        that: &impl AbstractRadixTree<K, V, Materialized = Self::Materialized>,
+    ) {
         self.outer_combine_with(that, |_, _| true)
     }
 
@@ -237,7 +224,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     /// inner means that elements that are in `self` but not in `that` or vice versa are removed.
     /// for elements that are in both trees, it is possible to customize how they are combined.
     /// `f` can mutate the value of `self` in place, or return false to remove the value.
-    fn inner_combine_with<W: Clone + Debug>(
+    fn inner_combine_with<W: TValue>(
         &mut self,
         that: &impl AbstractRadixTree<K, W>,
         f: impl Fn(&mut V, &W) -> bool + Copy,
@@ -272,7 +259,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn inner_combine_children_with<W: Clone + Debug>(
+    fn inner_combine_children_with<W: TValue>(
         &mut self,
         rhs: &[impl AbstractRadixTree<K, W>],
         f: impl Fn(&mut V, &W) -> bool + Copy,
@@ -293,7 +280,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     ///
     /// For elements that are in both trees, it is possible to customize how they are combined.
     /// `f` can mutate the value of `self` in place, or return false to remove the value.
-    fn left_combine_with<W: Debug + Clone>(
+    fn left_combine_with<W: TValue>(
         &mut self,
         that: &impl AbstractRadixTree<K, W>,
         f: impl Fn(&mut V, &W) -> bool + Copy,
@@ -323,7 +310,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn left_combine_children_with<W: Debug + Clone>(
+    fn left_combine_children_with<W: TValue>(
         &mut self,
         rhs: &[impl AbstractRadixTree<K, W>],
         f: impl Fn(&mut V, &W) -> bool + Copy,
@@ -392,7 +379,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
             self.prefix()[n..].into(),
             self.value().cloned(),
             self.children()
-                .into_iter()
+                .iter()
                 .map(|x| x.materialize_shortened(0))
                 .collect(),
         )
@@ -408,7 +395,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
     }
 
     /// Inner combine this tree with another tree, using the given combine function
-    fn inner_combine<W: Debug + Clone>(
+    fn inner_combine<W: TValue>(
         &self,
         that: &impl AbstractRadixTree<K, W>,
         f: impl Fn(&V, &W) -> Option<V> + Copy,
@@ -434,7 +421,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
     }
 }
 
-impl<K: Debug + Ord + Copy, V: Debug + Clone> AbstractRadixTree<K, V> for RadixTree<K, V> {
+impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for RadixTree<K, V> {
     type Materialized = RadixTree<K, V>;
 
     fn prefix(&self) -> &[K] {
@@ -450,9 +437,7 @@ impl<K: Debug + Ord + Copy, V: Debug + Clone> AbstractRadixTree<K, V> for RadixT
     }
 }
 
-impl<E: Ord + Copy + Debug, K: AsRef<[E]>, V: Debug + Clone> FromIterator<(K, V)>
-    for RadixTree<E, V>
-{
+impl<E: TKey, K: AsRef<[E]>, V: TValue> FromIterator<(K, V)> for RadixTree<E, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut res = RadixTree::default();
         for (k, v) in iter.into_iter() {
@@ -487,7 +472,7 @@ enum FindResult<T> {
 /// - Found(tree) if we found the tree exactly,
 /// - Prefix if we found a tree of which prefix is a prefix
 /// - NotFound if there is no tree
-fn find<'a, K: Debug + Ord + Copy, V: Debug + Clone, T: AbstractRadixTree<K, V>>(
+fn find<'a, K: TKey, V: TValue, T: AbstractRadixTree<K, V>>(
     tree: &'a T,
     prefix: &'a [K],
 ) -> FindResult<&'a T> {
@@ -544,7 +529,7 @@ where
     T::Materialized::new(
         tree.prefix()[n..].into(),
         tree.value().cloned(),
-        tree.children().into_iter().map(materialize).collect(),
+        tree.children().iter().map(materialize).collect(),
     )
 }
 
@@ -752,11 +737,8 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
 
 struct RadixTreeConverter<K, V>(PhantomData<(K, V)>);
 
-impl<T, K: TKey, V: TValue> Converter<&T, T::Materialized> for RadixTreeConverter<K, V>
-where
-    K: Clone,
-    V: Clone,
-    T: AbstractRadixTree<K, V>,
+impl<T: AbstractRadixTree<K, V>, K: TKey, V: TValue> Converter<&T, T::Materialized>
+    for RadixTreeConverter<K, V>
 {
     fn convert(value: &T) -> T::Materialized {
         materialize(value)
@@ -1054,10 +1036,10 @@ impl<'a, F, K, V, A, B, R>
     MergeOperation<VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, RadixTreeConverter<K, V>>>
     for OuterCombineOp<F, ()>
 where
+    K: TKey,
+    V: TValue,
     A: AbstractRadixTree<K, V, Materialized = R>,
     B: AbstractRadixTree<K, V, Materialized = R>,
-    V: Debug + Clone,
-    K: Ord + Copy + Debug,
     F: Fn(&V, &V) -> Option<V> + Copy,
     R: AbstractRadixTreeMut<K, V, Materialized = R>,
 {
@@ -1097,9 +1079,9 @@ struct InnerCombineOp<F, P>(F, PhantomData<P>);
 
 impl<'a, K, V, W, F, I, R> MergeOperation<I> for InnerCombineOp<F, (K, V, W)>
 where
-    K: Ord + Copy + Debug,
-    V: Debug + Clone,
-    W: Debug + Clone,
+    K: TKey,
+    V: TValue,
+    W: TValue,
     F: Fn(&mut V, &W) -> bool + Copy,
     I: MutateInput<A = R>,
     I::B: AbstractRadixTree<K, W>,
@@ -1131,12 +1113,12 @@ impl<'a, F, K, V, W, A, B, R>
     MergeOperation<VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>>
     for InnerCombineOp<F, W>
 where
+    K: TKey,
+    V: TValue,
+    W: TValue,
     A: AbstractRadixTree<K, V, Materialized = R>,
     B: AbstractRadixTree<K, W>,
     R: AbstractRadixTreeMut<K, V, Materialized = R>,
-    V: Debug + Clone,
-    W: Debug + Clone,
-    K: Ord + Copy + Debug,
     F: Fn(&V, &W) -> Option<V> + Copy,
 {
     fn cmp(&self, a: &A, b: &B) -> Ordering {
@@ -1175,9 +1157,9 @@ struct LeftCombineOp<F, P>(F, PhantomData<P>);
 
 impl<'a, K, V, W, F, I, R> MergeOperation<I> for LeftCombineOp<F, (K, V, W)>
 where
-    K: Ord + Copy + Debug,
-    V: Debug + Clone,
-    W: Debug + Clone,
+    K: TKey,
+    V: TValue,
+    W: TValue,
     F: Fn(&mut V, &W) -> bool + Copy,
     I: MutateInput<A = R>,
     I::B: AbstractRadixTree<K, W>,
