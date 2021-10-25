@@ -3,16 +3,19 @@ use std::{
     sync::Arc,
 };
 
-pub trait TKey: Debug + Ord + Copy {}
+pub trait TKey: Debug + Ord + Copy + 'static {}
 
-impl<T: Debug + Ord + Copy> TKey for T {}
+impl<T: Debug + Ord + Copy + 'static> TKey for T {}
 
-pub trait TValue: Debug + Clone {}
+pub trait TValue: Debug + Clone + 'static {}
 
-impl<T: Debug + Clone> TValue for T {}
+impl<T: Debug + Clone + 'static> TValue for T {}
 
+mod lazy;
 #[cfg(feature = "rkyv")]
-mod rkyv;
+mod rkyv_support;
+#[cfg(feature = "rkyv")]
+pub use rkyv_support::LazyRadixTree;
 use smallvec::{Array, SmallVec};
 
 use crate::{
@@ -82,12 +85,16 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
 }
 
 pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
-    AbstractRadixTree<K, V, Materialized = Self> + Clone
+    AbstractRadixTree<K, V, Materialized = Self> + Clone + Default
 {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self;
     fn value_mut(&mut self) -> &mut Option<V>;
     fn children_mut(&mut self) -> &mut Vec<Self>;
     fn prefix_mut(&mut self) -> &mut Fragment<K>;
+
+    fn empty() -> Self {
+        Self::default()
+    }
 
     fn leaf(value: V) -> Self {
         Self::new(Fragment::default(), Some(value), Default::default())
@@ -138,12 +145,12 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     }
 
     /// Intersection with another tree of the same key type
-    fn intersection_with<W: Clone + Debug>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+    fn intersection_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.inner_combine_with(that, |_, _| true)
     }
 
     /// Difference with another tree of the same key type
-    fn difference_with<W: Clone + Debug>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+    fn difference_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.left_combine_with(that, |_, _| false)
     }
 
@@ -365,11 +372,11 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
     /// true if the keys of self are a subset of the keys of that.
     ///
     /// a set is considered to be a subset of itself.
-    fn is_subset<W: Debug + Clone>(&self, that: &impl AbstractRadixTree<K, W>) -> bool {
+    fn is_subset<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> bool {
         is_subset(self, that)
     }
 
-    fn is_superset<W: Debug + Clone>(&self, that: &RadixTree<K, W>) -> bool {
+    fn is_superset<W: TValue>(&self, that: &RadixTree<K, W>) -> bool {
         is_subset(that, self)
     }
 
@@ -712,18 +719,6 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
 }
 
 impl<K, V> RadixTree<K, V> {
-    pub fn prefix(&self) -> &[K] {
-        &self.prefix
-    }
-
-    pub fn value(&self) -> &Option<V> {
-        &self.value
-    }
-
-    pub fn children(&self) -> &[Self] {
-        &self.children
-    }
-
     pub fn values(&self) -> Values<'_, K, V> {
         Values::new(self)
     }
@@ -883,18 +878,13 @@ fn outer_combine<
 }
 
 /// Outer combine two trees with a function f
-fn inner_combine<
-    K: Debug + Ord + Copy,
-    V: Debug + Clone,
-    W: Debug + Clone,
-    R: AbstractRadixTreeMut<K, V, Materialized = R>,
->(
+fn inner_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Materialized = R>>(
     a: &impl AbstractRadixTree<K, V, Materialized = R>,
     b: &impl AbstractRadixTree<K, W>,
     f: impl Fn(&V, &W) -> Option<V> + Copy,
 ) -> R {
     let n = common_prefix(a.prefix(), b.prefix());
-    let mut prefix = a.prefix()[..n].into();
+    let prefix = a.prefix()[..n].into();
     let mut children = Vec::<R>::new();
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
