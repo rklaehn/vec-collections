@@ -1,6 +1,6 @@
 use crate::AbstractRadixTreeMut;
 
-use super::{AbstractRadixTree, Fragment, RadixTree};
+use super::{AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
 use lazy_init::LazyTransform;
 use rkyv::{option::ArchivedOption, vec::ArchivedVec, DeserializeUnsized};
 
@@ -12,7 +12,7 @@ pub struct LazyRadixTree<'a, K, V> {
     children: LazyTransform<&'a [ArchivedRadixTree<K, V>], Vec<Self>>,
 }
 
-impl<K: Clone, V: Clone> AbstractRadixTreeMut<K, V> for LazyRadixTree<'static, K, V> {
+impl<K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for LazyRadixTree<'static, K, V> {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
         let t = LazyTransform::<&'static [ArchivedRadixTree<K, V>], Vec<Self>>::new(&[]);
         t.get_or_create(|_| children);
@@ -54,7 +54,7 @@ impl<K, V> From<RadixTree<K, V>> for LazyRadixTree<'static, K, V> {
     }
 }
 
-impl<'a, K: Clone + 'static, V: Clone + 'static> AbstractRadixTree<K, V>
+impl<'a, K: TKey + 'static, V: TValue + 'static> AbstractRadixTree<K, V>
     for LazyRadixTree<'a, K, V>
 {
     type Materialized = LazyRadixTree<'static, K, V>;
@@ -88,7 +88,7 @@ pub struct ArchivedRadixTree<K, V> {
     children: ArchivedVec<ArchivedRadixTree<K, V>>,
 }
 
-impl<K, V> AbstractRadixTree<K, V> for ArchivedRadixTree<K, V> {
+impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArchivedRadixTree<K, V> {
     fn prefix(&self) -> &[K] {
         &self.prefix
     }
@@ -181,7 +181,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{AbstractRadixTree, RadixTree};
+    use crate::{AbstractRadixTree, AbstractRadixTreeMut, RadixTree};
 
     fn mk_string(n: usize) -> String {
         let text = n.to_string();
