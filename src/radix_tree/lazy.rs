@@ -1,11 +1,18 @@
 use core::cell::UnsafeCell;
 use parking_lot::Mutex;
+use std::fmt::Debug;
 
 /// Utility for a lazily initialized value
 #[derive(Default)]
 pub(crate) struct Lazy<A, B> {
     mutex: Mutex<()>,
     data: UnsafeCell<Either<A, B>>,
+}
+
+impl<A: Debug, B: Debug> Debug for Lazy<A, B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Lazy").finish_non_exhaustive()
+    }
 }
 
 impl<A: Clone, B: Clone> Clone for Lazy<A, B> {
