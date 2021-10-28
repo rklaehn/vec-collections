@@ -56,6 +56,19 @@ impl<A: Copy, B> Lazy<A, B> {
         Self::new(Either::B(data))
     }
 
+    pub fn get(&self) -> Option<&B> {
+        let guard = self.mutex.lock();
+        let res = unsafe {
+            if let Either::B(b) = &*self.data.get() {
+                Some(b)
+            } else {
+                None
+            }
+        };
+        drop(guard);
+        res
+    }
+
     pub fn get_or_create(&self, f: impl Fn(A) -> B) -> &B {
         unsafe {
             let guard = self.mutex.lock();

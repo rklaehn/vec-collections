@@ -1,8 +1,6 @@
-use rkyv::{AlignedVec, Archive, Deserialize, Serialize, archived_root, de::deserializers::SharedDeserializeMap, ser::serializers::{AlignedSerializer, CompositeSerializer, FallbackScratch}, ser::{
-        serializers::{AllocSerializer, HeapScratch, SharedSerializeMap},
-        Serializer,
-    }};
-use std::{io::Read, time::Instant};
+use std::{collections::BTreeMap, sync::Arc};
+
+use rkyv::{AlignedVec, Archive, Serialize, archived_root, ser::serializers::{AlignedSerializer, CompositeSerializer}, ser::{Serializer, serializers::{AllocScratch, FallbackScratch, HeapScratch, SharedSerializeMap}}};
 use vec_collections::{AbstractRadixTree, AbstractRadixTreeMut, ArchivedRadixTree2, LazyRadixTree, TKey, TValue};
 
 trait RadixDb<'a, K: TKey, V: TValue> {
@@ -13,7 +11,7 @@ trait RadixDb<'a, K: TKey, V: TValue> {
 
 struct InMemRadixDb<'a, K: TKey, V: TValue> {
     file: AlignedVec,
-    map: Option<SharedSerializeMap>,
+    map: Option<(SharedSerializeMap, BTreeMap<usize, Arc<Vec<LazyRadixTree<'a, K, V>>>>)>,
     tree: LazyRadixTree<'a, K, V>,
 }
 
@@ -34,24 +32,26 @@ impl<'a, K: TKey, V: TValue> InMemRadixDb<'a, K, V> {
             K: for<'x> Serialize<MySerializer<'x>>,
             V: for<'x> Serialize<MySerializer<'x>>,
     {
-        // this is a lie
+        // this is a lie - bytes does not really live for 'a
         let bytes: &'a [u8] = unsafe { std::mem::transmute(bytes) };
         let tree: &'a ArchivedRadixTree2<K, V> = unsafe { archived_root::<LazyRadixTree<K, V>>(bytes) };
         let tree: LazyRadixTree<'a, K, V> = LazyRadixTree::from(tree);
         let mut file = AlignedVec::new();
         let mut serializer = CompositeSerializer::new(
             AlignedSerializer::new(&mut file),
-            HeapScratch::default(),
-            SharedSerializeMap::default(),
+            Default::default(),
+            Default::default(),
         );
-        // this makes the lie true
+        // this makes the lie true, after serialization with an empty SharedSerializerMap, the tree is completely self-contained
         serializer
             .serialize_value(&tree)
             .map_err(|e| anyhow::anyhow!("Error while serializing: {}", e))?;
         let (_, _, map) = serializer.into_components();
+        let mut arcs = BTreeMap::default();
+        tree.all_arcs(&mut arcs);
         Ok(Self {
             tree,
-            map: Some(map),
+            map: Some((map, arcs)),
             file,
         })
     }
@@ -59,7 +59,7 @@ impl<'a, K: TKey, V: TValue> InMemRadixDb<'a, K, V> {
 
 type MySerializer<'a> = CompositeSerializer<
     AlignedSerializer<&'a mut AlignedVec>,
-    HeapScratch<256>,
+    FallbackScratch<HeapScratch<256>, AllocScratch>,
     SharedSerializeMap,
 >;
 
@@ -80,54 +80,46 @@ where
 
     fn flush(&mut self) -> anyhow::Result<()>
     {
-        let map = self.map.take().unwrap_or_default();
+        let (map, mut arcs) = self.map.take().unwrap_or_default();
+        println!("before {:?}", map);
         let mut serializer = CompositeSerializer::new(
             AlignedSerializer::new(&mut self.file),
-            HeapScratch::default(),
+            Default::default(),
             map,
         );
         serializer
             .serialize_value(&self.tree)
             .map_err(|e| anyhow::anyhow!("Error while serializing: {}", e))?;
+        self.tree.all_arcs(&mut arcs);
         let (_, _, map) = serializer.into_components();
-        self.map = Some(map);
+        println!("after {:?}", map);
+        self.map = Some((map, arcs));
         Ok(())
     }
 }
 
-fn main() {
-    let t0 = Instant::now();
-    let mut lazy = LazyRadixTree::default();
-    for i in 0..2 {
-        let key = i.to_string();
-        let chars = key.as_bytes().to_vec();
-        let node = LazyRadixTree::single(&chars, i);
-        lazy.union_with(&node);
+fn main() -> anyhow::Result<()> {
+    let mut db: InMemRadixDb<u8, ()> = InMemRadixDb::default();
+    for i in 0..100 {
+        for j in 0..100 {
+            let key = format!("{}-{}", i, j);
+            db.tree_mut().union_with(&LazyRadixTree::single(key.as_bytes(), ()));
+        }
+        // db.flush()?;
+        println!("{} {}", i, db.file.len());
     }
-    println!("lazy create {}", t0.elapsed().as_secs_f64());
-
-    let mut serializer = rkyv::ser::serializers::AllocSerializer::<256>::default();
-    serializer.serialize_value(&lazy).unwrap();
-    let (serializer, scratch, map) = serializer.into_components();
-    let bytes = serializer.into_inner();
-    println!(
-        "hex dump of lazy tree {:?}",
-        lazy.iter().collect::<Vec<_>>()
-    );
-    hexdump::hexdump(&bytes);
-
-    let archived = unsafe { rkyv::archived_root::<LazyRadixTree<u8, i32>>(&bytes) };
-    let mut tree = LazyRadixTree::from(archived);
-    for (k, v) in tree.iter() {
-        println!("{:?} {}", k, v);
+    db.flush()?;
+    println!("{}", db.file.len());
+    println!("db");
+    for (k, v) in db.tree().iter() {
+        println!("{}", std::str::from_utf8(&k)?);
     }
-    tree.union_with(&LazyRadixTree::single(&"fnord".as_bytes().to_vec(), 1));
-    let mut serializer = rkyv::ser::serializers::AllocSerializer::<256>::default();
-    serializer.serialize_value(&tree).unwrap();
-    let bytes2 = serializer.into_serializer().into_inner();
-    println!(
-        "hex dump of modified tree {:?}",
-        tree.iter().collect::<Vec<_>>()
-    );
-    hexdump::hexdump(&bytes2);
+    let db2 = InMemRadixDb::<u8, ()>::load(&db.file)?;
+    println!("db2");
+    for (k, v) in db2.tree().iter() {
+        println!("{}", std::str::from_utf8(&k)?);
+    }
+
+    println!("{} {}", db.file.len(), db2.file.len());
+    Ok(())
 }

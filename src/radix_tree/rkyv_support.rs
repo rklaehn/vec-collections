@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
 
 use crate::AbstractRadixTreeMut;
 
@@ -51,7 +51,7 @@ impl<'a, K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for LazyRadixTree<'a, K,
     }
 
     fn children_mut(&mut self) -> &mut Vec<Self> {
-        Arc::make_mut(self.children.get_or_create_mut(materialize_shallow))
+        Arc::make_mut(self.children_arc_mut())
     }
 }
 
@@ -98,11 +98,11 @@ impl<'a, K: TKey, V: TValue> AbstractRadixTree<K, V> for LazyRadixTree<'a, K, V>
     }
 
     fn children(&self) -> &[Self] {
-        self.children.get_or_create(materialize_shallow)
+        self.children_arc().as_ref()
     }
 }
 
-impl<K: TKey + Archive<Archived = K>, V: TValue + Archive<Archived = V>> AbstractRadixTree<K, V>
+impl<K: TKey, V: TValue> AbstractRadixTree<K, V>
     for ArchivedRadixTree2<K, V>
 {
     type Materialized = LazyRadixTree<'static, K, V>;
@@ -117,6 +117,30 @@ impl<K: TKey + Archive<Archived = K>, V: TValue + Archive<Archived = V>> Abstrac
 
     fn children(&self) -> &[Self] {
         &self.children
+    }
+}
+
+impl<'a, K: TKey, V: TValue> LazyRadixTree<'a, K, V>
+{
+    fn children_arc(&self) -> &Arc<Vec<Self>> {
+        self.children.get_or_create(materialize_shallow)
+    }
+
+    fn children_arc_mut(&mut self) -> &mut Arc<Vec<Self>> {
+        self.children.get_or_create_mut(materialize_shallow)
+    }
+
+    fn maybe_arc(&self) -> Option<&Arc<Vec<Self>>> {
+        self.children.get()
+    }
+
+    pub fn all_arcs(&self, into: &mut BTreeMap<usize, Arc<Vec<Self>>>) {
+        if let Some(children) = self.maybe_arc() {
+            into.insert(location(children.as_ref()), children.clone());
+            for child in children.iter() {
+                child.all_arcs(into);
+            }
+        }
     }
 }
 
@@ -184,6 +208,10 @@ fn offset_from<T, U>(base: *const T, p: *const U) -> usize {
     p - base
 }
 
+fn location<T>(x: &T) -> usize {
+    (x as *const T) as usize
+}
+
 impl<K, V> Archive for RadixTree<K, V>
 where
     K: TKey + Archive,
@@ -211,10 +239,7 @@ where
     }
 }
 
-impl<'a, K, V> Archive for LazyRadixTree<'a, K, V>
-where
-    K: TKey,
-    V: TValue,
+impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V>
 {
     type Archived = ArchivedRadixTree2<K, V>;
 
@@ -233,8 +258,7 @@ where
             .cloned()
             .resolve(pos + offset_from(out, ptr), value, ptr);
         let ptr = &mut (*out).children;
-        let arc = self.children.get_or_create(materialize_shallow);
-        arc.resolve(pos + offset_from(out, ptr), children, ptr);
+        self.children_arc().resolve(pos + offset_from(out, ptr), children, ptr);
     }
 }
 
@@ -261,7 +285,7 @@ where
     fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         let prefix = rkyv::vec::ArchivedVec::serialize_from_slice(self.prefix(), serializer)?;
         let value = self.value().cloned().serialize(serializer)?;
-        let arc = self.children.get_or_create(materialize_shallow);
+        let arc = self.children_arc();
         let arc: &Arc<Vec<LazyRadixTree<'static, K, V>>> = unsafe { std::mem::transmute(arc) };
         let children = arc.serialize(serializer)?;
         Ok(LazyRadixTreeResolver {
