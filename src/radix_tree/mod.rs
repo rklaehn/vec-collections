@@ -16,9 +16,9 @@ mod lazy;
 mod rkyv_support;
 use rkyv::Archive;
 #[cfg(feature = "rkyv")]
-pub use rkyv_support::LazyRadixTree;
-#[cfg(feature = "rkyv")]
 pub use rkyv_support::ArchivedRadixTree2;
+#[cfg(feature = "rkyv")]
+pub use rkyv_support::LazyRadixTree;
 use smallvec::{Array, SmallVec};
 
 use crate::{
@@ -108,7 +108,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
     }
 
     fn prepend(&mut self, prefix: &[K]) {
-        if !prefix.is_empty() {
+        if !prefix.is_empty() && !self.is_empty() {
             let mut prefix1 = SmallVec::new();
             prefix1.extend_from_slice(prefix);
             prefix1.extend_from_slice(self.prefix());
@@ -131,11 +131,19 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
 
     /// removes degenerate node again
     fn unsplit(&mut self) {
+        // remove all empty children
+        // this might sometimes not be necessary, but it is tricky to find out when.
+        self.children_mut().retain(|x| !x.is_empty());
         // a single child and no own value is degenerate
         if self.children().len() == 1 && self.value().is_none() {
             let mut child = self.children_mut().pop().unwrap();
             child.prepend(self.prefix());
             *self = child;
+        }
+        // canonicalize prefix for empty node
+        // this might sometimes not be necessary, but it is tricky to find out when.
+        if self.is_empty() {
+            *self.prefix_mut() = Fragment::default();
         }
     }
 

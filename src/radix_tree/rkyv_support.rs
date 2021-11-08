@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use crate::AbstractRadixTreeMut;
 
@@ -12,9 +15,9 @@ use rkyv::{
 
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
-    where
-        K: TKey,
-        V: TValue,
+where
+    K: TKey,
+    V: TValue,
 {
     prefix: Fragment<K>,
     value: Option<V>,
@@ -102,9 +105,7 @@ impl<'a, K: TKey, V: TValue> AbstractRadixTree<K, V> for LazyRadixTree<'a, K, V>
     }
 }
 
-impl<K: TKey, V: TValue> AbstractRadixTree<K, V>
-    for ArchivedRadixTree2<K, V>
-{
+impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArchivedRadixTree2<K, V> {
     type Materialized = LazyRadixTree<'static, K, V>;
 
     fn prefix(&self) -> &[K] {
@@ -120,8 +121,7 @@ impl<K: TKey, V: TValue> AbstractRadixTree<K, V>
     }
 }
 
-impl<'a, K: TKey, V: TValue> LazyRadixTree<'a, K, V>
-{
+impl<'a, K: TKey, V: TValue> LazyRadixTree<'a, K, V> {
     fn children_arc(&self) -> &Arc<Vec<Self>> {
         self.children.get_or_create(materialize_shallow)
     }
@@ -167,8 +167,7 @@ pub struct ArchivedRadixTree<K, V> {
     children: ArchivedVec<ArchivedRadixTree<K, V>>,
 }
 
-pub struct LazyRadixTreeResolver<K: TKey + Archive, V: TValue + Archive>
-{
+pub struct LazyRadixTreeResolver<K: TKey + Archive, V: TValue + Archive> {
     prefix: Resolver<Vec<K>>,
     value: Resolver<Option<V>>,
     children: Resolver<Arc<Vec<LazyRadixTree<'static, K, V>>>>,
@@ -239,8 +238,7 @@ where
     }
 }
 
-impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V>
-{
+impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V> {
     type Archived = ArchivedRadixTree2<K, V>;
 
     type Resolver = LazyRadixTreeResolver<K, V>;
@@ -258,7 +256,8 @@ impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V>
             .cloned()
             .resolve(pos + offset_from(out, ptr), value, ptr);
         let ptr = &mut (*out).children;
-        self.children_arc().resolve(pos + offset_from(out, ptr), children, ptr);
+        self.children_arc()
+            .resolve(pos + offset_from(out, ptr), children, ptr);
     }
 }
 
