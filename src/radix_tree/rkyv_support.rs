@@ -1,3 +1,4 @@
+use core::fmt;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
@@ -6,12 +7,9 @@ use std::{
 use crate::AbstractRadixTreeMut;
 
 use super::{lazy::Lazy, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
-use rkyv::{
-    option::ArchivedOption,
-    ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
-    vec::{ArchivedVec, VecResolver},
-    Archive, Archived, Deserialize, DeserializeUnsized, Fallible, Resolver, Serialize,
-};
+use bytecheck::CheckBytes;
+use num_traits::Signed;
+use rkyv::{Archive, Archived, Deserialize, DeserializeUnsized, Fallible, Resolver, Serialize, option::ArchivedOption, ser::{ScratchSpace, Serializer, SharedSerializeRegistry}, validation::ArchiveContext, vec::{ArchivedVec, VecResolver}};
 
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
@@ -237,6 +235,69 @@ where
         );
     }
 }
+
+/// Validation error for a range set
+#[cfg(feature = "rkyv_validated")]
+#[derive(Debug)]
+pub enum ArchivedRadixTreeError {
+    /// error with the prefix
+    PrefixCheckError,
+    /// error with the value
+    ValueCheckError,
+    /// error with the children
+    ChildrenCheckError,
+    /// error with the order of the children
+    OrderCheckError,
+}
+
+
+#[cfg(feature = "rkyv_validated")]
+impl std::error::Error for ArchivedRadixTreeError {}
+
+#[cfg(feature = "rkyv_validated")]
+impl std::fmt::Display for ArchivedRadixTreeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+#[cfg(feature = "rkyv_validated")]
+impl<C, K, V> bytecheck::CheckBytes<C> for ArchivedRadixTree<K, V>
+where
+    C: ?Sized + ArchiveContext,
+    C::Error: std::error::Error,
+    K: Ord,
+    ArchivedVec<K>: bytecheck::CheckBytes<C>,
+    ArchivedOption<V>: bytecheck::CheckBytes<C>,
+{
+    type Error = ArchivedRadixTreeError;
+    unsafe fn check_bytes<'a>(
+        this: *const Self,
+        context: &mut C,
+    ) -> Result<&'a Self, Self::Error> {
+        let Self { prefix, value, children } = &(*this);
+        // check the prefix
+        ArchivedVec::<K>::check_bytes(prefix, context)
+            .map_err(|_| ArchivedRadixTreeError::PrefixCheckError)?;
+        // check the value, if present
+        ArchivedOption::<V>::check_bytes(value, context)
+            .map_err(|_| ArchivedRadixTreeError::ValueCheckError)?;
+        // check that the prefix of all children is of non zero length
+        if !children.iter().all(|child| child.prefix.len() > 0) {
+            return Err(ArchivedRadixTreeError::ChildrenCheckError);
+        };
+        // check the order of the children
+        if !children.iter().zip(children.iter().skip(1)).all(|(a, b)| a.prefix[0] < b.prefix[0]) {
+            return Err(ArchivedRadixTreeError::OrderCheckError);
+        };
+        // recursively check the children
+        ArchivedVec::<Self>::check_bytes(children, context)
+            .map_err(|_| ArchivedRadixTreeError::ChildrenCheckError)?;
+
+        Ok(&*this)
+    }
+}
+
 
 impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V> {
     type Archived = ArchivedRadixTree2<K, V>;
