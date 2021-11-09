@@ -221,21 +221,17 @@ impl FileStorage {
 impl Storage for FileStorage {
     fn append(&self, file: &str, chunk: &[u8]) -> io::Result<()> {
         if !chunk.is_empty() {
-            let mut name = self.base.clone();
-            name.push(file);
             let mut file = fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(name)?;
+                .open(self.base.join(file))?;
             file.write_all(chunk)?;
         }
         Ok(())
     }
 
     fn load<T>(&self, file: &str, mut f: impl FnMut(&[u8]) -> T) -> io::Result<T> {
-        let mut name = self.base.clone();
-        name.push(file);
-        let res = match std::fs::read(name) {
+        let res = match std::fs::read(self.base.join(file)) {
             Ok(data) => f(&data),
             Err(e) if e.kind() == io::ErrorKind::NotFound => f(&[]),
             Err(e) => return Err(e),
@@ -245,14 +241,12 @@ impl Storage for FileStorage {
 
     fn mv(&self, from: &str, to: &str) -> std::io::Result<()> {
         if from != to {
-            let mut src = self.base.clone();
-            src.push(from);
-            let mut tgt = self.base.clone();
-            tgt.push(to);
-            match fs::rename(src, &tgt) {
+            let from = self.base.join(from);
+            let to = self.base.join(to);
+            match fs::rename(from, &to) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    fs::remove_file(tgt)?;
+                    fs::remove_file(to)?;
                 }
                 Err(e) => return Err(e),
             }
