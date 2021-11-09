@@ -99,9 +99,7 @@ impl<K: TKey, V: TValue> ArcRadixTree<K, V> {
     }
 }
 
-impl<K: TKey + Archive<Archived = K>, V: TValue + Archive<Archived = V>>
-    From<&ArchivedArcRadixTree<K, V>> for ArcRadixTree<K, V>
-{
+impl<K: TKey, V: TValue> From<&ArchivedArcRadixTree<K, V>> for ArcRadixTree<K, V> {
     fn from(value: &ArchivedArcRadixTree<K, V>) -> Self {
         let children = value.children().iter().map(Self::from).collect::<Vec<_>>();
         let children = Arc::new(children);
@@ -129,7 +127,7 @@ impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArchivedArcRadixTree<K, V> 
     }
 }
 
-pub struct ArcRadixTreeResolver<K: TKey + Archive, V: TValue + Archive> {
+pub struct ArcRadixTreeResolver<K: TKey, V: TValue> {
     prefix: Resolver<Vec<K>>,
     value: Resolver<Option<V>>,
     children: Resolver<Arc<Vec<ArcRadixTree<K, V>>>>,
