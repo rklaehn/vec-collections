@@ -1,26 +1,22 @@
-use std::{
-    borrow::Borrow, cmp::Ordering, fmt::Debug, iter::FromIterator, marker::PhantomData, ops::Deref,
-    sync::Arc,
-};
+use std::{borrow::Borrow, cmp::Ordering, fmt::Debug, marker::PhantomData, ops::Deref, sync::Arc};
 
-pub trait TKey: Debug + Ord + Copy + Archive<Archived = Self> + 'static {}
+pub trait TKey: Debug + Ord + Copy + Archive<Archived = Self> + Send + Sync + 'static {}
 
-impl<T: Debug + Ord + Copy + Archive<Archived = T> + 'static> TKey for T {}
+impl<T: Debug + Ord + Copy + Archive<Archived = T> + Send + Sync + 'static> TKey for T {}
 
-pub trait TValue: Debug + Clone + Archive<Archived = Self> + 'static {}
+pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static {}
 
-impl<T: Debug + Clone + Archive<Archived = T> + 'static> TValue for T {}
+impl<T: Debug + Clone + Archive<Archived = T> + Send + Sync + 'static> TValue for T {}
 
 mod lazy;
-#[cfg(feature = "rkyv")]
-mod rkyv_support;
 use rkyv::Archive;
 #[cfg(feature = "rkyv")]
-pub use rkyv_support::ArchivedRadixTree2;
+mod lazy_radix_tree;
 #[cfg(feature = "rkyv")]
-pub use rkyv_support::LazyRadixTree;
+pub use lazy_radix_tree::*;
 use smallvec::{Array, SmallVec};
-
+use sorted_iter::sorted_pair_iterator::SortedByKey;
+mod radix_tree;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::{
@@ -28,6 +24,7 @@ use crate::{
         VecMergeState,
     },
 };
+pub use radix_tree::*;
 
 /// A path fragment
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +55,7 @@ impl<'a, T: Clone> From<&'a [T]> for Fragment<T> {
         Self(value.into())
     }
 }
+
 impl<T> From<SmallVec<[T; 16]>> for Fragment<T> {
     fn from(value: SmallVec<[T; 16]>) -> Self {
         Self(value)
@@ -113,6 +111,24 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
             prefix1.extend_from_slice(prefix);
             prefix1.extend_from_slice(self.prefix());
             *self.prefix_mut() = prefix1.into();
+        }
+    }
+
+    fn filter_prefix(&self, prefix: &[K]) -> Self {
+        match find(self, prefix) {
+            FindResult::Found(tree) => {
+                let mut res = tree.clone();
+                *res.prefix_mut() = prefix.into();
+                res
+            }
+            FindResult::Prefix { tree, rt } => {
+                let mut res = tree.clone();
+                let p = res.prefix();
+                *res.prefix_mut() = Fragment::from(&p[p.len() - rt..]);
+                res.prepend(prefix);
+                res
+            }
+            FindResult::NotFound { .. } => Self::default(),
         }
     }
 
@@ -360,15 +376,24 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
     }
 
     /// true if two maps have no values at the same keys
-    fn is_disjoint<W: TValue>(&self, that: &RadixTree<K, W>) -> bool {
+    fn is_disjoint<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> bool {
         !intersects(self, that)
     }
 
+    /// iterate over all elements
     fn iter<'a>(&'a self) -> Iter<'a, K, V, Self>
     where
         K: 'a,
     {
         Iter::new(self, IterKey::new(self.prefix()))
+    }
+
+    /// iterate over all values - this is cheaper than iterating over elements, since it does not have to build the keys from fragments
+    fn values<'a>(&'a self) -> Values<'a, K, V, Self>
+    where
+        K: 'a,
+    {
+        Values::new(self)
     }
 
     fn contains_key(&self, key: &[K]) -> bool {
@@ -387,7 +412,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         is_subset(self, that)
     }
 
-    fn is_superset<W: TValue>(&self, that: &RadixTree<K, W>) -> bool {
+    fn is_superset<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> bool {
         is_subset(that, self)
     }
 
@@ -436,32 +461,6 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
             }
             FindResult::NotFound { .. } => Iter::empty(),
         }
-    }
-}
-
-impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for RadixTree<K, V> {
-    type Materialized = RadixTree<K, V>;
-
-    fn prefix(&self) -> &[K] {
-        &self.prefix
-    }
-
-    fn value(&self) -> Option<&V> {
-        self.value.as_ref()
-    }
-
-    fn children(&self) -> &[Self] {
-        &self.children
-    }
-}
-
-impl<E: TKey, K: AsRef<[E]>, V: TValue> FromIterator<(K, V)> for RadixTree<E, V> {
-    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
-        let mut res = RadixTree::default();
-        for (k, v) in iter.into_iter() {
-            res.union_with(&RadixTree::single(k.as_ref(), v))
-        }
-        res
     }
 }
 
@@ -591,6 +590,53 @@ impl<T> core::ops::Deref for IterKey<T> {
     }
 }
 
+pub struct Values<'a, K, V, T> {
+    stack: Vec<(&'a T, usize)>,
+    _p: PhantomData<(K, V)>,
+}
+
+impl<'a, K, V, T> Values<'a, K, V, T> {
+    fn new(tree: &'a T) -> Self {
+        Self {
+            stack: vec![(tree, 0)],
+            _p: PhantomData,
+        }
+    }
+
+    fn tree(&self) -> &'a T {
+        self.stack.last().unwrap().0
+    }
+
+    fn inc(&mut self) -> Option<usize> {
+        let pos = &mut self.stack.last_mut().unwrap().1;
+        let res = if *pos == 0 { None } else { Some(*pos - 1) };
+        *pos += 1;
+        res
+    }
+}
+
+impl<'a, K: TKey, V: TValue, T> Iterator for Values<'a, K, V, T>
+where
+    T: AbstractRadixTree<K, V>,
+{
+    type Item = &'a V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.stack.is_empty() {
+            if let Some(pos) = self.inc() {
+                if pos < self.tree().children().len() {
+                    self.stack.push((&self.tree().children()[pos], 0));
+                } else {
+                    self.stack.pop();
+                }
+            } else if let Some(value) = self.tree().value() {
+                return Some(value);
+            }
+        }
+        None
+    }
+}
+
 pub struct Iter<'a, K, V, T> {
     path: IterKey<K>,
     stack: Vec<(&'a T, usize)>,
@@ -626,6 +672,8 @@ impl<'a, K: TKey, V: TValue, T: AbstractRadixTree<K, V>> Iter<'a, K, V, T> {
     }
 }
 
+impl<'a, K: TKey, V: TValue, T: AbstractRadixTree<K, V>> SortedByKey for Iter<'a, K, V, T> {}
+
 impl<'a, K: TKey, V: 'a + TValue, T: AbstractRadixTree<K, V>> Iterator for Iter<'a, K, V, T> {
     type Item = (IterKey<K>, &'a V);
 
@@ -645,99 +693,6 @@ impl<'a, K: TKey, V: 'a + TValue, T: AbstractRadixTree<K, V>> Iterator for Iter<
             }
         }
         None
-    }
-}
-
-pub struct Values<'a, K, V> {
-    stack: Vec<(&'a RadixTree<K, V>, usize)>,
-}
-
-impl<'a, K, V> Values<'a, K, V> {
-    fn new(tree: &'a RadixTree<K, V>) -> Self {
-        Self {
-            stack: vec![(tree, 0)],
-        }
-    }
-
-    fn tree(&self) -> &'a RadixTree<K, V> {
-        self.stack.last().unwrap().0
-    }
-
-    fn inc(&mut self) -> Option<usize> {
-        let pos = &mut self.stack.last_mut().unwrap().1;
-        let res = if *pos == 0 { None } else { Some(*pos - 1) };
-        *pos += 1;
-        res
-    }
-}
-
-impl<'a, K, V> Iterator for Values<'a, K, V> {
-    type Item = &'a V;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while !self.stack.is_empty() {
-            if let Some(pos) = self.inc() {
-                if pos < self.tree().children.len() {
-                    self.stack.push((&self.tree().children[pos], 0));
-                } else {
-                    self.stack.pop();
-                }
-            } else if let Some(value) = self.tree().value.as_ref() {
-                return Some(value);
-            }
-        }
-        None
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RadixTree<K, V> {
-    prefix: Fragment<K>,
-    value: Option<V>,
-    children: Vec<Self>,
-}
-
-impl<K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for RadixTree<K, V> {
-    fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
-        Self {
-            prefix,
-            value,
-            children,
-        }
-    }
-
-    fn value_mut(&mut self) -> &mut Option<V> {
-        &mut self.value
-    }
-
-    fn children_mut(&mut self) -> &mut Vec<Self> {
-        &mut self.children
-    }
-
-    fn prefix_mut(&mut self) -> &mut Fragment<K> {
-        &mut self.prefix
-    }
-}
-
-impl<K: Clone, V> Default for RadixTree<K, V> {
-    fn default() -> Self {
-        Self {
-            prefix: Fragment::default(),
-            value: None,
-            children: Vec::new(),
-        }
-    }
-}
-
-impl<K, V> RadixTree<K, V> {
-    pub fn values(&self) -> Values<'_, K, V> {
-        Values::new(self)
-    }
-}
-
-impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
-    pub fn empty() -> Self {
-        Self::default()
     }
 }
 
@@ -1387,4 +1342,15 @@ mod test {
         println!("a.is_subset(b): {}", a.is_subset(&b));
         assert!(binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b));
     }
+}
+
+fn offset_from<T, U>(base: *const T, p: *const U) -> usize {
+    let base = base as usize;
+    let p = p as usize;
+    assert!(p >= base);
+    p - base
+}
+
+fn location<T>(x: &T) -> usize {
+    (x as *const T) as usize
 }

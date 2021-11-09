@@ -9,6 +9,8 @@ pub(crate) struct Lazy<A, B> {
     data: UnsafeCell<Either<A, B>>,
 }
 
+unsafe impl<A, B> Send for Lazy<A, B> {}
+
 impl<A: Debug, B: Debug> Debug for Lazy<A, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Lazy").finish_non_exhaustive()
