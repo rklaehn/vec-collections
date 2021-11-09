@@ -81,15 +81,21 @@ mod rkyv_support {
         option::ArchivedOption,
         ser::{ScratchSpace, Serializer},
         vec::{ArchivedVec, VecResolver},
-        Archive, Deserialize, DeserializeUnsized, Fallible, Serialize,
+        Archive, Archived, Deserialize, DeserializeUnsized, Fallible, Resolver, Serialize,
     };
 
     #[derive(Debug)]
     #[repr(C)]
-    pub struct ArchivedRadixTree<K, V> {
-        prefix: ArchivedVec<K>,
-        value: ArchivedOption<V>,
-        children: ArchivedVec<ArchivedRadixTree<K, V>>,
+    pub struct ArchivedRadixTree<K: TKey, V: TValue> {
+        prefix: Archived<Vec<K>>,
+        value: Archived<Option<V>>,
+        children: Archived<Vec<RadixTree<K, V>>>,
+    }
+
+    pub struct RadixTreeResolver<K: TKey, V: TValue> {
+        prefix: Resolver<Vec<K>>,
+        value: Resolver<Option<V>>,
+        children: Resolver<Vec<RadixTree<K, V>>>,
     }
 
     impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArchivedRadixTree<K, V> {
@@ -115,10 +121,14 @@ mod rkyv_support {
     {
         type Archived = ArchivedRadixTree<K, V>;
 
-        type Resolver = (VecResolver, Option<<V as Archive>::Resolver>, VecResolver);
+        type Resolver = RadixTreeResolver<K, V>;
 
         unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
-            let (prefix, value, children) = resolver;
+            let RadixTreeResolver {
+                prefix,
+                value,
+                children,
+            } = resolver;
             let ptr = &mut (*out).prefix;
             ArchivedVec::resolve_from_slice(
                 self.prefix(),
@@ -150,7 +160,11 @@ mod rkyv_support {
             let prefix = ArchivedVec::serialize_from_slice(self.prefix(), serializer)?;
             let value = self.value().cloned().serialize(serializer)?;
             let children = ArchivedVec::serialize_from_slice(self.children(), serializer)?;
-            Ok((prefix, value, children))
+            Ok(RadixTreeResolver {
+                prefix,
+                value,
+                children,
+            })
         }
     }
 
@@ -174,8 +188,10 @@ mod rkyv_support {
 
     #[cfg(feature = "rkyv_validated")]
     mod validation_support {
+        use crate::{TKey, TValue};
         use core::fmt;
         use rkyv::{option::ArchivedOption, validation::ArchiveContext, vec::ArchivedVec};
+
         use super::ArchivedRadixTree;
 
         /// Validation error for a range set
@@ -202,7 +218,8 @@ mod rkyv_support {
         where
             C: ?Sized + ArchiveContext,
             C::Error: std::error::Error,
-            K: Ord,
+            K: TKey,
+            V: TValue,
             ArchivedVec<K>: bytecheck::CheckBytes<C>,
             ArchivedOption<V>: bytecheck::CheckBytes<C>,
         {

@@ -6,11 +6,16 @@ use futures::{
     stream::BoxStream,
     StreamExt,
 };
-use rkyv::{AlignedVec, Archive, Archived, Serialize, archived_root, ser::serializers::{AlignedSerializer, CompositeSerializer}, ser::{
+use rkyv::{
+    archived_root,
+    ser::serializers::{AlignedSerializer, CompositeSerializer},
+    ser::{
         serializers::{AllocScratch, FallbackScratch, HeapScratch, SharedSerializeMap},
         Serializer,
-    }};
-use vec_collections::{AbstractRadixTree, AbstractRadixTreeMut, ArcRadixTree,  TKey, TValue};
+    },
+    AlignedVec, Archive, Archived, Serialize,
+};
+use vec_collections::{AbstractRadixTree, AbstractRadixTreeMut, ArcRadixTree, TKey, TValue};
 
 struct Batch<K: TKey, V: TValue> {
     v0: ArcRadixTree<K, V>,
@@ -74,7 +79,8 @@ impl<K: TKey, V: TValue> InMemRadixDb<K, V> {
         K: for<'x> Serialize<MySerializer<'x>>,
         V: for<'x> Serialize<MySerializer<'x>>,
     {
-        let tree: &Archived<ArcRadixTree<K, V>> = unsafe { archived_root::<ArcRadixTree<K, V>>(bytes) };
+        let tree: &Archived<ArcRadixTree<K, V>> =
+            unsafe { archived_root::<ArcRadixTree<K, V>>(bytes) };
         let tree: ArcRadixTree<K, V> = ArcRadixTree::from(tree);
         let mut file = AlignedVec::new();
         let mut serializer = CompositeSerializer::new(

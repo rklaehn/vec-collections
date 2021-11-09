@@ -1,9 +1,7 @@
 use crate::AbstractRadixTreeMut;
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::{
-    location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue,
-};
+use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
 use rkyv::{
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
     vec::ArchivedVec,

@@ -16,8 +16,7 @@ use rkyv::{
     AlignedVec, Archive, Serialize,
 };
 use vec_collections::{
-    AbstractRadixTree, AbstractRadixTreeMut, ArchivedLazyRadixTree, LazyRadixTree, TKey,
-    TValue,
+    AbstractRadixTree, AbstractRadixTreeMut, ArchivedLazyRadixTree, LazyRadixTree, TKey, TValue,
 };
 
 struct Batch<'a, K: TKey, V: TValue> {

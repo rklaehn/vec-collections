@@ -1,10 +1,13 @@
 use crate::AbstractRadixTreeMut;
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::{
-    location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue,
+use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
+use rkyv::{
+    de::SharedDeserializeRegistry,
+    ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
+    vec::ArchivedVec,
+    Archive, Archived, Deserialize, Resolver, Serialize,
 };
-use rkyv::{Archive, Archived, Deserialize, Resolver, Serialize, de::{SharedDeserializeRegistry}, ser::{ScratchSpace, Serializer, SharedSerializeRegistry}, vec::ArchivedVec};
 
 #[derive(Clone)]
 pub struct ArcRadixTree<K, V>
@@ -73,12 +76,8 @@ impl<K: TKey, V: TValue> From<RadixTree<K, V>> for ArcRadixTree<K, V> {
             value,
             children,
         } = value;
-        let children = children.into_iter().map(Self::from).collect::<Vec<_>>();        
-        Self::new(
-            prefix,
-            value,
-            children,
-        )
+        let children = children.into_iter().map(Self::from).collect::<Vec<_>>();
+        Self::new(prefix, value, children)
     }
 }
 
