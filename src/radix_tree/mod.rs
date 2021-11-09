@@ -8,12 +8,15 @@ pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'stat
 
 impl<T: Debug + Clone + Archive<Archived = T> + Send + Sync + 'static> TValue for T {}
 
-mod lazy;
 use rkyv::Archive;
 #[cfg(feature = "rkyv")]
 mod lazy_radix_tree;
 #[cfg(feature = "rkyv")]
 pub use lazy_radix_tree::*;
+#[cfg(feature = "rkyv")]
+mod arc_radix_tree;
+#[cfg(feature = "rkyv")]
+pub use arc_radix_tree::*;
 use smallvec::{Array, SmallVec};
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod radix_tree;

@@ -16,7 +16,7 @@ use rkyv::{
     AlignedVec, Archive, Serialize,
 };
 use vec_collections::{
-    AbstractRadixTree, AbstractRadixTreeMut, ArchivedLazyRadixTree, LazyRadixTree, RadixTree, TKey,
+    AbstractRadixTree, AbstractRadixTreeMut, ArchivedLazyRadixTree, LazyRadixTree, TKey,
     TValue,
 };
 

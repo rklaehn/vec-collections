@@ -2,7 +2,7 @@ use crate::AbstractRadixTreeMut;
 use std::{collections::BTreeMap, sync::Arc};
 
 use super::{
-    lazy::Lazy, location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue,
+    location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue,
 };
 use rkyv::{
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
@@ -16,10 +16,10 @@ where
     K: TKey,
     V: TValue,
 {
-    pub(crate) prefix: Fragment<K>,
-    pub(crate) value: Option<V>,
+    prefix: Fragment<K>,
+    value: Option<V>,
     /// the children are lazy loaded at the time of first access.
-    pub(crate) children: Lazy<&'a [Archived<LazyRadixTree<'a, K, V>>], Arc<Vec<Self>>>,
+    children: Lazy<&'a [Archived<LazyRadixTree<'a, K, V>>], Arc<Vec<Self>>>,
 }
 
 impl<'a, K: TKey, V: TValue> Default for LazyRadixTree<'a, K, V> {
@@ -89,11 +89,11 @@ impl<K: TKey, V: TValue> From<RadixTree<K, V>> for LazyRadixTree<'static, K, V> 
 }
 
 impl<'a, K: TKey, V: TValue> LazyRadixTree<'a, K, V> {
-    pub(crate) fn children_arc(&self) -> &Arc<Vec<Self>> {
+    fn children_arc(&self) -> &Arc<Vec<Self>> {
         self.children.get_or_create(materialize_shallow)
     }
 
-    pub(crate) fn children_arc_mut(&mut self) -> &mut Arc<Vec<Self>> {
+    fn children_arc_mut(&mut self) -> &mut Arc<Vec<Self>> {
         self.children.get_or_create_mut(materialize_shallow)
     }
 
@@ -168,9 +168,9 @@ where
     K: TKey,
     V: TValue,
 {
-    pub(crate) prefix: Archived<Vec<K>>,
-    pub(crate) value: Archived<Option<V>>,
-    pub(crate) children: Archived<Arc<Vec<LazyRadixTree<'static, K, V>>>>,
+    prefix: Archived<Vec<K>>,
+    value: Archived<Option<V>>,
+    children: Archived<Arc<Vec<LazyRadixTree<'static, K, V>>>>,
 }
 
 impl<'a, K: TKey, V: TValue> Archive for LazyRadixTree<'a, K, V> {
@@ -213,5 +213,114 @@ where
             value,
             children,
         })
+    }
+}
+
+use core::cell::UnsafeCell;
+use parking_lot::Mutex;
+use std::fmt::Debug;
+
+/// Utility for a lazily initialized value
+#[derive(Default)]
+struct Lazy<A, B> {
+    mutex: Mutex<()>,
+    data: UnsafeCell<Either<A, B>>,
+}
+
+unsafe impl<A, B> Send for Lazy<A, B> {}
+
+impl<A: Debug, B: Debug> Debug for Lazy<A, B> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Lazy").finish_non_exhaustive()
+    }
+}
+
+impl<A: Clone, B: Clone> Clone for Lazy<A, B> {
+    fn clone(&self) -> Self {
+        let guard = self.mutex.lock();
+        let data = unsafe { (&*self.data.get()).clone() };
+        drop(guard);
+        Self {
+            mutex: Mutex::new(()),
+            data: UnsafeCell::new(data),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum Either<A, B> {
+    A(A),
+    B(B),
+}
+
+impl<A: Default, B> Default for Either<A, B> {
+    fn default() -> Self {
+        Self::A(A::default())
+    }
+}
+
+impl<A: Copy, B> Either<A, B> {
+    fn a_to_b(&mut self, f: impl Fn(A) -> B) {
+        if let Either::A(a) = self {
+            *self = Either::B(f(*a))
+        }
+    }
+}
+
+impl<A: Copy, B> Lazy<A, B> {
+    pub fn uninitialized(data: A) -> Self {
+        Self::new(Either::A(data))
+    }
+
+    pub fn initialized(data: B) -> Self {
+        Self::new(Either::B(data))
+    }
+
+    pub fn get(&self) -> Option<&B> {
+        let guard = self.mutex.lock();
+        let res = unsafe {
+            if let Either::B(b) = &*self.data.get() {
+                Some(b)
+            } else {
+                None
+            }
+        };
+        drop(guard);
+        res
+    }
+
+    pub fn get_or_create(&self, f: impl Fn(A) -> B) -> &B {
+        unsafe {
+            let guard = self.mutex.lock();
+            let data: &mut Either<A, B> = &mut *self.data.get();
+            data.a_to_b(f);
+            drop(guard);
+            if let Either::B(data) = &*self.data.get() {
+                data
+            } else {
+                panic!()
+            }
+        }
+    }
+
+    pub fn get_or_create_mut(&mut self, f: impl Fn(A) -> B) -> &mut B {
+        unsafe {
+            let guard = self.mutex.lock();
+            let data: &mut Either<A, B> = &mut *self.data.get();
+            data.a_to_b(f);
+            drop(guard);
+            if let Either::B(data) = &mut *self.data.get() {
+                data
+            } else {
+                panic!()
+            }
+        }
+    }
+
+    fn new(data: Either<A, B>) -> Self {
+        Self {
+            mutex: Mutex::new(()),
+            data: UnsafeCell::new(data),
+        }
     }
 }

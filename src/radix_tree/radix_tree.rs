@@ -157,9 +157,8 @@ mod rkyv_support {
     impl<D, K, V> Deserialize<RadixTree<K, V>, D> for ArchivedRadixTree<K, V>
     where
         D: Fallible + ?Sized,
-        K: TKey + Deserialize<K, D> + Clone,
+        K: TKey + Deserialize<K, D>,
         V: TValue + Deserialize<V, D>,
-        [K]: DeserializeUnsized<[K], D>,
     {
         fn deserialize(&self, deserializer: &mut D) -> Result<RadixTree<K, V>, D::Error> {
             let prefix: Vec<K> = self.prefix.deserialize(deserializer)?;
@@ -176,9 +175,7 @@ mod rkyv_support {
     #[cfg(feature = "rkyv_validated")]
     mod validation_support {
         use core::fmt;
-
         use rkyv::{option::ArchivedOption, validation::ArchiveContext, vec::ArchivedVec};
-
         use super::ArchivedRadixTree;
 
         /// Validation error for a range set
