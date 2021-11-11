@@ -4,9 +4,9 @@ pub trait TKey: Debug + Ord + Copy + Archive<Archived = Self> + Send + Sync + 's
 
 impl<T: Debug + Ord + Copy + Archive<Archived = T> + Send + Sync + 'static> TKey for T {}
 
-pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static {}
+pub trait TValue: Debug + Clone + Archive + Send + Sync + 'static {}
 
-impl<T: Debug + Clone + Archive<Archived = T> + Send + Sync + 'static> TValue for T {}
+impl<T: Debug + Clone + Archive + Send + Sync + 'static> TValue for T {}
 
 use rkyv::Archive;
 #[cfg(feature = "rkyv")]
@@ -391,6 +391,11 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         Iter::new(self, IterKey::new(self.prefix()))
     }
 
+    /// iterate over all elements
+    fn into_iter(self) -> ObjAndIter<Self, Iter<'static, K, V, Self>> {
+        ObjAndIter::new(Box::new(self), |x| x.iter())
+    }
+
     /// iterate over all values - this is cheaper than iterating over elements, since it does not have to build the keys from fragments
     fn values<'a>(&'a self) -> Values<'a, K, V, Self>
     where
@@ -405,6 +410,15 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
             tree.value().is_some()
         } else {
             false
+        }
+    }
+
+    fn get(&self, key: &[K]) -> Option<&V> {
+        // if we find a tree at exactly the location, and it has a value, we have a hit
+        if let FindResult::Found(tree) = find(self, key) {
+            tree.value()
+        } else {
+            None
         }
     }
 
@@ -494,7 +508,7 @@ enum FindResult<T> {
 /// - NotFound if there is no tree
 fn find<'a, K: TKey, V: TValue, T: AbstractRadixTree<K, V>>(
     tree: &'a T,
-    prefix: &'a [K],
+    prefix: &[K],
 ) -> FindResult<&'a T> {
     let n = common_prefix(tree.prefix(), prefix);
     // remaining in prefix
@@ -1356,4 +1370,25 @@ fn offset_from<T, U>(base: *const T, p: *const U) -> usize {
 
 fn location<T>(x: &T) -> usize {
     (x as *const T) as usize
+}
+
+pub struct ObjAndIter<K, V> {
+    k: Box<K>,
+    v: V,
+}
+
+impl<K: 'static, V> ObjAndIter<K, V> {
+    fn new(k: Box<K>, f: impl Fn(&'static K) -> V) -> Self {
+        let kr = unsafe { std::mem::transmute(k.as_ref()) };
+        let v = f(kr);
+        Self { k, v }
+    }
+}
+
+impl<K: 'static, V: Iterator> Iterator for ObjAndIter<K, V> {
+    type Item = V::Item;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.v.next()
+    }
 }

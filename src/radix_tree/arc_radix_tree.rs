@@ -99,7 +99,9 @@ impl<K: TKey, V: TValue> ArcRadixTree<K, V> {
     }
 }
 
-impl<K: TKey, V: TValue> From<&ArchivedArcRadixTree<K, V>> for ArcRadixTree<K, V> {
+impl<K: TKey, V: TValue + Archive<Archived = V>> From<&ArchivedArcRadixTree<K, V>>
+    for ArcRadixTree<K, V>
+{
     fn from(value: &ArchivedArcRadixTree<K, V>) -> Self {
         let children = value.children().iter().map(Self::from).collect::<Vec<_>>();
         let children = Arc::new(children);
@@ -111,7 +113,9 @@ impl<K: TKey, V: TValue> From<&ArchivedArcRadixTree<K, V>> for ArcRadixTree<K, V
     }
 }
 
-impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArchivedArcRadixTree<K, V> {
+impl<K: TKey, V: TValue + Archive<Archived = V>> AbstractRadixTree<K, V>
+    for ArchivedArcRadixTree<K, V>
+{
     type Materialized = ArcRadixTree<K, V>;
 
     fn prefix(&self) -> &[K] {
@@ -190,8 +194,10 @@ where
 impl<D, K, V> Deserialize<ArcRadixTree<K, V>, D> for ArchivedArcRadixTree<K, V>
 where
     D: SharedDeserializeRegistry,
-    K: TKey + Deserialize<K, D>,
-    V: TValue + Deserialize<V, D>,
+    K: TKey,
+    V: TValue,
+    Archived<K>: Deserialize<K, D>,
+    Archived<V>: Deserialize<V, D>,
 {
     fn deserialize(&self, deserializer: &mut D) -> Result<ArcRadixTree<K, V>, D::Error> {
         let prefix: Vec<K> = self.prefix.deserialize(deserializer)?;

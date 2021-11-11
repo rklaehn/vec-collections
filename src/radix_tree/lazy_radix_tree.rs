@@ -1,12 +1,16 @@
 use crate::AbstractRadixTreeMut;
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
+use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
 use rkyv::{
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
     vec::ArchivedVec,
     Archive, Archived, Resolver, Serialize,
 };
+
+pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static {}
+
+impl<T: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static> TValue for T {}
 
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
