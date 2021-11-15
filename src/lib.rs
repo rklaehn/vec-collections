@@ -92,6 +92,7 @@ mod macros;
 mod obey;
 
 mod small_vec_builder;
+mod vec_builder;
 
 pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
 pub use macros::*;

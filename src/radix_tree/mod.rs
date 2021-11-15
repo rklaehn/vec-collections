@@ -421,7 +421,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
             let that = that.materialize_shortened(n);
             self.retain_prefix_children_with(&[that]);
         } else {
-            // disjoint
+            // disjoint, nuke it
             *self.value_mut() = None;
             self.children_mut().clear();
         }
