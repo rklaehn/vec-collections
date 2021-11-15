@@ -27,6 +27,7 @@ rkyv = { version= "0.7.18", optional = true }
 bytecheck = { version = "0.6.5", optional = true }
 lazy-init = "0.5.0"
 parking_lot = "0.11.2"
+lazy_static = "1.4.0"
 
 [dev-dependencies]
 quickcheck = "0.8"

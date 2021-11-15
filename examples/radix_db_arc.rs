@@ -410,7 +410,8 @@ where
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut db = RadixDb::open(std::env::current_dir()?, "test")?;
+    // let mut db = RadixDb::open(std::env::current_dir()?, "test")?;
+    let mut db = RadixDb::memory("test")?;
     let mut stream = db.watch_prefix("9".as_bytes().to_vec());
     tokio::spawn(async move {
         while let Some(x) = stream.next().await {

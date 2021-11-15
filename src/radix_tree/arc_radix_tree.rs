@@ -1,4 +1,5 @@
 use crate::AbstractRadixTreeMut;
+use lazy_static::lazy_static;
 use std::{collections::BTreeMap, sync::Arc};
 
 use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
@@ -8,6 +9,22 @@ use rkyv::{
     vec::ArchivedVec,
     Archive, Archived, Deserialize, Resolver, Serialize,
 };
+
+lazy_static! {
+    static ref EMPTY_ARC_VEC: Arc<Vec<u8>> = Arc::new(Vec::new());
+}
+
+fn empty_arc<T>() -> Arc<Vec<T>> {
+    unsafe { std::mem::transmute(EMPTY_ARC_VEC.clone()) }
+}
+
+fn wrap_in_arc<T>(data: Vec<T>) -> Arc<Vec<T>> {
+    if data.is_empty() {
+        empty_arc()
+    } else {
+        Arc::new(data)
+    }
+}
 
 #[derive(Clone)]
 pub struct ArcRadixTree<K, V>
@@ -25,7 +42,7 @@ impl<K: TKey, V: TValue> Default for ArcRadixTree<K, V> {
         Self {
             prefix: Default::default(),
             value: Default::default(),
-            children: Default::default(),
+            children: empty_arc(),
         }
     }
 }
@@ -48,7 +65,7 @@ impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArcRadixTree<K, V> {
 
 impl<K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for ArcRadixTree<K, V> {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
-        let children = Arc::new(children);
+        let children = wrap_in_arc(children);
         Self {
             prefix,
             value,

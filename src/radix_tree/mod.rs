@@ -360,6 +360,83 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         InPlaceMergeStateRef::merge(&mut t, &rhs, LeftCombineOp(f, PhantomData), NoConverter);
         *self.children_mut() = t.into_vec()
     }
+
+    fn remove_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+        let n = common_prefix(self.prefix(), that.prefix());
+        if n == self.prefix().len() && n == that.prefix().len() {
+            // prefixes are identical
+            if that.value().is_some() {
+                *self.value_mut() = None;
+                self.children_mut().clear();
+            } else {
+                self.remove_prefix_children_with(that.children());
+            }
+        } else if n == that.prefix().len() {
+            // that is a prefix of self
+            if that.value().is_some() {
+                *self.value_mut() = None;
+                self.children_mut().clear();
+            } else {
+                self.split(n);
+                self.remove_prefix_children_with(that.children());
+            }
+        } else if n == self.prefix().len() {
+            // self is a prefix of that
+            let that = that.materialize_shortened(n);
+            self.remove_prefix_children_with(&[that]);
+        } else {
+            // disjoint, nothing to do
+        }
+        self.unsplit();
+    }
+
+    fn remove_prefix_children_with<W: TValue>(&mut self, rhs: &[impl AbstractRadixTree<K, W>]) {
+        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
+        // so we convert into a smallvec, perform the ops there, then convert back.
+        let mut tmp = Vec::new();
+        std::mem::swap(self.children_mut(), &mut tmp);
+        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, RemovePrefixOp(PhantomData), NoConverter);
+        *self.children_mut() = t.into_vec()
+    }
+
+    fn retain_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+        let n = common_prefix(self.prefix(), that.prefix());
+        if n == self.prefix().len() && n == that.prefix().len() {
+            // prefixes are identical
+            if that.value().is_none() {
+                *self.value_mut() = None;
+                self.retain_prefix_children_with(that.children());
+            } // otherwise, keep it all
+        } else if n == that.prefix().len() {
+            // that is a prefix of self
+            if that.value().is_none() {
+                *self.value_mut() = None;
+                self.split(n);
+                self.retain_prefix_children_with(that.children());
+            } // otherwise, keep it all
+        } else if n == self.prefix().len() {
+            // self is a prefix of that
+            *self.value_mut() = None;
+            let that = that.materialize_shortened(n);
+            self.retain_prefix_children_with(&[that]);
+        } else {
+            // disjoint
+            *self.value_mut() = None;
+            self.children_mut().clear();
+        }
+        self.unsplit();
+    }
+
+    fn retain_prefix_children_with<W: TValue>(&mut self, rhs: &[impl AbstractRadixTree<K, W>]) {
+        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
+        // so we convert into a smallvec, perform the ops there, then convert back.
+        let mut tmp = Vec::new();
+        std::mem::swap(self.children_mut(), &mut tmp);
+        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
+        InPlaceMergeStateRef::merge(&mut t, &rhs, RetainPrefixOp(PhantomData), NoConverter);
+        *self.children_mut() = t.into_vec()
+    }
 }
 
 pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
@@ -1160,6 +1237,74 @@ where
     }
 }
 
+/// Remove prefixes of b in a
+struct RemovePrefixOp<P>(PhantomData<P>);
+
+impl<'a, K, V, W, I, R> MergeOperation<I> for RemovePrefixOp<(K, V, W)>
+where
+    K: TKey,
+    V: TValue,
+    W: TValue,
+    I: MutateInput<A = R>,
+    I::B: AbstractRadixTree<K, W>,
+    R: AbstractRadixTreeMut<K, V, Materialized = R>,
+{
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
+        a.prefix()[0].cmp(&b.prefix()[0])
+    }
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, true)
+    }
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        let (a, b) = m.source_slices_mut();
+        let av = &mut a[0];
+        let bv = &b[0];
+        av.remove_prefix_with(bv);
+        // we have modified av in place. We are only going to take it over if it
+        // is non-empty, otherwise we skip it.
+        let take = !av.is_empty();
+        m.advance_a(1, take)?;
+        m.advance_b(1, false)
+    }
+}
+
+/// Retain prefixes of b in a
+struct RetainPrefixOp<P>(PhantomData<P>);
+
+impl<'a, K, V, W, I, R> MergeOperation<I> for RetainPrefixOp<(K, V, W)>
+where
+    K: TKey,
+    V: TValue,
+    W: TValue,
+    I: MutateInput<A = R>,
+    I::B: AbstractRadixTree<K, W>,
+    R: AbstractRadixTreeMut<K, V, Materialized = R>,
+{
+    fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
+        a.prefix()[0].cmp(&b.prefix()[0])
+    }
+    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_a(n, false)
+    }
+    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(&self, m: &mut I) -> EarlyOut {
+        let (a, b) = m.source_slices_mut();
+        let av = &mut a[0];
+        let bv = &b[0];
+        av.retain_prefix_with(bv);
+        // we have modified av in place. We are only going to take it over if it
+        // is non-empty, otherwise we skip it.
+        let take = !av.is_empty();
+        m.advance_a(1, take)?;
+        m.advance_b(1, false)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::BTreeSet;
@@ -1256,13 +1401,47 @@ mod test {
         }
 
         fn difference(a: Reference, b: Reference) -> bool {
-            let a = a.into_iter().take(2).collect();
-            let b = b.into_iter().take(2).collect();
+            let a = a.into_iter().collect();
+            let b = b.into_iter().collect();
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
             let mut r1 = a1;
             r1.difference_with(&b1);
             let expected = r2t(&a.difference(&b).cloned().collect());
+            if expected != r1 {
+                println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
+            }
+            expected == r1
+        }
+
+        fn remove_prefix(a: Reference, b: Reference) -> bool {
+            let a = a.into_iter().collect();
+            let b = b.into_iter().collect();
+            let a1: Test = r2t(&a);
+            let b1: Test = r2t(&b);
+            let mut r1 = a1;
+            r1.remove_prefix_with(&b1);
+            let mut r = a;
+            // keep all elements of a for which no element in b is a prefix
+            r.retain(|re| !b.iter().any(|x| re.starts_with(x)));
+            let expected = r2t(&r);
+            if expected != r1 {
+                println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
+            }
+            expected == r1
+        }
+
+        fn retain_prefix(a: Reference, b: Reference) -> bool {
+            let a = a.into_iter().collect();
+            let b = b.into_iter().collect();
+            let a1: Test = r2t(&a);
+            let b1: Test = r2t(&b);
+            let mut r1 = a1;
+            r1.retain_prefix_with(&b1);
+            let mut r = a;
+            // keep all elements of a for which no element in b is a prefix
+            r.retain(|re| b.iter().any(|x| re.starts_with(x)));
+            let expected = r2t(&r);
             if expected != r1 {
                 println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
             }
@@ -1313,6 +1492,15 @@ mod test {
     //     }
     // }
 
+    fn test_tree(strings: &[&str]) -> RadixTree<u8, ()> {
+        let mut res = RadixTree::default();
+        for key in strings {
+            let x = RadixTree::single(key.as_bytes(), ());
+            res.union_with(&x);
+        }
+        res
+    }
+
     #[test]
     fn smoke_test() {
         let mut res = RadixTree::default();
@@ -1358,6 +1546,24 @@ mod test {
         let b = r2t(&btreeset! {});
         println!("a.is_subset(b): {}", a.is_subset(&b));
         assert!(binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b));
+    }
+
+    #[test]
+    fn remove_prefix_sample() {
+        let mut test = test_tree(&["a", "aa", "aaa", "ab", "b", "bc", "bc", "eeeee", "eeeef"]);
+        let exclude = test_tree(&["aa", "bc", "ee"]);
+        test.remove_prefix_with(&exclude);
+        let expected = test_tree(&["a", "ab", "b"]);
+        assert_eq!(test, expected);
+    }
+
+    #[test]
+    fn retain_prefix_sample() {
+        let mut test = test_tree(&["a", "aa", "aaa", "ab", "b", "bc", "bcd", "eeeee", "eeeef"]);
+        let exclude = test_tree(&["aa", "bc", "ee"]);
+        test.retain_prefix_with(&exclude);
+        let expected = test_tree(&["aa", "aaa", "bc", "bcd", "eeeee", "eeeef"]);
+        assert_eq!(test, expected);
     }
 }
 
