@@ -2,7 +2,6 @@
 // #![deny(warnings)]
 #![deny(missing_docs)]
 use core::fmt::Debug;
-use smallvec::{Array, SmallVec};
 
 use crate::merge_state::Converter;
 

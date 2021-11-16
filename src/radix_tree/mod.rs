@@ -17,14 +17,14 @@ pub use lazy_radix_tree::*;
 mod arc_radix_tree;
 #[cfg(feature = "rkyv")]
 pub use arc_radix_tree::*;
-use smallvec::{Array, SmallVec};
+use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod radix_tree;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::{
-        BoolOpMergeState, Converter, InPlaceMergeStateRef, MergeStateMut, MutateInput, NoConverter,
-        VecMergeState,
+        BoolOpMergeState, Converter, InPlaceVecMergeStateRef, MergeStateMut, MutateInput,
+        NoConverter, VecMergeState,
     },
 };
 pub use radix_tree::*;
@@ -88,14 +88,132 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
     a.iter().zip(b).take_while(|(a, b)| a == b).count()
 }
 
-pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
-    AbstractRadixTree<K, V, Materialized = Self> + Clone + Default
-{
-    fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self;
-    fn value_mut(&mut self) -> &mut Option<V>;
-    fn children_mut(&mut self) -> &mut Vec<Self>;
-    fn prefix_mut(&mut self) -> &mut Fragment<K>;
+pub(crate) mod internals {
+    use super::*;
 
+    /// implement this trait for a new flavour of radix tree. The public AbstractRadixTreeMut will be implemented for you.
+    ///
+    /// this is in a private module since it allows you to break the invariants of the tree.
+    pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
+        AbstractRadixTree<K, V, Materialized = Self> + Clone + Default
+    {
+        fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self;
+        fn value_mut(&mut self) -> &mut Option<V>;
+        fn children_mut(&mut self) -> &mut Vec<Self>;
+        fn prefix_mut(&mut self) -> &mut Fragment<K>;
+
+        /// create an artificial split at offset n
+        /// splitting at n >= prefix.len() is an error
+        fn split(&mut self, n: usize) {
+            assert!(n < self.prefix().len());
+            let first = self.prefix()[..n].into();
+            let rest = self.prefix()[n..].into();
+            let mut split = Self::new(first, None, Vec::new());
+            std::mem::swap(self, &mut split);
+            let mut child = split;
+            *child.prefix_mut() = rest;
+            self.children_mut().push(child);
+        }
+
+        /// removes degenerate node again
+        fn unsplit(&mut self) {
+            // remove all empty children
+            // this might sometimes not be necessary, but it is tricky to find out when.
+            self.children_mut().retain(|x| !x.is_empty());
+            // a single child and no own value is degenerate
+            if self.children().len() == 1 && self.value().is_none() {
+                let mut child = self.children_mut().pop().unwrap();
+                child.prepend0(self.prefix());
+                *self = child;
+            }
+            // canonicalize prefix for empty node
+            // this might sometimes not be necessary, but it is tricky to find out when.
+            if self.is_empty() {
+                *self.prefix_mut() = Fragment::default();
+            }
+        }
+
+        fn prepend0(&mut self, prefix: &[K]) {
+            if !prefix.is_empty() && !self.is_empty() {
+                let mut prefix1 = SmallVec::new();
+                prefix1.extend_from_slice(prefix);
+                prefix1.extend_from_slice(self.prefix());
+                *self.prefix_mut() = prefix1.into();
+            }
+        }
+
+        fn outer_combine_children_with<R, F>(&mut self, rhs: &[R], f: F)
+        where
+            R: AbstractRadixTree<K, V, Materialized = Self::Materialized>,
+            F: Fn(&mut V, &V) -> bool + Copy,
+        {
+            InPlaceVecMergeStateRef::merge(
+                self.children_mut(),
+                &rhs,
+                OuterCombineOp(f, PhantomData),
+                RadixTreeConverter(PhantomData),
+            );
+        }
+
+        fn inner_combine_children_with<W, R, F>(&mut self, rhs: &[R], f: F)
+        where
+            W: TValue,
+            R: AbstractRadixTree<K, W>,
+            F: Fn(&mut V, &W) -> bool + Copy,
+        {
+            InPlaceVecMergeStateRef::merge(
+                self.children_mut(),
+                &rhs,
+                InnerCombineOp(f, PhantomData),
+                NoConverter,
+            );
+        }
+
+        fn left_combine_children_with<W, R, F>(&mut self, rhs: &[R], f: F)
+        where
+            W: TValue,
+            R: AbstractRadixTree<K, W>,
+            F: Fn(&mut V, &W) -> bool + Copy,
+        {
+            InPlaceVecMergeStateRef::merge(
+                self.children_mut(),
+                &rhs,
+                LeftCombineOp(f, PhantomData),
+                NoConverter,
+            );
+        }
+
+        fn retain_prefix_children_with<W, R>(&mut self, rhs: &[R])
+        where
+            W: TValue,
+            R: AbstractRadixTree<K, W>,
+        {
+            InPlaceVecMergeStateRef::merge(
+                self.children_mut(),
+                &rhs,
+                RetainPrefixOp(PhantomData),
+                NoConverter,
+            );
+        }
+
+        fn remove_prefix_children_with<W, R>(&mut self, rhs: &[R])
+        where
+            W: TValue,
+            R: AbstractRadixTree<K, W>,
+        {
+            InPlaceVecMergeStateRef::merge(
+                self.children_mut(),
+                &rhs,
+                RemovePrefixOp(PhantomData),
+                NoConverter,
+            );
+        }
+    }
+}
+
+use internals::AbstractRadixTreeMut as _;
+
+pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTreeMut<K, V> {
     fn empty() -> Self {
         Self::default()
     }
@@ -132,37 +250,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
                 res
             }
             FindResult::NotFound { .. } => Self::default(),
-        }
-    }
-
-    /// create an artificial split at offset n
-    /// splitting at n >= prefix.len() is an error
-    fn split(&mut self, n: usize) {
-        assert!(n < self.prefix().len());
-        let first = self.prefix()[..n].into();
-        let rest = self.prefix()[n..].into();
-        let mut split = Self::new(first, None, Vec::new());
-        std::mem::swap(self, &mut split);
-        let mut child = split;
-        *child.prefix_mut() = rest;
-        self.children_mut().push(child);
-    }
-
-    /// removes degenerate node again
-    fn unsplit(&mut self) {
-        // remove all empty children
-        // this might sometimes not be necessary, but it is tricky to find out when.
-        self.children_mut().retain(|x| !x.is_empty());
-        // a single child and no own value is degenerate
-        if self.children().len() == 1 && self.value().is_none() {
-            let mut child = self.children_mut().pop().unwrap();
-            child.prepend(self.prefix());
-            *self = child;
-        }
-        // canonicalize prefix for empty node
-        // this might sometimes not be necessary, but it is tricky to find out when.
-        if self.is_empty() {
-            *self.prefix_mut() = Fragment::default();
         }
     }
 
@@ -237,25 +324,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn outer_combine_children_with(
-        &mut self,
-        rhs: &[impl AbstractRadixTree<K, V, Materialized = Self::Materialized>],
-        f: impl Fn(&mut V, &V) -> bool + Copy,
-    ) {
-        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
-        // so we convert into a smallvec, perform the ops there, then convert back.
-        let mut tmp = Vec::new();
-        std::mem::swap(self.children_mut(), &mut tmp);
-        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(
-            &mut t,
-            &rhs,
-            OuterCombineOp(f, PhantomData),
-            RadixTreeConverter(PhantomData),
-        );
-        *self.children_mut() = t.into_vec()
-    }
-
     /// inner combine of `self` tree with `that` tree
     ///
     /// inner means that elements that are in `self` but not in `that` or vice versa are removed.
@@ -296,20 +364,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn inner_combine_children_with<W: TValue>(
-        &mut self,
-        rhs: &[impl AbstractRadixTree<K, W>],
-        f: impl Fn(&mut V, &W) -> bool + Copy,
-    ) {
-        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
-        // so we convert into a smallvec, perform the ops there, then convert back.
-        let mut tmp = Vec::new();
-        std::mem::swap(self.children_mut(), &mut tmp);
-        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, InnerCombineOp(f, PhantomData), NoConverter);
-        *self.children_mut() = t.into_vec()
-    }
-
     /// Left combine of `self` tree with `that` tree
     ///
     /// Left means that elements that are in `self` but not in `that` are kept, but elements that
@@ -347,20 +401,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn left_combine_children_with<W: TValue>(
-        &mut self,
-        rhs: &[impl AbstractRadixTree<K, W>],
-        f: impl Fn(&mut V, &W) -> bool + Copy,
-    ) {
-        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
-        // so we convert into a smallvec, perform the ops there, then convert back.
-        let mut tmp = Vec::new();
-        std::mem::swap(self.children_mut(), &mut tmp);
-        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, LeftCombineOp(f, PhantomData), NoConverter);
-        *self.children_mut() = t.into_vec()
-    }
-
     fn remove_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
@@ -390,16 +430,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         self.unsplit();
     }
 
-    fn remove_prefix_children_with<W: TValue>(&mut self, rhs: &[impl AbstractRadixTree<K, W>]) {
-        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
-        // so we convert into a smallvec, perform the ops there, then convert back.
-        let mut tmp = Vec::new();
-        std::mem::swap(self.children_mut(), &mut tmp);
-        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, RemovePrefixOp(PhantomData), NoConverter);
-        *self.children_mut() = t.into_vec()
-    }
-
     fn retain_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
@@ -427,18 +457,18 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         }
         self.unsplit();
     }
-
-    fn retain_prefix_children_with<W: TValue>(&mut self, rhs: &[impl AbstractRadixTree<K, W>]) {
-        // this convoluted stuff is because we don't have an InPlaceMergeStateRef for Vec
-        // so we convert into a smallvec, perform the ops there, then convert back.
-        let mut tmp = Vec::new();
-        std::mem::swap(self.children_mut(), &mut tmp);
-        let mut t = SmallVec::<[Self; 0]>::from_vec(tmp);
-        InPlaceMergeStateRef::merge(&mut t, &rhs, RetainPrefixOp(PhantomData), NoConverter);
-        *self.children_mut() = t.into_vec()
-    }
 }
 
+/// Implement the public AbstractRadixTreeMut for everything that has internals::AbstractRadixTreeMut implemented,
+/// which can only be in this crate.
+impl<K: TKey, V: TValue, T: internals::AbstractRadixTreeMut<K, V>> AbstractRadixTreeMut<K, V>
+    for T
+{
+}
+
+/// Trait to abstract over radix trees.
+///
+/// This is mostly for DRYing the various flavours of radix trees in this crate as well as their rkyved versions.
 pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
     fn prefix(&self) -> &[K];
     fn value(&self) -> Option<&V>;
@@ -889,7 +919,7 @@ fn outer_combine<
     f: impl Fn(&V, &V) -> Option<V> + Copy,
 ) -> R {
     let n = common_prefix(a.prefix(), b.prefix());
-    let mut prefix = a.prefix()[..n].into();
+    let prefix = a.prefix()[..n].into();
     let mut children = Vec::new();
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
@@ -1049,27 +1079,26 @@ where
 /// In place merge operation
 struct OuterCombineOp<F, P>(F, PhantomData<P>);
 
-impl<'a, F, K, V, A, B, C, R> MergeOperation<InPlaceMergeStateRef<'a, A, B, C>>
+impl<'a, F, K, V, A, B, C> MergeOperation<InPlaceVecMergeStateRef<'a, A, B, C>>
     for OuterCombineOp<F, (K, V)>
 where
     K: TKey,
     V: TValue,
     F: Fn(&mut V, &V) -> bool + Copy,
-    A: Array<Item = R>,
-    B: AbstractRadixTree<K, V, Materialized = R>,
-    C: Converter<&'a B, A::Item>,
-    R: AbstractRadixTreeMut<K, V, Materialized = R>,
+    B: AbstractRadixTree<K, V, Materialized = A>,
+    C: Converter<&'a B, A>,
+    A: AbstractRadixTreeMut<K, V, Materialized = A>,
 {
-    fn cmp(&self, a: &A::Item, b: &B) -> Ordering {
+    fn cmp(&self, a: &A, b: &B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut InPlaceMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut InPlaceMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut InPlaceMergeStateRef<'a, A, B, C>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>) -> EarlyOut {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];

@@ -1,4 +1,5 @@
-use crate::AbstractRadixTreeMut;
+use super::internals;
+use internals::AbstractRadixTreeMut as _;
 use lazy_static::lazy_static;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -63,7 +64,7 @@ impl<K: TKey, V: TValue> AbstractRadixTree<K, V> for ArcRadixTree<K, V> {
     }
 }
 
-impl<K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for ArcRadixTree<K, V> {
+impl<K: TKey, V: TValue> internals::AbstractRadixTreeMut<K, V> for ArcRadixTree<K, V> {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
         let children = wrap_in_arc(children);
         Self {
@@ -225,5 +226,87 @@ where
             value,
             children,
         })
+    }
+}
+
+#[cfg(feature = "rkyv_validated")]
+mod validation_support {
+    use super::{ArcRadixTree, TKey, TValue};
+    use bytecheck::CheckBytes;
+    use core::fmt;
+    use rkyv::{
+        validation::{ArchiveContext, SharedContext},
+        vec::ArchivedVec,
+        Archived,
+    };
+    use std::sync::Arc;
+
+    use super::ArchivedArcRadixTree;
+
+    /// Validation error for a range set
+    #[derive(Debug)]
+    pub enum ArchivedRadixTreeError {
+        /// error with the prefix
+        PrefixCheckError,
+        /// error with the value
+        ValueCheckError,
+        /// error with the children
+        ChildrenCheckError(String),
+        /// error with the order of the children
+        OrderCheckError,
+    }
+
+    impl std::error::Error for ArchivedRadixTreeError {}
+
+    impl std::fmt::Display for ArchivedRadixTreeError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{:?}", self)
+        }
+    }
+    impl<C, K, V> bytecheck::CheckBytes<C> for ArchivedArcRadixTree<K, V>
+    where
+        C: ?Sized + ArchiveContext + SharedContext,
+        C::Error: std::error::Error,
+        K: TKey,
+        V: TValue,
+        Archived<Vec<K>>: bytecheck::CheckBytes<C>,
+        Archived<Option<V>>: bytecheck::CheckBytes<C>,
+    {
+        type Error = ArchivedRadixTreeError;
+        unsafe fn check_bytes<'a>(
+            this: *const Self,
+            context: &mut C,
+        ) -> Result<&'a Self, Self::Error> {
+            let Self {
+                prefix,
+                value,
+                children,
+            } = &(*this);
+            // check the prefix
+            CheckBytes::check_bytes(prefix, context)
+                .map_err(|_| ArchivedRadixTreeError::PrefixCheckError)?;
+            // check the value, if present
+            CheckBytes::check_bytes(value, context)
+                .map_err(|_| ArchivedRadixTreeError::ValueCheckError)?;
+            // check that the prefix of all children is of non zero length
+            if !children.iter().all(|child| child.prefix.len() > 0) {
+                return Err(ArchivedRadixTreeError::ChildrenCheckError(
+                    "empty child prefix".into(),
+                ));
+            };
+            // check the order of the children
+            if !children
+                .iter()
+                .zip(children.iter().skip(1))
+                .all(|(a, b)| a.prefix[0] < b.prefix[0])
+            {
+                return Err(ArchivedRadixTreeError::OrderCheckError);
+            };
+            // recursively check the children
+            CheckBytes::check_bytes(children, context)
+                .map_err(|e| ArchivedRadixTreeError::ChildrenCheckError(e.to_string()))?;
+
+            Ok(&*this)
+        }
     }
 }

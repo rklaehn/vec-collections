@@ -1,7 +1,9 @@
 use rkyv::*;
 use ser::Serializer;
 use std::time::Instant;
-use vec_collections::{AbstractRadixTree, AbstractRadixTreeMut, LazyRadixTree, RadixTree};
+use vec_collections::radix_tree::{
+    AbstractRadixTree, AbstractRadixTreeMut, LazyRadixTree, RadixTree,
+};
 
 fn main() {
     let t0 = Instant::now();
@@ -60,7 +62,7 @@ fn main() {
     // println!("{:#?}", res);
     let mut a: RadixTree<u8, i32> = RadixTree::single(b"aabbcc", 1);
     let b: RadixTree<u8, i32> = RadixTree::single(b"aabb", 2);
-    let c: RadixTree<u8, i32> = RadixTree::single(b"aabbee", 3);
+    let _c: RadixTree<u8, i32> = RadixTree::single(b"aabbee", 3);
     println!("{:?}", a);
     a.union_with(&b);
     println!("{:?}", a);

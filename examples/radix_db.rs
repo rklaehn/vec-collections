@@ -6,6 +6,7 @@ use std::{
     sync::Arc,
 };
 
+use bytecheck::CheckBytes;
 use futures::{
     channel::mpsc::{UnboundedReceiver, UnboundedSender},
     future,
@@ -14,24 +15,22 @@ use futures::{
 };
 use parking_lot::Mutex;
 use rkyv::{
-    archived_root,
-    de::{
-        deserializers::{SharedDeserializeMap, SharedDeserializeMapError},
-        SharedDeserializeRegistry, SharedPointer,
-    },
-    ser::{
-        serializers::{
-            AlignedSerializer, CompositeSerializer, SharedSerializeMapError, WriteSerializer,
-        },
-        SharedSerializeRegistry,
-    },
+    archived_root, check_archived_root,
+    de::{deserializers::SharedDeserializeMapError, SharedDeserializeRegistry, SharedPointer},
     ser::{
         serializers::{AllocScratch, FallbackScratch, HeapScratch},
         Serializer,
     },
+    ser::{
+        serializers::{CompositeSerializer, SharedSerializeMapError, WriteSerializer},
+        SharedSerializeRegistry,
+    },
+    validation::validators::DefaultValidator,
     AlignedVec, Archived, Deserialize, Fallible, Serialize,
 };
-use vec_collections::{AbstractRadixTree, AbstractRadixTreeMut, ArcRadixTree, TKey, TValue};
+use vec_collections::radix_tree::{
+    AbstractRadixTree, AbstractRadixTreeMut, ArcRadixTree, TKey, TValue,
+};
 
 struct Batch<K: TKey, V: TValue> {
     v0: ArcRadixTree<K, V>,
@@ -102,6 +101,14 @@ impl SharedDeserializeMap2 {
 impl Fallible for SharedDeserializeMap2 {
     type Error = SharedDeserializeMapError;
 }
+
+/// these are safe, because a *const u8 is safe to send and sync
+///
+/// see discussion in https://internals.rust-lang.org/t/shouldnt-pointers-be-send-sync-or/8818
+unsafe impl Send for SharedSerializeMap2 {}
+unsafe impl Sync for SharedSerializeMap2 {}
+unsafe impl Send for SharedDeserializeMap2 {}
+unsafe impl Sync for SharedDeserializeMap2 {}
 
 impl SharedDeserializeRegistry for SharedDeserializeMap2 {
     fn get_shared_ptr(&mut self, ptr: *const u8) -> Option<&dyn SharedPointer> {
@@ -269,8 +276,8 @@ struct RadixDb<K: TKey, V: TValue, S> {
 
 impl<K: TKey, V: TValue> RadixDb<K, V, MemStorage>
 where
-    Archived<K>: Deserialize<K, SharedDeserializeMap2>,
-    Archived<V>: Deserialize<V, SharedDeserializeMap2>,
+    Archived<K>: Deserialize<K, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
+    Archived<V>: Deserialize<V, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
 {
     fn memory(name: impl Into<String>) -> anyhow::Result<Self> {
         RadixDb::load(MemStorage::default(), name)
@@ -279,8 +286,8 @@ where
 
 impl<K: TKey, V: TValue> RadixDb<K, V, FileStorage>
 where
-    Archived<K>: Deserialize<K, SharedDeserializeMap2>,
-    Archived<V>: Deserialize<V, SharedDeserializeMap2>,
+    Archived<K>: Deserialize<K, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
+    Archived<V>: Deserialize<V, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
 {
     fn open(base: impl AsRef<std::path::Path>, name: impl Into<String>) -> anyhow::Result<Self> {
         RadixDb::load(FileStorage::new(base), name)
@@ -294,8 +301,10 @@ impl<K: TKey, V: TValue, S: Storage> RadixDb<K, V, S> {
 
     pub fn load(storage: S, name: impl Into<String>) -> anyhow::Result<Self>
     where
-        Archived<K>: Deserialize<K, SharedDeserializeMap2>,
-        Archived<V>: Deserialize<V, SharedDeserializeMap2>,
+        Archived<K>:
+            Deserialize<K, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
+        Archived<V>:
+            Deserialize<V, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
     {
         let name = name.into();
         let (tree, map, arcs, pos) = storage.load(&name, |data| -> anyhow::Result<_> {
@@ -307,6 +316,9 @@ impl<K: TKey, V: TValue, S: Storage> RadixDb<K, V, S> {
                 (tree, map, arcs, pos)
             } else {
                 let mut deserializer = SharedDeserializeMap2::default();
+                // let tree: &Archived<ArcRadixTree<K, V>> =
+                //     check_archived_root::<ArcRadixTree<K, V>>(data)
+                //         .map_err(|e| anyhow::anyhow!("{}", e))?;
                 let tree: &Archived<ArcRadixTree<K, V>> =
                     unsafe { archived_root::<ArcRadixTree<K, V>>(data) };
                 let tree: ArcRadixTree<K, V> = tree

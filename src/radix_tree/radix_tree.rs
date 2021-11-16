@@ -1,4 +1,4 @@
-use crate::{AbstractRadixTree, AbstractRadixTreeMut, Fragment, TKey, TValue};
+use super::{internals, AbstractRadixTree, AbstractRadixTreeMut, Fragment, TKey, TValue};
 use std::fmt::Debug;
 use std::iter::FromIterator;
 
@@ -35,7 +35,7 @@ impl<E: TKey, K: AsRef<[E]>, V: TValue> FromIterator<(K, V)> for RadixTree<E, V>
     }
 }
 
-impl<K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for RadixTree<K, V> {
+impl<K: TKey, V: TValue> internals::AbstractRadixTreeMut<K, V> for RadixTree<K, V> {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
         Self {
             prefix,
@@ -75,13 +75,13 @@ impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
 
 #[cfg(feature = "rkyv")]
 mod rkyv_support {
+    use super::super::{internals, offset_from};
     use super::{AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
-    use crate::{radix_tree::offset_from, AbstractRadixTreeMut, ArcRadixTree};
+    use internals::AbstractRadixTreeMut as _;
     use rkyv::{
-        option::ArchivedOption,
         ser::{ScratchSpace, Serializer},
-        vec::{ArchivedVec, VecResolver},
-        Archive, Archived, Deserialize, DeserializeUnsized, Fallible, Resolver, Serialize,
+        vec::ArchivedVec,
+        Archive, Archived, Deserialize, Fallible, Resolver, Serialize,
     };
 
     #[repr(C)]
@@ -197,11 +197,10 @@ mod rkyv_support {
 
     #[cfg(feature = "rkyv_validated")]
     mod validation_support {
-        use crate::{TKey, TValue};
+        use super::{TKey, TValue};
+        use bytecheck::CheckBytes;
         use core::fmt;
-        use rkyv::{
-            option::ArchivedOption, validation::ArchiveContext, vec::ArchivedVec, Archived,
-        };
+        use rkyv::{validation::ArchiveContext, vec::ArchivedVec, Archived};
 
         use super::ArchivedRadixTree;
 
@@ -245,10 +244,10 @@ mod rkyv_support {
                     children,
                 } = &(*this);
                 // check the prefix
-                ArchivedVec::<K>::check_bytes(prefix, context)
+                CheckBytes::check_bytes(prefix, context)
                     .map_err(|_| ArchivedRadixTreeError::PrefixCheckError)?;
                 // check the value, if present
-                Archived::<Option<V>>::check_bytes(value, context)
+                CheckBytes::check_bytes(value, context)
                     .map_err(|_| ArchivedRadixTreeError::ValueCheckError)?;
                 // check that the prefix of all children is of non zero length
                 if !children.iter().all(|child| child.prefix.len() > 0) {
@@ -263,7 +262,7 @@ mod rkyv_support {
                     return Err(ArchivedRadixTreeError::OrderCheckError);
                 };
                 // recursively check the children
-                ArchivedVec::<Self>::check_bytes(children, context)
+                CheckBytes::check_bytes(children, context)
                     .map_err(|_| ArchivedRadixTreeError::ChildrenCheckError)?;
 
                 Ok(&*this)
@@ -275,7 +274,7 @@ mod rkyv_support {
 #[cfg(feature = "rkyv")]
 #[cfg(test)]
 mod tests {
-    use crate::{AbstractRadixTree, AbstractRadixTreeMut, RadixTree};
+    use super::{AbstractRadixTree, AbstractRadixTreeMut, RadixTree};
 
     fn mk_string(n: usize) -> String {
         let text = n.to_string();
@@ -301,13 +300,13 @@ mod tests {
             "key size:{}",
             archived
                 .iter()
-                .map(|(k, v)| k.as_ref().len())
+                .map(|(k, _)| k.as_ref().len())
                 .sum::<usize>()
         );
         // hexdump::hexdump(&bytes);
         // println!("{:#?}", a);
         // println!("{}", hex::encode(&bytes));
-        let result: RadixTree<u8, ()> = archived.deserialize(&mut Infallible).unwrap();
+        let _result: RadixTree<u8, ()> = archived.deserialize(&mut Infallible).unwrap();
         // println!("{:#?}", result);
     }
 }

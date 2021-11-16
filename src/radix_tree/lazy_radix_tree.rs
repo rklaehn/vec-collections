@@ -1,4 +1,4 @@
-use crate::AbstractRadixTreeMut;
+use super::internals;
 use std::{collections::BTreeMap, sync::Arc};
 
 use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
@@ -50,7 +50,7 @@ impl<'a, K: TKey, V: TValue> AbstractRadixTree<K, V> for LazyRadixTree<'a, K, V>
     }
 }
 
-impl<'a, K: TKey, V: TValue> AbstractRadixTreeMut<K, V> for LazyRadixTree<'a, K, V> {
+impl<'a, K: TKey, V: TValue> internals::AbstractRadixTreeMut<K, V> for LazyRadixTree<'a, K, V> {
     fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self {
         let children = Lazy::initialized(Arc::new(children));
         Self {

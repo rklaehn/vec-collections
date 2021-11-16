@@ -57,3 +57,11 @@ harness = false
 name = "set_ops"
 harness = false
 
+[[example]]
+name = "radix_db"
+required-features = ["radixtree", "rkyv", "rkyv_validated"]
+
+[[example]]
+name = "radix_tree"
+required-features = ["radixtree"]
+

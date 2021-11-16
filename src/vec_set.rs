@@ -1,6 +1,6 @@
 pub use crate::iterators::VecSetIter;
 use crate::merge_state::{
-    CloneConverter, IdConverter, InPlaceMergeState, InPlaceMergeStateRef, NoConverter,
+    CloneConverter, IdConverter, InPlaceMergeState, InPlaceSmallVecMergeStateRef, NoConverter,
 };
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
@@ -8,6 +8,7 @@ use crate::{
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
 
+use bytecheck::CheckBytes;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -294,7 +295,7 @@ where
     /// insert an element.
     ///
     /// The time complexity of this is O(N), so building a large set using single element inserts will be slow!
-    /// Prefer using [from_iter](from_iter) when building a large VecSet from elements.
+    /// Prefer using [from_iter](std::iter::FromIterator::from_iter) when building a large VecSet from elements.
     pub fn insert(&mut self, that: A::Item) -> bool {
         match self.0.binary_search(&that) {
             Ok(index) => {
@@ -311,7 +312,7 @@ where
     /// Remove an element.
     ///
     /// The time complexity of this is O(N), so removing many elements using single element removes inserts will be slow!
-    /// Prefer using [retain](retain) when removing a large number of elements.
+    /// Prefer using [retain](VecSet::retain) when removing a large number of elements.
     pub fn remove(&mut self, that: &A::Item) -> bool {
         if let Ok(index) = self.0.binary_search(that) {
             self.0.remove(index);
@@ -409,7 +410,12 @@ impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<&VecSe
     for VecSet<A>
 {
     fn bitand_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetIntersectionOp, CloneConverter);
+        InPlaceSmallVecMergeStateRef::merge(
+            &mut self.0,
+            &that.0,
+            SetIntersectionOp,
+            CloneConverter,
+        );
     }
 }
 
@@ -421,7 +427,7 @@ impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<VecSet<B>> for 
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<&VecSet<B>> for VecSet<A> {
     fn bitor_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp, CloneConverter);
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp, CloneConverter);
     }
 }
 
@@ -435,7 +441,7 @@ impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<&VecSe
     for VecSet<A>
 {
     fn bitxor_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetXorOp, CloneConverter);
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetXorOp, CloneConverter);
     }
 }
 
@@ -447,7 +453,7 @@ impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> SubAssign<VecSet<B>> for Ve
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> SubAssign<&VecSet<B>> for VecSet<A> {
     fn sub_assign(&mut self, that: &VecSet<B>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt, CloneConverter);
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt, CloneConverter);
     }
 }
 
@@ -694,7 +700,7 @@ where
         context: &mut C,
     ) -> Result<&'a Self, Self::Error> {
         let values = &(*value).0;
-        rkyv::vec::ArchivedVec::<T>::check_bytes(values, context)
+        CheckBytes::check_bytes(values, context)
             .map_err(|_| ArchivedVecSetError::ValueCheckError)?;
         if !values.iter().zip(values.iter().skip(1)).all(|(a, b)| a < b) {
             return Err(ArchivedVecSetError::OrderCheckError);
@@ -744,11 +750,11 @@ where
     }
 
     pub fn union_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetUnionOp, NoConverter);
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.as_slice(), SetUnionOp, NoConverter);
     }
 
     pub fn intersection_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(
+        InPlaceSmallVecMergeStateRef::merge(
             &mut self.0,
             &that.as_slice(),
             SetIntersectionOp,
@@ -757,7 +763,7 @@ where
     }
 
     pub fn xor_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(
+        InPlaceSmallVecMergeStateRef::merge(
             &mut self.0,
             &that.as_slice(),
             SetIntersectionOp,
@@ -766,7 +772,7 @@ where
     }
 
     pub fn difference_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
-        InPlaceMergeStateRef::merge(&mut self.0, &that.as_slice(), SetDiffOpt, NoConverter);
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.as_slice(), SetDiffOpt, NoConverter);
     }
 }
 
