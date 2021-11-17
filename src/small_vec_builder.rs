@@ -1,4 +1,4 @@
-//! A data structure for in place modification of vecs.
+//! A data structure for in place modification of smallvecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
 use core::fmt::Debug;

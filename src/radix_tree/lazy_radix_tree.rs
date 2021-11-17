@@ -1,12 +1,10 @@
-use super::internals;
-use std::{collections::BTreeMap, sync::Arc};
-
-use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
+use super::{internals, location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
 use rkyv::{
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
     vec::ArchivedVec,
     Archive, Archived, Resolver, Serialize,
 };
+use std::{collections::BTreeMap, sync::Arc};
 
 pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static {}
 
@@ -16,6 +14,8 @@ impl<T: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static> TValue
 ///
 /// Since this is lazily loaded from a byte slice, it can only live as long as the byte slice. Therefore
 /// it needs to have a lifetime parameter.
+///
+/// This is even more experimental than the other radix tree stuff!
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
 where

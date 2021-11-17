@@ -107,6 +107,9 @@ pub struct VecSet<A: Array>(SmallVec<A>);
 /// This is a good default, since for usize sized types, 2 is the max you can fit in without making the struct larger.
 pub type VecSet2<T> = VecSet<[T; 2]>;
 
+/// An abstract vec set
+///
+/// this is implemented by VecSet and ArchivedVecSet, so they are interoperable.
 pub trait AbstractVecSet<T: Ord> {
     // the elements as a slice, must be strictly ordered
     fn as_slice(&self) -> &[T];
@@ -667,7 +670,7 @@ where
     }
 }
 
-/// Validation error for a range set
+/// Validation error for a vec set
 #[cfg(feature = "rkyv_validated")]
 #[derive(Debug)]
 pub enum ArchivedVecSetError {

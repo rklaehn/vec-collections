@@ -1,9 +1,9 @@
 use super::internals;
-use internals::AbstractRadixTreeMut as _;
+use internals::{AbstractRadixTreeMut as _, Fragment};
 use lazy_static::lazy_static;
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::{location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
+use super::{location, offset_from, AbstractRadixTree, RadixTree, TKey, TValue};
 use rkyv::{
     de::SharedDeserializeRegistry,
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
@@ -12,14 +12,12 @@ use rkyv::{
 };
 
 lazy_static! {
-    static ref EMPTY_ARC_VEC: Arc<Vec<u8>> = Arc::new(Vec::new());
+    static ref EMPTY_ARC_VEC: Arc<Vec<u128>> = Arc::new(Vec::new());
 }
 
 fn empty_arc<T>() -> Arc<Vec<T>> {
-    /// TODO: this seems to work, but is strictly speaking ub. Get rid of the unsafe
-    unsafe {
-        std::mem::transmute(EMPTY_ARC_VEC.clone())
-    }
+    // TODO: this seems to work, but is strictly speaking ub. Get rid of the unsafe
+    unsafe { std::mem::transmute(EMPTY_ARC_VEC.clone()) }
 }
 
 fn wrap_in_arc<T>(data: Vec<T>) -> Arc<Vec<T>> {
@@ -31,6 +29,8 @@ fn wrap_in_arc<T>(data: Vec<T>) -> Arc<Vec<T>> {
 }
 
 /// A generic radix tree with structural sharing and copy on write
+///
+/// Compared to the simplest radix tree, this adds cheap (O(1)) snapshots and enables incremental
 #[derive(Clone)]
 pub struct ArcRadixTree<K, V>
 where
@@ -87,6 +87,11 @@ impl<K: TKey, V: TValue> internals::AbstractRadixTreeMut<K, V> for ArcRadixTree<
     }
 
     fn children_mut(&mut self) -> &mut Vec<Self> {
+        // this is what makes the data structure copy on write.
+        // If we are the sole owner, this will not allocate and be very cheap.
+        // if there is another owner (e.g. an old snapshot), this will clone the array.
+        //
+        // cloning will shrink to fit
         Arc::make_mut(self.children_arc_mut())
     }
 }
@@ -113,6 +118,9 @@ impl<K: TKey, V: TValue> ArcRadixTree<K, V> {
     }
 
     /// copy all arcs that are used internally in this tree, and store them in a BTreeMap
+    ///
+    /// as long as the BTreeMap exists, this will have the effect of disabling reuse for
+    /// all tree nodes and force copies on modification.
     pub fn all_arcs(&self, into: &mut BTreeMap<usize, Arc<Vec<Self>>>) {
         let children = self.children_arc();
         into.insert(location(children.as_ref()), children.clone());
@@ -236,29 +244,27 @@ where
 
 #[cfg(feature = "rkyv_validated")]
 mod validation_support {
-    use super::{ArcRadixTree, TKey, TValue};
+    use super::{TKey, TValue};
     use bytecheck::CheckBytes;
     use core::fmt;
     use rkyv::{
         validation::{ArchiveContext, SharedContext},
-        vec::ArchivedVec,
         Archived,
     };
-    use std::sync::Arc;
 
     use super::ArchivedArcRadixTree;
 
-    /// Validation error for a range set
+    /// Validation error for a radix tree
     #[derive(Debug)]
     pub enum ArchivedRadixTreeError {
         /// error with the prefix
-        PrefixCheckError,
+        Prefix,
         /// error with the value
-        ValueCheckError,
+        Value,
         /// error with the children
-        ChildrenCheckError(String),
+        Children(String),
         /// error with the order of the children
-        OrderCheckError,
+        Order,
     }
 
     impl std::error::Error for ArchivedRadixTreeError {}
@@ -288,14 +294,12 @@ mod validation_support {
                 children,
             } = &(*this);
             // check the prefix
-            CheckBytes::check_bytes(prefix, context)
-                .map_err(|_| ArchivedRadixTreeError::PrefixCheckError)?;
+            CheckBytes::check_bytes(prefix, context).map_err(|_| ArchivedRadixTreeError::Prefix)?;
             // check the value, if present
-            CheckBytes::check_bytes(value, context)
-                .map_err(|_| ArchivedRadixTreeError::ValueCheckError)?;
+            CheckBytes::check_bytes(value, context).map_err(|_| ArchivedRadixTreeError::Value)?;
             // check that the prefix of all children is of non zero length
-            if !children.iter().all(|child| child.prefix.len() > 0) {
-                return Err(ArchivedRadixTreeError::ChildrenCheckError(
+            if !children.iter().all(|child| !child.prefix.is_empty()) {
+                return Err(ArchivedRadixTreeError::Children(
                     "empty child prefix".into(),
                 ));
             };
@@ -305,11 +309,11 @@ mod validation_support {
                 .zip(children.iter().skip(1))
                 .all(|(a, b)| a.prefix[0] < b.prefix[0])
             {
-                return Err(ArchivedRadixTreeError::OrderCheckError);
+                return Err(ArchivedRadixTreeError::Order);
             };
             // recursively check the children
             CheckBytes::check_bytes(children, context)
-                .map_err(|e| ArchivedRadixTreeError::ChildrenCheckError(e.to_string()))?;
+                .map_err(|e| ArchivedRadixTreeError::Children(e.to_string()))?;
 
             Ok(&*this)
         }

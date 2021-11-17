@@ -39,7 +39,7 @@ mod arc_radix_tree;
 pub use arc_radix_tree::ArcRadixTree;
 use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
-mod radix_tree;
+mod flat_radix_tree;
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     merge_state::{
@@ -47,61 +47,7 @@ use crate::{
         NoConverter, VecMergeState,
     },
 };
-pub use radix_tree::RadixTree;
-
-/// A path fragment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fragment<T>(SmallVec<[T; 16]>);
-
-impl<T> AsRef<[T]> for Fragment<T> {
-    fn as_ref(&self) -> &[T] {
-        self.0.as_ref()
-    }
-}
-
-impl<T> Borrow<[T]> for Fragment<T> {
-    fn borrow(&self) -> &[T] {
-        self.0.as_ref()
-    }
-}
-
-impl<T> Deref for Fragment<T> {
-    type Target = [T];
-
-    fn deref(&self) -> &[T] {
-        self.as_ref()
-    }
-}
-
-impl<'a, T: Clone> From<&'a [T]> for Fragment<T> {
-    fn from(value: &'a [T]) -> Self {
-        Self(value.into())
-    }
-}
-
-impl<T> From<SmallVec<[T; 16]>> for Fragment<T> {
-    fn from(value: SmallVec<[T; 16]>) -> Self {
-        Self(value)
-    }
-}
-
-impl<T: Ord> Ord for Fragment<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0[0].cmp(&other.0[0])
-    }
-}
-
-impl<T: Ord> PartialOrd for Fragment<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Default for Fragment<T> {
-    fn default() -> Self {
-        Self(SmallVec::new())
-    }
-}
+pub use flat_radix_tree::RadixTree;
 
 // common prefix of two slices.
 fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
@@ -110,6 +56,60 @@ fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
 
 pub(crate) mod internals {
     use super::*;
+
+    /// A path fragment
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Fragment<T>(SmallVec<[T; 16]>);
+
+    impl<T> AsRef<[T]> for Fragment<T> {
+        fn as_ref(&self) -> &[T] {
+            self.0.as_ref()
+        }
+    }
+
+    impl<T> Borrow<[T]> for Fragment<T> {
+        fn borrow(&self) -> &[T] {
+            self.0.as_ref()
+        }
+    }
+
+    impl<T> Deref for Fragment<T> {
+        type Target = [T];
+
+        fn deref(&self) -> &[T] {
+            self.as_ref()
+        }
+    }
+
+    impl<'a, T: Clone> From<&'a [T]> for Fragment<T> {
+        fn from(value: &'a [T]) -> Self {
+            Self(value.into())
+        }
+    }
+
+    impl<T> From<SmallVec<[T; 16]>> for Fragment<T> {
+        fn from(value: SmallVec<[T; 16]>) -> Self {
+            Self(value)
+        }
+    }
+
+    impl<T: Ord> Ord for Fragment<T> {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.0[0].cmp(&other.0[0])
+        }
+    }
+
+    impl<T: Ord> PartialOrd for Fragment<T> {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl<T> Default for Fragment<T> {
+        fn default() -> Self {
+            Self(SmallVec::new())
+        }
+    }
 
     /// implement this trait for a new flavour of radix tree. The public AbstractRadixTreeMut will be implemented for you.
     ///
@@ -232,9 +232,11 @@ pub(crate) mod internals {
     }
 }
 
-use internals::AbstractRadixTreeMut as _;
+use internals::{AbstractRadixTreeMut as _, Fragment};
 
 /// Interface to a mutable abstract radix tree that allows mutation.
+///
+/// Most operations are meant to be generically useful. E.g.
 pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTreeMut<K, V> {
     /// Create an empty tree
     fn empty() -> Self {
@@ -249,6 +251,14 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
     /// Create a tree containing a single key/value pair
     fn single(key: &[K], value: V) -> Self {
         Self::new(key.into(), Some(value), Vec::new())
+    }
+
+    /// Insert a mapping. Will replace existing mapping.
+    fn insert(&mut self, key: &[K], value: V) {
+        self.outer_combine_with(&Self::single(key, value), |a, b| {
+            *a = b.clone();
+            true
+        })
     }
 
     /// Return the subtree with the given prefix. Will return an empty tree in case there is no match.
@@ -282,6 +292,16 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
 
     /// Left biased union with another tree of the same key and value type
     ///
+    /// If you want a right biased union, you can implement it with [outer_combine](AbstractRadixTree::outer_combine).
+    fn union(
+        &self,
+        that: &impl AbstractRadixTree<K, V, Materialized = Self::Materialized>,
+    ) -> Self::Materialized {
+        self.outer_combine(that, |a, b| Some(a.clone()))
+    }
+
+    /// In place left biased union with another tree of the same key and value type
+    ///
     /// If you want a right biased union, you can implement it with [outer_combine_with](AbstractRadixTreeMut::outer_combine_with).
     fn union_with(
         &mut self,
@@ -291,11 +311,24 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
     }
 
     /// Intersection with another tree of the same key type
+    fn intersection<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> Self::Materialized {
+        self.inner_combine(that, |a, b| Some(a.clone()))
+    }
+
+    /// In place intersection with another tree of the same key type
     fn intersection_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.inner_combine_with(that, |_, _| true)
     }
 
     /// Difference with another tree of the same key type
+    fn difference<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> Self::Materialized {
+        self.left_combine(
+            that,
+            |a, b| if b.is_none() { Some(a.clone()) } else { None },
+        )
+    }
+
+    /// In place difference with another tree of the same key type
     fn difference_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         self.left_combine_with(that, |_, _| false)
     }
@@ -431,6 +464,9 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
     }
 
     /// Remove all parts of the tree for which that contains a prefix.
+    ///
+    /// The predicate `f` is used to filter the tree `that` before applying it.
+    /// If the predicate returns always false, this will be a noop.
     fn remove_prefix_with<W: TValue>(
         &mut self,
         that: &impl AbstractRadixTree<K, W>,
@@ -450,7 +486,6 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
             }
         } else if n == that.prefix().len() {
             // that is a prefix of self
-
             match that.value() {
                 Some(value) if f(value) => {
                     *self.value_mut() = None;
@@ -471,6 +506,10 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
         self.unsplit();
     }
 
+    /// Retain all parts of the tree for which that contains a prefix.
+    ///
+    /// The predicate `f` is used to filter the tree `that` before applying it.
+    /// If the predicate returns always false, this will result in the empty tree.
     fn retain_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
@@ -623,6 +662,15 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         inner_combine(self, that, f)
     }
 
+    /// Left combine this tree with another tree, using the given combine function
+    fn left_combine<W: TValue>(
+        &self,
+        that: &impl AbstractRadixTree<K, W>,
+        f: impl Fn(&V, Option<&W>) -> Option<V> + Copy,
+    ) -> Self::Materialized {
+        left_combine(self, that, f)
+    }
+
     /// An iterator for all pairs with a certain prefix
     fn scan_prefix<'a>(&'a self, prefix: &'a [K]) -> Iter<'a, K, V, Self> {
         match find(self, prefix) {
@@ -739,6 +787,9 @@ impl<K: Clone> IterKey<K> {
     }
 
     fn append(&mut self, data: &[K]) {
+        // for typical iterator use, a reference is not kept for a long time, so this will be very cheap
+        //
+        // in the case a reference is kept, this will make a copy.
         let elems = Arc::make_mut(&mut self.0);
         elems.extend_from_slice(data);
     }
@@ -909,7 +960,7 @@ fn is_subset0<K: TKey, V: TValue, W: TValue>(
     let n = common_prefix(l_prefix, r_prefix);
     if n == l_prefix.len() && n == r_prefix.len() {
         // prefixes are identical
-        (!l.value().is_some() || r.value().is_some())
+        (l.value().is_none() || r.value().is_some())
             && !BoolOpMergeState::merge(l.children(), r.children(), NonSubsetOp(PhantomData))
     } else if n == l_prefix.len() {
         // l is a prefix of r - shorten r_prefix
@@ -1030,7 +1081,7 @@ fn outer_combine<
     R::new(prefix, value, children)
 }
 
-/// Outer combine two trees with a function f
+/// Inner combine two trees with a function f
 fn inner_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Materialized = R>>(
     a: &impl AbstractRadixTree<K, V, Materialized = R>,
     b: &impl AbstractRadixTree<K, W>,
@@ -1071,6 +1122,54 @@ fn inner_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Ma
             &[a],
             b.children(),
             InnerCombineOp(f, PhantomData),
+            RadixTreeConverter(PhantomData),
+            NoConverter,
+        );
+    } else {
+        // disjoint
+    }
+    R::new(prefix, value, children)
+}
+
+/// Left combine two trees with a function f
+fn left_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Materialized = R>>(
+    a: &impl AbstractRadixTree<K, V, Materialized = R>,
+    b: &impl AbstractRadixTree<K, W>,
+    f: impl Fn(&V, Option<&W>) -> Option<V> + Copy,
+) -> R {
+    let n = common_prefix(a.prefix(), b.prefix());
+    let prefix = a.prefix()[..n].into();
+    let mut children = Vec::<R>::new();
+    let mut value = None;
+    if n == a.prefix().len() && n == b.prefix().len() {
+        // prefixes are identical
+        if let Some(a) = a.value() {
+            value = f(a, b.value());
+        }
+        children = VecMergeState::merge(
+            a.children(),
+            b.children(),
+            LeftCombineOp(f, PhantomData),
+            RadixTreeConverter(PhantomData),
+            NoConverter,
+        );
+    } else if n == a.prefix().len() {
+        // a is a prefix of b
+        let b = b.materialize_shortened(n);
+        children = VecMergeState::merge(
+            a.children(),
+            &[b],
+            LeftCombineOp(f, PhantomData),
+            RadixTreeConverter(PhantomData),
+            NoConverter,
+        );
+    } else if n == b.prefix().len() {
+        // b is a prefix of a
+        let a = a.materialize_shortened(n);
+        children = VecMergeState::merge(
+            &[a],
+            b.children(),
+            LeftCombineOp(f, PhantomData),
             RadixTreeConverter(PhantomData),
             NoConverter,
         );
@@ -1329,6 +1428,49 @@ where
     }
 }
 
+impl<'a, F, K, V, W, A, B, R>
+    MergeOperation<VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>>
+    for LeftCombineOp<F, W>
+where
+    K: TKey,
+    V: TValue,
+    W: TValue,
+    A: AbstractRadixTree<K, V, Materialized = R>,
+    B: AbstractRadixTree<K, W>,
+    R: AbstractRadixTreeMut<K, V, Materialized = R>,
+    F: Fn(&V, Option<&W>) -> Option<V> + Copy,
+{
+    fn cmp(&self, a: &A, b: &B) -> Ordering {
+        a.prefix()[0].cmp(&b.prefix()[0])
+    }
+    fn from_a(
+        &self,
+        m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
+        n: usize,
+    ) -> EarlyOut {
+        m.advance_a(n, true)
+    }
+    fn from_b(
+        &self,
+        m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
+        n: usize,
+    ) -> EarlyOut {
+        m.advance_b(n, false)
+    }
+    fn collision(
+        &self,
+        m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
+    ) -> EarlyOut {
+        let a = m.a.next().unwrap();
+        let b = m.b.next().unwrap();
+        let res = left_combine(a, b, self.0);
+        if !res.is_empty() {
+            m.r.push(res);
+        }
+        Some(())
+    }
+}
+
 /// Remove prefixes of b in a
 struct RemovePrefixOp<F, P>(F, PhantomData<P>);
 
@@ -1454,28 +1596,47 @@ mod test {
         }
 
         fn union_sample(a: Test, b: Test) -> bool {
+            let r = a.union(&b);
+            binary_element_test(&a, &b, r, |a, b| a | b)
+        }
+
+        fn union_with_sample(a: Test, b: Test) -> bool {
             let mut r = a.clone();
             r.union_with(&b);
             binary_element_test(&a, &b, r, |a, b| a | b)
         }
 
         fn intersection_sample(a: Test, b: Test) -> bool {
+            let r = a.intersection(&b);
+            binary_element_test(&a, &b, r, |a, b| a & b)
+        }
+
+        fn intersection_with_sample(a: Test, b: Test) -> bool {
             let mut r = a.clone();
             r.intersection_with(&b);
             binary_element_test(&a, &b, r, |a, b| a & b)
         }
 
-        // fn xor_sample(a: Test, b: Test) -> bool {
-        //     binary_element_test(&a, &b, &a ^ &b, |a, b| a ^ b)
-        // }
-
-        fn diff_sample(a: Test, b: Test) -> bool {
+        fn difference_with_sample(a: Test, b: Test) -> bool {
             let mut r = a.clone();
             r.difference_with(&b);
             binary_element_test(&a, &b, r, |a, b| a & !b)
         }
 
+        fn difference_sample(a: Test, b: Test) -> bool {
+            let r = a.difference(&b);
+            binary_element_test(&a, &b, r, |a, b| a & !b)
+        }
+
         fn union(a: Reference, b: Reference) -> bool {
+            let a1: Test = r2t(&a);
+            let b1: Test = r2t(&b);
+            let r1 = a1.union(&b1);
+            let expected = r2t(&a.union(&b).cloned().collect());
+            expected == r1
+        }
+
+        fn union_with(a: Reference, b: Reference) -> bool {
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
             let mut r1 = a1;
@@ -1487,6 +1648,14 @@ mod test {
         fn intersection(a: Reference, b: Reference) -> bool {
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
+            let r1 = a1.intersection(&b1);
+            let expected = r2t(&a.intersection(&b).cloned().collect());
+            expected == r1
+        }
+
+        fn intersection_with(a: Reference, b: Reference) -> bool {
+            let a1: Test = r2t(&a);
+            let b1: Test = r2t(&b);
             let mut r1 = a1;
             r1.intersection_with(&b1);
             let expected = r2t(&a.intersection(&b).cloned().collect());
@@ -1494,6 +1663,19 @@ mod test {
         }
 
         fn difference(a: Reference, b: Reference) -> bool {
+            let a = a.into_iter().collect();
+            let b = b.into_iter().collect();
+            let a1: Test = r2t(&a);
+            let b1: Test = r2t(&b);
+            let r1 = a1.difference(&b1);
+            let expected = r2t(&a.difference(&b).cloned().collect());
+            if expected != r1 {
+                println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
+            }
+            expected == r1
+        }
+
+        fn difference_with(a: Reference, b: Reference) -> bool {
             let a = a.into_iter().collect();
             let b = b.into_iter().collect();
             let a1: Test = r2t(&a);
@@ -1588,8 +1770,7 @@ mod test {
     fn test_tree(strings: &[&str]) -> RadixTree<u8, ()> {
         let mut res = RadixTree::default();
         for key in strings {
-            let x = RadixTree::single(key.as_bytes(), ());
-            res.union_with(&x);
+            res.insert(key.as_bytes(), ());
         }
         res
     }

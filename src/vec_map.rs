@@ -22,6 +22,8 @@ use {
 };
 
 /// An abstract vec map
+///
+/// this is implemented by VecMap and ArchivedVecMap, so they are interoperable.
 pub trait AbstractVecMap<K, V> {
     fn as_slice(&self) -> &[(K, V)];
 
@@ -867,7 +869,7 @@ where
     }
 }
 
-/// Validation error for a range set
+/// Validation error for a vec map
 #[cfg(feature = "rkyv_validated")]
 #[derive(Debug)]
 pub enum ArchivedVecMapError {

@@ -440,8 +440,7 @@ async fn main() -> anyhow::Result<()> {
     for i in 0..100 {
         for j in 0..100 {
             let key = format!("{}-{}", i, j);
-            db.tree_mut()
-                .union_with(&ArcRadixTree::single(key.as_bytes(), ()));
+            db.tree_mut().insert(key.as_bytes(), ());
         }
         if i % 10 == 0 {
             db.vacuum()?;

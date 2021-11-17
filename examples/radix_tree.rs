@@ -49,7 +49,7 @@ fn main() {
     for (k, v) in tree.iter() {
         println!("{:?} {}", k, v);
     }
-    tree.union_with(&LazyRadixTree::single(&"fnord".as_bytes().to_vec(), 1));
+    tree.insert(&"fnord".as_bytes().to_vec(), 1);
     let mut serializer = ser::serializers::AllocSerializer::<256>::default();
     serializer.serialize_value(&tree).unwrap();
     let bytes2 = serializer.into_serializer().into_inner();

@@ -31,6 +31,10 @@
 //!
 //! Provides a map backed by a [SmallVec] of key value pairs.
 //!
+//! ## [RadixTree]
+//!
+//! A [RadixTree] that comes in different flavours.
+//!
 //! ## [TotalVecSet]
 //!
 //! A [VecSet] with an additional flag so it can support negation. This way it is possible to represent e.g. the set of all u64 except 1.
@@ -48,6 +52,7 @@
 //! [VecMap]: struct.VecMap.html
 //! [TotalVecSet]: struct.TotalVecSet
 //! [TotalVecMap]: struct.TotalVecMap
+//! [RadixTree]: radix_tree/struct.RadixTree.html
 //! [Ord]: https://doc.rust-lang.org/std/cmp/trait.Ord.html
 //! [BTreeSet]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
 //! [BTreeMap]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html

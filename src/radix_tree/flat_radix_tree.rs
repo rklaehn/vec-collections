@@ -30,7 +30,7 @@ impl<E: TKey, K: AsRef<[E]>, V: TValue> FromIterator<(K, V)> for RadixTree<E, V>
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
         let mut res = RadixTree::default();
         for (k, v) in iter.into_iter() {
-            res.union_with(&RadixTree::single(k.as_ref(), v))
+            res.insert(k.as_ref(), v)
         }
         res
     }
@@ -195,21 +195,21 @@ mod rkyv_support {
         use super::{TKey, TValue};
         use bytecheck::CheckBytes;
         use core::fmt;
-        use rkyv::{validation::ArchiveContext, vec::ArchivedVec, Archived};
+        use rkyv::{validation::ArchiveContext, Archived};
 
         use super::ArchivedRadixTree;
 
-        /// Validation error for a range set
+        /// Validation error for a radix tree
         #[derive(Debug)]
         pub enum ArchivedRadixTreeError {
             /// error with the prefix
-            PrefixCheckError,
+            Prefix,
             /// error with the value
-            ValueCheckError,
+            Value,
             /// error with the children
-            ChildrenCheckError,
+            Children,
             /// error with the order of the children
-            OrderCheckError,
+            Order,
         }
 
         impl std::error::Error for ArchivedRadixTreeError {}
@@ -240,13 +240,13 @@ mod rkyv_support {
                 } = &(*this);
                 // check the prefix
                 CheckBytes::check_bytes(prefix, context)
-                    .map_err(|_| ArchivedRadixTreeError::PrefixCheckError)?;
+                    .map_err(|_| ArchivedRadixTreeError::Prefix)?;
                 // check the value, if present
                 CheckBytes::check_bytes(value, context)
-                    .map_err(|_| ArchivedRadixTreeError::ValueCheckError)?;
+                    .map_err(|_| ArchivedRadixTreeError::Value)?;
                 // check that the prefix of all children is of non zero length
-                if !children.iter().all(|child| child.prefix.len() > 0) {
-                    return Err(ArchivedRadixTreeError::ChildrenCheckError);
+                if !children.iter().all(|child| !child.prefix.is_empty()) {
+                    return Err(ArchivedRadixTreeError::Children);
                 };
                 // check the order of the children
                 if !children
@@ -254,11 +254,11 @@ mod rkyv_support {
                     .zip(children.iter().skip(1))
                     .all(|(a, b)| a.prefix[0] < b.prefix[0])
                 {
-                    return Err(ArchivedRadixTreeError::OrderCheckError);
+                    return Err(ArchivedRadixTreeError::Order);
                 };
                 // recursively check the children
                 CheckBytes::check_bytes(children, context)
-                    .map_err(|_| ArchivedRadixTreeError::ChildrenCheckError)?;
+                    .map_err(|_| ArchivedRadixTreeError::Children)?;
 
                 Ok(&*this)
             }
@@ -282,7 +282,7 @@ mod tests {
     fn archive_smoke() {
         let mut a = RadixTree::empty();
         for i in 0..1000 {
-            a.union_with(&RadixTree::single(mk_string(i).as_bytes(), ()));
+            a.insert(mk_string(i).as_bytes(), ());
         }
         use rkyv::*;
         use ser::Serializer;

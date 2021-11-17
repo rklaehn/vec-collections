@@ -1,8 +1,4 @@
-use crate::{
-    binary_merge::{EarlyOut, MergeOperation},
-    merge_state::SmallVecMergeState,
-    vec_map::{AbstractVecMap, VecMap},
-};
+use crate::vec_map::{AbstractVecMap, VecMap};
 use core::{
     borrow::Borrow,
     cmp,
@@ -217,9 +213,9 @@ impl<K: Ord + Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
         let r_default = f(&self.1, &that.1);
         let r = self.0.outer_join(&that.0, |arg| {
             let r = match arg {
-                OuterJoinArg::Left(k, v) => f(v, &that.1),
-                OuterJoinArg::Right(k, w) => f(&self.1, w),
-                OuterJoinArg::Both(k, v, w) => f(v, w),
+                OuterJoinArg::Left(_, v) => f(v, &that.1),
+                OuterJoinArg::Right(_, w) => f(&self.1, w),
+                OuterJoinArg::Both(_, v, w) => f(v, w),
             };
             if r != r_default {
                 Some(r)

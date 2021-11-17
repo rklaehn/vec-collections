@@ -1,3 +1,4 @@
+/// Macro to create a vecset
 #[macro_export]
 macro_rules! vecset {
     () => ({
@@ -10,6 +11,7 @@ macro_rules! vecset {
     });
 }
 
+/// Macro to create a vecmap
 #[macro_export]
 macro_rules! vecmap {
     ($($key:expr => $value:expr,)+) => { vecmap!($($key => $value),+) };
