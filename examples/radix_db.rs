@@ -15,7 +15,7 @@ use futures::{
 };
 use parking_lot::Mutex;
 use rkyv::{
-    archived_root, check_archived_root,
+    archived_root,
     de::{deserializers::SharedDeserializeMapError, SharedDeserializeRegistry, SharedPointer},
     ser::{
         serializers::{AllocScratch, FallbackScratch, HeapScratch},
@@ -188,7 +188,7 @@ impl Storage for MemStorage {
     fn load<T>(&self, file: &str, mut f: impl FnMut(&[u8]) -> T) -> std::io::Result<T> {
         let data = self.data.lock();
         let res = if let Some(vec) = data.get(file) {
-            f(&vec)
+            f(vec)
         } else {
             f(&[])
         };
@@ -262,6 +262,7 @@ impl Storage for FileStorage {
     }
 }
 
+#[allow(clippy::type_complexity)]
 struct RadixDb<K: TKey, V: TValue, S> {
     storage: S,
     name: String,
@@ -289,7 +290,7 @@ where
     Archived<K>: Deserialize<K, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
     Archived<V>: Deserialize<V, SharedDeserializeMap2> + for<'x> CheckBytes<DefaultValidator<'x>>,
 {
-    fn open(base: impl AsRef<std::path::Path>, name: impl Into<String>) -> anyhow::Result<Self> {
+    fn _open(base: impl AsRef<std::path::Path>, name: impl Into<String>) -> anyhow::Result<Self> {
         RadixDb::load(FileStorage::new(base), name)
     }
 }
@@ -453,13 +454,13 @@ async fn main() -> anyhow::Result<()> {
     db.flush()?;
     println!("{}", db.pos);
     println!("db");
-    for (k, v) in db.tree().iter() {
+    for (k, _) in db.tree().iter() {
         println!("{}", std::str::from_utf8(&k)?);
     }
     let mut db2: RadixDb<u8, (), _> = RadixDb::load(db.storage().clone(), "test")?;
     db2.vacuum()?;
     println!("db2");
-    for (k, v) in db2.tree().iter() {
+    for (k, _) in db2.tree().iter() {
         println!("{}", std::str::from_utf8(&k)?);
     }
 

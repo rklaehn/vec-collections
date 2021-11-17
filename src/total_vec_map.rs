@@ -283,7 +283,7 @@ mod tests {
 
     fn from_ref(r: Ref) -> Test {
         let (elements, default) = r;
-        Test::new(elements.clone().into(), default)
+        Test::new(elements.into(), default)
     }
 
     impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap1<K, V> {
@@ -325,17 +325,17 @@ mod tests {
         }
 
         fn supremum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::max(a, b)));
-            let a1 = from_ref(a.clone());
-            let b1 = from_ref(b.clone());
+            let expected = from_ref(combine_reference(&a, &b, cmp::max));
+            let a1 = from_ref(a);
+            let b1 = from_ref(b);
             let actual = a1.supremum(&b1);
             expected == actual
         }
 
         fn infimum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::min(a, b)));
-            let a1 = from_ref(a.clone());
-            let b1 = from_ref(b.clone());
+            let expected = from_ref(combine_reference(&a, &b, cmp::min));
+            let a1 = from_ref(a);
+            let b1 = from_ref(b);
             let actual = a1.infimum(&b1);
             expected == actual
         }

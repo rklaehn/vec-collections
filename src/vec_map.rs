@@ -1,3 +1,4 @@
+#![allow(clippy::clone_on_copy)]
 #[cfg(feature = "total")]
 use crate::iterators::SliceIterator;
 use crate::{
@@ -990,9 +991,9 @@ mod tests {
             let a: Test = a.into();
             let b: Test = b.into();
             let actual = a.outer_join(&b, |arg| Some(match arg {
-                Left(_, a) => a.clone(),
-                Right(_, b) => b.clone(),
-                Both(_, _, b) => b.clone(),
+                Left(_, a) => *a,
+                Right(_, b) => *b,
+                Both(_, _, b) => *b,
             }));
             expected == actual
         }
@@ -1001,7 +1002,7 @@ mod tests {
             let expected: Test = inner_join_reference(&a, &b).into();
             let a: Test = a.into();
             let b: Test = b.into();
-            let actual = a.inner_join(&b, |_, a,_| Some(a.clone()));
+            let actual = a.inner_join(&b, |_, a,_| Some(*a));
             expected == actual
         }
     }
