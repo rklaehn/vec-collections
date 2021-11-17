@@ -1,6 +1,7 @@
 //! A data structure for in place modification of smallvecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
+#![allow(dead_code)]
 use core::fmt::Debug;
 use smallvec::{Array, SmallVec};
 
@@ -241,7 +242,7 @@ mod tests {
 
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
-        F: Fn(SmallVec<Array<'a>>, SmallVec<Array<'a>>) -> (),
+        F: Fn(SmallVec<Array<'a>>, SmallVec<Array<'a>>),
     {
         let mut a: SmallVec<Array<'a>> = SmallVec::new();
         let mut b: SmallVec<Array<'a>> = SmallVec::new();

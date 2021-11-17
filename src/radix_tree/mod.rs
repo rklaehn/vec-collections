@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! A radix tree
 //!
 //! The advantage of a radix tree over a collection like a [BTreeMap](std::collections::BTreeMap) or a [HashMap](std::collections::HashMap)
@@ -301,7 +302,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
         &self,
         that: &impl AbstractRadixTree<K, V, Materialized = Self::Materialized>,
     ) -> Self::Materialized {
-        self.outer_combine(that, |a, b| Some(a.clone()))
+        self.outer_combine(that, |a, _| Some(a.clone()))
     }
 
     /// In place left biased union with another tree of the same key and value type
@@ -316,7 +317,7 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
 
     /// Intersection with another tree of the same key type
     fn intersection<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> Self::Materialized {
-        self.inner_combine(that, |a, b| Some(a.clone()))
+        self.inner_combine(that, |a, _| Some(a.clone()))
     }
 
     /// In place intersection with another tree of the same key type
@@ -1150,7 +1151,7 @@ fn left_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Mat
 ) -> R {
     let n = common_prefix(a.prefix(), b.prefix());
     let mut prefix = a.prefix()[..n].into();
-    let mut children = Vec::<R>::new();
+    let children;
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
         // prefixes are identical

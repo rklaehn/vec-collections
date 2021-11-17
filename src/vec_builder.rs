@@ -1,6 +1,7 @@
 //! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
+#![allow(dead_code)]
 use core::fmt::Debug;
 
 use crate::merge_state::Converter;
@@ -238,7 +239,7 @@ mod tests {
 
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
-        F: Fn(Vec<Item<'a>>, Vec<Item<'a>>) -> (),
+        F: Fn(Vec<Item<'a>>, Vec<Item<'a>>),
     {
         let mut a: Vec<Item<'a>> = Vec::new();
         let mut b: Vec<Item<'a>> = Vec::new();

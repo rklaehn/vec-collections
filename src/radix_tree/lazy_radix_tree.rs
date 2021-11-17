@@ -16,6 +16,7 @@ impl<T: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static> TValue
 /// it needs to have a lifetime parameter.
 ///
 /// This is even more experimental than the other radix tree stuff!
+#[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
 where
