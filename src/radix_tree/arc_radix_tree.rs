@@ -27,6 +27,7 @@ fn wrap_in_arc<T>(data: Vec<T>) -> Arc<Vec<T>> {
     }
 }
 
+/// A generic radix tree with structural sharing and copy on write
 #[derive(Clone)]
 pub struct ArcRadixTree<K, V>
 where
@@ -108,6 +109,7 @@ impl<K: TKey, V: TValue> ArcRadixTree<K, V> {
         &mut self.children
     }
 
+    /// copy all arcs that are used internally in this tree, and store them in a BTreeMap
     pub fn all_arcs(&self, into: &mut BTreeMap<usize, Arc<Vec<Self>>>) {
         let children = self.children_arc();
         into.insert(location(children.as_ref()), children.clone());

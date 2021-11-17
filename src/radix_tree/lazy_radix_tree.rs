@@ -12,6 +12,10 @@ pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'stat
 
 impl<T: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static> TValue for T {}
 
+/// A radix tree with structural sharing and copy on write, that is lazily loaded from an rkyv archive
+///
+/// Since this is lazily loaded from a byte slice, it can only live as long as the byte slice. Therefore
+/// it needs to have a lifetime parameter.
 #[derive(Clone)]
 pub struct LazyRadixTree<'a, K, V>
 where
@@ -103,6 +107,7 @@ impl<'a, K: TKey, V: TValue> LazyRadixTree<'a, K, V> {
         self.children.get()
     }
 
+    /// copy all arcs that are used internally in this tree, and store them in a BTreeMap
     pub fn all_arcs(&self, into: &mut BTreeMap<usize, Arc<Vec<Self>>>) {
         if let Some(children) = self.maybe_arc() {
             into.insert(location(children.as_ref()), children.clone());

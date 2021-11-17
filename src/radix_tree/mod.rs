@@ -1,22 +1,42 @@
+//! A radix tree
+//!
+//! The advantage of a radix tree over a collection like a [BTreeMap](std::collections::BTreeMap) or a [HashMap](std::collections::HashMap)
+//! is that keys are not stored in full. So when keys are very long and commonly have a common prefix,
+//! a radix tree is a good choice.
+//!
+//! Radix trees allow very quick (O(log n)) filtering by prefix, as well as very fast (O(1)) prepending a prefix.
+//!
+//! Radix trees in this crate come in three flavours:
+//! - [RadixTree](RadixTree) is the most straightforward flavour. It does not contain any indirection.
+//!   use this for short lived objects.
+//! - [ArcRadixTree](ArcRadixTree) allows cheap snapshots and has copy on write semantics.
+//!   use this for a longer lived in memory tree that evolves over time
+//! - [LazyRadixTree](LazyRadixTree) allows cheap snapshots, copy on write semantics, and lazy loading.
+//!   use this for e.g. memory mapping a giant radix tree from a large file, that does not fit in memory.
+//!
+//! No attempt is made to hide the internal structure. E.g. if you want to use a RadixTree as a set,
+//! this is possible by using unit as value type, but probably not very convenient.
 use std::{borrow::Borrow, cmp::Ordering, fmt::Debug, marker::PhantomData, ops::Deref, sync::Arc};
 
+/// Trait for everything that is needed for a component to be a radix tree key component
 pub trait TKey: Debug + Ord + Copy + Archive<Archived = Self> + Send + Sync + 'static {}
 
 impl<T: Debug + Ord + Copy + Archive<Archived = T> + Send + Sync + 'static> TKey for T {}
 
+/// Trait for everything that is needed for a component to be a radix tree value
 pub trait TValue: Debug + Clone + Archive + Send + Sync + 'static {}
 
 impl<T: Debug + Clone + Archive + Send + Sync + 'static> TValue for T {}
 
 use rkyv::Archive;
-#[cfg(feature = "rkyv")]
+#[cfg(feature = "lazy_radixtree")]
 mod lazy_radix_tree;
-#[cfg(feature = "rkyv")]
-pub use lazy_radix_tree::*;
+#[cfg(feature = "lazy_radixtree")]
+pub use lazy_radix_tree::LazyRadixTree;
 #[cfg(feature = "rkyv")]
 mod arc_radix_tree;
 #[cfg(feature = "rkyv")]
-pub use arc_radix_tree::*;
+pub use arc_radix_tree::ArcRadixTree;
 use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod radix_tree;
@@ -27,7 +47,7 @@ use crate::{
         NoConverter, VecMergeState,
     },
 };
-pub use radix_tree::*;
+pub use radix_tree::RadixTree;
 
 /// A path fragment
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -196,15 +216,16 @@ pub(crate) mod internals {
             );
         }
 
-        fn remove_prefix_children_with<W, R>(&mut self, rhs: &[R])
+        fn remove_prefix_children_with<W, R, F>(&mut self, rhs: &[R], f: F)
         where
             W: TValue,
             R: AbstractRadixTree<K, W>,
+            F: Fn(&W) -> bool + Copy,
         {
             InPlaceVecMergeStateRef::merge(
                 self.children_mut(),
                 &rhs,
-                RemovePrefixOp(PhantomData),
+                RemovePrefixOp(f, PhantomData),
                 NoConverter,
             );
         }
@@ -213,28 +234,24 @@ pub(crate) mod internals {
 
 use internals::AbstractRadixTreeMut as _;
 
+/// Interface to a mutable abstract radix tree that allows mutation.
 pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTreeMut<K, V> {
+    /// Create an empty tree
     fn empty() -> Self {
         Self::default()
     }
 
+    /// Create a leaf tree - with just a value, but no prefix and no children
     fn leaf(value: V) -> Self {
         Self::new(Fragment::default(), Some(value), Default::default())
     }
 
+    /// Create a tree containing a single key/value pair
     fn single(key: &[K], value: V) -> Self {
         Self::new(key.into(), Some(value), Vec::new())
     }
 
-    fn prepend(&mut self, prefix: &[K]) {
-        if !prefix.is_empty() && !self.is_empty() {
-            let mut prefix1 = SmallVec::new();
-            prefix1.extend_from_slice(prefix);
-            prefix1.extend_from_slice(self.prefix());
-            *self.prefix_mut() = prefix1.into();
-        }
-    }
-
+    /// Return the subtree with the given prefix. Will return an empty tree in case there is no match.
     fn filter_prefix(&self, prefix: &[K]) -> Self {
         match find(self, prefix) {
             FindResult::Found(tree) => {
@@ -253,7 +270,19 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
         }
     }
 
+    /// Prepend a prefix to the tree
+    fn prepend(&mut self, prefix: &[K]) {
+        if !prefix.is_empty() && !self.is_empty() {
+            let mut prefix1 = SmallVec::new();
+            prefix1.extend_from_slice(prefix);
+            prefix1.extend_from_slice(self.prefix());
+            *self.prefix_mut() = prefix1.into();
+        }
+    }
+
     /// Left biased union with another tree of the same key and value type
+    ///
+    /// If you want a right biased union, you can implement it with [outer_combine_with](AbstractRadixTreeMut::outer_combine_with).
     fn union_with(
         &mut self,
         that: &impl AbstractRadixTree<K, V, Materialized = Self::Materialized>,
@@ -401,29 +430,41 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
         self.unsplit();
     }
 
-    fn remove_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+    /// Remove all parts of the tree for which that contains a prefix.
+    fn remove_prefix_with<W: TValue>(
+        &mut self,
+        that: &impl AbstractRadixTree<K, W>,
+        f: impl Fn(&W) -> bool + Copy,
+    ) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
-            if that.value().is_some() {
-                *self.value_mut() = None;
-                self.children_mut().clear();
-            } else {
-                self.remove_prefix_children_with(that.children());
+            match that.value() {
+                Some(value) if f(value) => {
+                    *self.value_mut() = None;
+                    self.children_mut().clear();
+                }
+                _ => {
+                    self.remove_prefix_children_with(that.children(), f);
+                }
             }
         } else if n == that.prefix().len() {
             // that is a prefix of self
-            if that.value().is_some() {
-                *self.value_mut() = None;
-                self.children_mut().clear();
-            } else {
-                self.split(n);
-                self.remove_prefix_children_with(that.children());
+
+            match that.value() {
+                Some(value) if f(value) => {
+                    *self.value_mut() = None;
+                    self.children_mut().clear();
+                }
+                _ => {
+                    self.split(n);
+                    self.remove_prefix_children_with(that.children(), f);
+                }
             }
         } else if n == self.prefix().len() {
             // self is a prefix of that
             let that = that.materialize_shortened(n);
-            self.remove_prefix_children_with(&[that]);
+            self.remove_prefix_children_with(&[that], f);
         } else {
             // disjoint, nothing to do
         }
@@ -470,12 +511,19 @@ impl<K: TKey, V: TValue, T: internals::AbstractRadixTreeMut<K, V>> AbstractRadix
 ///
 /// This is mostly for DRYing the various flavours of radix trees in this crate as well as their rkyved versions.
 pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
+    /// The prefix of this node. May only be empty for the top level node of a tree
     fn prefix(&self) -> &[K];
+
+    /// The optional value
     fn value(&self) -> Option<&V>;
+
+    /// The children
     fn children(&self) -> &[Self];
 
+    /// Type of a materialized, mutable version of this tree
     type Materialized: AbstractRadixTreeMut<K, V, Materialized = Self::Materialized>;
 
+    /// True if the tree is empty
     fn is_empty(&self) -> bool {
         self.value().is_none() && self.children().is_empty()
     }
@@ -511,6 +559,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         Values::new(self)
     }
 
+    /// True if key is contained in this set
     fn contains_key(&self, key: &[K]) -> bool {
         // if we find a tree at exactly the location, and it has a value, we have a hit
         if let FindResult::Found(tree) = find(self, key) {
@@ -520,6 +569,7 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         }
     }
 
+    /// Get an optional reference to the value for the given key
     fn get(&self, key: &[K]) -> Option<&V> {
         // if we find a tree at exactly the location, and it has a value, we have a hit
         if let FindResult::Found(tree) = find(self, key) {
@@ -536,6 +586,9 @@ pub trait AbstractRadixTree<K: TKey, V: TValue>: Sized {
         is_subset(self, that)
     }
 
+    /// true if the keys of self are a superset of the keys of that.
+    ///
+    /// a set is considered to be a subset of itself.
     fn is_superset<W: TValue>(&self, that: &impl AbstractRadixTree<K, W>) -> bool {
         is_subset(that, self)
     }
@@ -675,6 +728,8 @@ where
 }
 
 /// Key for iteration
+///
+/// This refers to a temporary key that is being constructed during iteration. Cloning it will make a copy.
 #[derive(Debug, Clone)]
 pub struct IterKey<K>(Arc<Vec<K>>);
 
@@ -714,6 +769,10 @@ impl<T> core::ops::Deref for IterKey<T> {
     }
 }
 
+/// An iterator over the values of a radix tree.
+///
+/// This is more efficient than taking the value part of an entry iteration, because the keys
+/// do not have to be constructed.
 pub struct Values<'a, K, V, T> {
     stack: Vec<(&'a T, usize)>,
     _p: PhantomData<(K, V)>,
@@ -761,6 +820,10 @@ where
     }
 }
 
+/// An iterator over the elements (key and value) of a radix tree
+///
+/// A complication of this compared to an iterator for a normal collection is that the keys do
+/// not acutally exist, but are constructed on demand during iteration.
 pub struct Iter<'a, K, V, T> {
     path: IterKey<K>,
     stack: Vec<(&'a T, usize)>,
@@ -830,7 +893,7 @@ impl<T: AbstractRadixTree<K, V>, K: TKey, V: TValue> Converter<&T, T::Materializ
     }
 }
 
-pub fn is_subset<K: TKey, V: TValue, W: TValue>(
+fn is_subset<K: TKey, V: TValue, W: TValue>(
     l: &impl AbstractRadixTree<K, V>,
     r: &impl AbstractRadixTree<K, W>,
 ) -> bool {
@@ -1267,13 +1330,14 @@ where
 }
 
 /// Remove prefixes of b in a
-struct RemovePrefixOp<P>(PhantomData<P>);
+struct RemovePrefixOp<F, P>(F, PhantomData<P>);
 
-impl<'a, K, V, W, I, R> MergeOperation<I> for RemovePrefixOp<(K, V, W)>
+impl<'a, K, V, W, F, I, R> MergeOperation<I> for RemovePrefixOp<F, (K, V, W)>
 where
     K: TKey,
     V: TValue,
     W: TValue,
+    F: Fn(&W) -> bool + Copy,
     I: MutateInput<A = R>,
     I::B: AbstractRadixTree<K, W>,
     R: AbstractRadixTreeMut<K, V, Materialized = R>,
@@ -1291,7 +1355,7 @@ where
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
-        av.remove_prefix_with(bv);
+        av.remove_prefix_with(bv, self.0);
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
@@ -1449,7 +1513,7 @@ mod test {
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
             let mut r1 = a1;
-            r1.remove_prefix_with(&b1);
+            r1.remove_prefix_with(&b1, |_| true);
             let mut r = a;
             // keep all elements of a for which no element in b is a prefix
             r.retain(|re| !b.iter().any(|x| re.starts_with(x)));
@@ -1581,7 +1645,7 @@ mod test {
     fn remove_prefix_sample() {
         let mut test = test_tree(&["a", "aa", "aaa", "ab", "b", "bc", "bc", "eeeee", "eeeef"]);
         let exclude = test_tree(&["aa", "bc", "ee"]);
-        test.remove_prefix_with(&exclude);
+        test.remove_prefix_with(&exclude, |_| true);
         let expected = test_tree(&["a", "ab", "b"]);
         assert_eq!(test, expected);
     }
@@ -1607,6 +1671,9 @@ fn location<T>(x: &T) -> usize {
     (x as *const T) as usize
 }
 
+/// Helper to contain an object and an interator that takes the object by reference
+///
+/// This is a quick way to implement into_iter in terms of iter.
 pub struct ObjAndIter<K, V> {
     k: Box<K>,
     v: V,

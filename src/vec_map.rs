@@ -7,6 +7,7 @@ use crate::{
     VecSet,
 };
 use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
+#[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
 use smallvec::{Array, SmallVec};

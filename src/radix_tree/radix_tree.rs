@@ -2,6 +2,7 @@ use super::{internals, AbstractRadixTree, AbstractRadixTreeMut, Fragment, TKey, 
 use std::fmt::Debug;
 use std::iter::FromIterator;
 
+/// A generic radix tree
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RadixTree<K, V> {
     pub(crate) prefix: Fragment<K>,
@@ -64,12 +65,6 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
             value: None,
             children: Vec::new(),
         }
-    }
-}
-
-impl<K: Ord + Copy + Debug, V: Debug> RadixTree<K, V> {
-    pub fn empty() -> Self {
-        Self::default()
     }
 }
 

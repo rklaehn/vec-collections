@@ -7,7 +7,7 @@ use crate::{
     dedup::sort_and_dedup,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
-
+#[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
 use core::{
     cmp::Ordering,

@@ -16,6 +16,7 @@ default = ["inplace", "serde"]
 inplace = []
 total = []
 radixtree = []
+lazy_radixtree = ["parking_lot"]
 rkyv_validated = ["rkyv", "bytecheck"]
 
 [dependencies]
@@ -25,8 +26,7 @@ smallvec = "1.4"
 serde = { version = "1", default-features = false, optional = true }
 rkyv = { version= "0.7.18", optional = true }
 bytecheck = { version = "0.6.5", optional = true }
-lazy-init = "0.5.0"
-parking_lot = "0.11.2"
+parking_lot = { version = "0.11.2", optional = true }
 lazy_static = "1.4.0"
 
 [dev-dependencies]
@@ -63,5 +63,5 @@ required-features = ["radixtree", "rkyv", "rkyv_validated"]
 
 [[example]]
 name = "radix_tree"
-required-features = ["radixtree"]
+required-features = ["radixtree", "lazy_radixtree"]
 
