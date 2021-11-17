@@ -117,6 +117,10 @@ pub(crate) mod internals {
     pub trait AbstractRadixTreeMut<K: TKey, V: TValue>:
         AbstractRadixTree<K, V, Materialized = Self> + Clone + Default
     {
+        /// Creates a new, possibly non-canonical node
+        ///
+        /// because this allows the creation of a non-canonical node, which is sometimes necessary
+        /// for intermediate states, it must not be publicly exposed.
         fn new(prefix: Fragment<K>, value: Option<V>, children: Vec<Self>) -> Self;
         fn value_mut(&mut self) -> &mut Option<V>;
         fn children_mut(&mut self) -> &mut Vec<Self>;
@@ -1038,11 +1042,12 @@ fn outer_combine<
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
         // prefixes are identical
-        if let Some(a) = a.value() {
-            if let Some(b) = &b.value() {
-                value = f(a, b);
-            }
-        }
+        value = match (a.value(), b.value()) {
+            (Some(a), Some(b)) => f(a, b),
+            (Some(a), None) => Some(a.clone()),
+            (None, Some(b)) => Some(b.clone()),
+            (None, None) => None,
+        };
         children = VecMergeState::merge(
             a.children(),
             b.children(),
@@ -1078,7 +1083,9 @@ fn outer_combine<
         children.push(b.materialize_shortened(n));
         children.sort_by_key(|x| x.prefix()[0]);
     }
-    R::new(prefix, value, children)
+    let mut res = R::new(prefix, value, children);
+    res.unsplit();
+    res
 }
 
 /// Inner combine two trees with a function f
@@ -1093,11 +1100,10 @@ fn inner_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Ma
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
         // prefixes are identical
-        if let Some(a) = a.value() {
-            if let Some(b) = &b.value() {
-                value = f(a, b);
-            }
-        }
+        value = match (a.value(), b.value()) {
+            (Some(a), Some(b)) => f(a, b),
+            _ => None,
+        };
         children = VecMergeState::merge(
             a.children(),
             b.children(),
@@ -1128,7 +1134,9 @@ fn inner_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Ma
     } else {
         // disjoint
     }
-    R::new(prefix, value, children)
+    let mut res = R::new(prefix, value, children);
+    res.unsplit();
+    res
 }
 
 /// Left combine two trees with a function f
@@ -1138,14 +1146,15 @@ fn left_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Mat
     f: impl Fn(&V, Option<&W>) -> Option<V> + Copy,
 ) -> R {
     let n = common_prefix(a.prefix(), b.prefix());
-    let prefix = a.prefix()[..n].into();
+    let mut prefix = a.prefix()[..n].into();
     let mut children = Vec::<R>::new();
     let mut value = None;
     if n == a.prefix().len() && n == b.prefix().len() {
         // prefixes are identical
-        if let Some(a) = a.value() {
-            value = f(a, b.value());
-        }
+        value = match (a.value(), b.value()) {
+            (Some(a), b) => f(a, b),
+            _ => None,
+        };
         children = VecMergeState::merge(
             a.children(),
             b.children(),
@@ -1156,6 +1165,7 @@ fn left_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Mat
     } else if n == a.prefix().len() {
         // a is a prefix of b
         let b = b.materialize_shortened(n);
+        value = a.value().cloned();
         children = VecMergeState::merge(
             a.children(),
             &[b],
@@ -1175,8 +1185,17 @@ fn left_combine<K: TKey, V: TValue, W: TValue, R: AbstractRadixTreeMut<K, V, Mat
         );
     } else {
         // disjoint
+        prefix = a.prefix().into();
+        value = a.value().cloned();
+        children = a
+            .children()
+            .iter()
+            .map(|x| x.materialize_shortened(0))
+            .collect();
     }
-    R::new(prefix, value, children)
+    let mut res = R::new(prefix, value, children);
+    res.unsplit();
+    res
 }
 
 struct IntersectOp<T>(PhantomData<T>);
@@ -1552,7 +1571,10 @@ mod test {
     impl Arbitrary for RadixTree<u8, ()> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {
             let t: Vec<String> = Arbitrary::arbitrary(g);
-            t.iter().map(|x| (x.as_bytes().to_vec(), ())).collect()
+            t.iter()
+                .take(2)
+                .map(|x| (x.as_bytes().to_vec(), ()))
+                .collect()
         }
     }
 
@@ -1670,6 +1692,7 @@ mod test {
             let r1 = a1.difference(&b1);
             let expected = r2t(&a.difference(&b).cloned().collect());
             if expected != r1 {
+                println!("a:{:#?}\nb:{:#?}", a1, b1);
                 println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
             }
             expected == r1
@@ -1820,6 +1843,22 @@ mod test {
         let b = r2t(&btreeset! {});
         println!("a.is_subset(b): {}", a.is_subset(&b));
         assert!(binary_property_test(&a, &b, a.is_subset(&b), |a, b| !a | b));
+    }
+
+    #[test]
+    fn difference_sample1() {
+        let a = r2t(&btreeset! { vec![]});
+        let b = r2t(&btreeset! { vec![0] });
+        println!("a.difference(b): {:#?}", a.difference(&b));
+        assert!(binary_element_test(&a, &b, a.difference(&b), |a, b| a & !b));
+    }
+
+    #[test]
+    fn difference_sample2() {
+        let a = r2t(&btreeset! { vec![0]});
+        let b = r2t(&btreeset! { vec![1] });
+        println!("a.difference(b): {:#?}", a.difference(&b));
+        assert!(binary_element_test(&a, &b, a.difference(&b), |a, b| a & !b));
     }
 
     #[test]
