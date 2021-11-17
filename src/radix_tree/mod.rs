@@ -207,7 +207,7 @@ pub(crate) mod internals {
             );
         }
 
-        fn retain_prefix_children_with<W, R>(&mut self, rhs: &[R])
+        fn retain_prefix_children_with<W, R>(&mut self, rhs: &[R], f: impl Fn(&W) -> bool + Copy)
         where
             W: TValue,
             R: AbstractRadixTree<K, W>,
@@ -215,7 +215,7 @@ pub(crate) mod internals {
             InPlaceVecMergeStateRef::merge(
                 self.children_mut(),
                 &rhs,
-                RetainPrefixOp(PhantomData),
+                RetainPrefixOp(f, PhantomData),
                 NoConverter,
             );
         }
@@ -514,26 +514,29 @@ pub trait AbstractRadixTreeMut<K: TKey, V: TValue>: internals::AbstractRadixTree
     ///
     /// The predicate `f` is used to filter the tree `that` before applying it.
     /// If the predicate returns always false, this will result in the empty tree.
-    fn retain_prefix_with<W: TValue>(&mut self, that: &impl AbstractRadixTree<K, W>) {
+    fn retain_prefix_with<W: TValue>(
+        &mut self,
+        that: &impl AbstractRadixTree<K, W>,
+        f: impl Fn(&W) -> bool + Copy,
+    ) {
         let n = common_prefix(self.prefix(), that.prefix());
         if n == self.prefix().len() && n == that.prefix().len() {
             // prefixes are identical
-            if that.value().is_none() {
+            if that.value().is_none() || !f(that.value().unwrap()) {
                 *self.value_mut() = None;
-                self.retain_prefix_children_with(that.children());
-            } // otherwise, keep it all
+                self.retain_prefix_children_with(that.children(), f);
+            }
         } else if n == that.prefix().len() {
             // that is a prefix of self
-            if that.value().is_none() {
-                *self.value_mut() = None;
+            if that.value().is_none() || !f(that.value().unwrap()) {
                 self.split(n);
-                self.retain_prefix_children_with(that.children());
+                self.retain_prefix_children_with(that.children(), f);
             } // otherwise, keep it all
         } else if n == self.prefix().len() {
             // self is a prefix of that
             *self.value_mut() = None;
             let that = that.materialize_shortened(n);
-            self.retain_prefix_children_with(&[that]);
+            self.retain_prefix_children_with(&[that], f);
         } else {
             // disjoint, nuke it
             *self.value_mut() = None;
@@ -1526,13 +1529,14 @@ where
 }
 
 /// Retain prefixes of b in a
-struct RetainPrefixOp<P>(PhantomData<P>);
+struct RetainPrefixOp<F, P>(F, PhantomData<P>);
 
-impl<'a, K, V, W, I, R> MergeOperation<I> for RetainPrefixOp<(K, V, W)>
+impl<'a, K, V, W, F, I, R> MergeOperation<I> for RetainPrefixOp<F, (K, V, W)>
 where
     K: TKey,
     V: TValue,
     W: TValue,
+    F: Fn(&W) -> bool + Copy,
     I: MutateInput<A = R>,
     I::B: AbstractRadixTree<K, W>,
     R: AbstractRadixTreeMut<K, V, Materialized = R>,
@@ -1550,7 +1554,7 @@ where
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
-        av.retain_prefix_with(bv);
+        av.retain_prefix_with(bv, self.0);
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
@@ -1717,13 +1721,14 @@ mod test {
             let b = b.into_iter().collect();
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
-            let mut r1 = a1;
+            let mut r1 = a1.clone();
             r1.remove_prefix_with(&b1, |_| true);
             let mut r = a;
             // keep all elements of a for which no element in b is a prefix
             r.retain(|re| !b.iter().any(|x| re.starts_with(x)));
             let expected = r2t(&r);
             if expected != r1 {
+                println!("a:{:#?}\nb:{:#?}", a1, b1);
                 println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
             }
             expected == r1
@@ -1734,13 +1739,14 @@ mod test {
             let b = b.into_iter().collect();
             let a1: Test = r2t(&a);
             let b1: Test = r2t(&b);
-            let mut r1 = a1;
-            r1.retain_prefix_with(&b1);
+            let mut r1 = a1.clone();
+            r1.retain_prefix_with(&b1, |_| true);
             let mut r = a;
             // keep all elements of a for which no element in b is a prefix
             r.retain(|re| b.iter().any(|x| re.starts_with(x)));
             let expected = r2t(&r);
             if expected != r1 {
+                println!("a:{:#?}\nb:{:#?}", a1, b1);
                 println!("expected:{:#?}\nvalue:{:#?}", expected, r1);
             }
             expected == r1
@@ -1862,7 +1868,7 @@ mod test {
     }
 
     #[test]
-    fn remove_prefix_sample() {
+    fn remove_prefix_sample1() {
         let mut test = test_tree(&["a", "aa", "aaa", "ab", "b", "bc", "bc", "eeeee", "eeeef"]);
         let exclude = test_tree(&["aa", "bc", "ee"]);
         test.remove_prefix_with(&exclude, |_| true);
@@ -1871,10 +1877,19 @@ mod test {
     }
 
     #[test]
+    fn retain_prefix_sample1() {
+        let a = r2t(&btreeset! { vec![0]});
+        let b = r2t(&btreeset! { vec![0], vec![1] });
+        let mut r = a.clone();
+        r.retain_prefix_with(&b, |_| true);
+        assert_eq!(r, a);
+    }
+
+    #[test]
     fn retain_prefix_sample() {
         let mut test = test_tree(&["a", "aa", "aaa", "ab", "b", "bc", "bcd", "eeeee", "eeeef"]);
         let exclude = test_tree(&["aa", "bc", "ee"]);
-        test.retain_prefix_with(&exclude);
+        test.retain_prefix_with(&exclude, |_| true);
         let expected = test_tree(&["aa", "aaa", "bc", "bcd", "eeeee", "eeeef"]);
         assert_eq!(test, expected);
     }
