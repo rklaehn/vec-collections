@@ -16,7 +16,10 @@ lazy_static! {
 }
 
 fn empty_arc<T>() -> Arc<Vec<T>> {
-    unsafe { std::mem::transmute(EMPTY_ARC_VEC.clone()) }
+    /// TODO: this seems to work, but is strictly speaking ub. Get rid of the unsafe
+    unsafe {
+        std::mem::transmute(EMPTY_ARC_VEC.clone())
+    }
 }
 
 fn wrap_in_arc<T>(data: Vec<T>) -> Arc<Vec<T>> {

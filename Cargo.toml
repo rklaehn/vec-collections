@@ -18,6 +18,7 @@ total = []
 radixtree = []
 lazy_radixtree = ["parking_lot"]
 rkyv_validated = ["rkyv", "bytecheck"]
+std_support = []
 
 [dependencies]
 sorted-iter = "0.1"

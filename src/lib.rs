@@ -85,6 +85,9 @@ pub mod total_vec_map;
 #[cfg(feature = "total")]
 pub mod total_vec_set;
 
+#[cfg(feature = "std_support")]
+pub mod btree_map;
+
 mod dedup;
 mod iterators;
 

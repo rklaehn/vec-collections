@@ -1,3 +1,6 @@
+//! Some support for operations that combine BTreeMaps and archived BTreeMaps
+//!
+//!
 use rkyv::collections::ArchivedBTreeMap;
 
 use crate::OuterJoinArg;
@@ -23,7 +26,6 @@ impl<'a, K, V> Iterator for AbstractBTreeMapIter<'a, K, V> {
 }
 
 impl<K, V> AbstractBTreeMap<K, V> for BTreeMap<K, V> {
-
     fn iter(&self) -> AbstractBTreeMapIter<K, V> {
         AbstractBTreeMapIter::BTreeMap(self.iter())
     }
@@ -31,13 +33,13 @@ impl<K, V> AbstractBTreeMap<K, V> for BTreeMap<K, V> {
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Ord + Borrow<Q>,
-        Q: Ord + ?Sized {
+        Q: Ord + ?Sized,
+    {
         self.get(key)
     }
 }
 
 impl<K, V> AbstractBTreeMap<K, V> for ArchivedBTreeMap<K, V> {
-
     fn iter(&self) -> AbstractBTreeMapIter<K, V> {
         AbstractBTreeMapIter::ArchivedBTreeMap(self.iter())
     }
@@ -45,7 +47,8 @@ impl<K, V> AbstractBTreeMap<K, V> for ArchivedBTreeMap<K, V> {
     fn get<Q>(&self, key: &Q) -> Option<&V>
     where
         K: Ord + Borrow<Q>,
-        Q: Ord + ?Sized {
+        Q: Ord + ?Sized,
+    {
         self.get(key)
     }
 }
