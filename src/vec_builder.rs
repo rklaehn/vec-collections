@@ -186,28 +186,6 @@ impl<'a, T> InPlaceVecBuilder<'a, T> {
     }
 }
 
-impl<'a, T> InPlaceVecBuilder<'a, T>
-where
-    T: Clone,
-{
-    /// Take at most `n` elements from `iter` to the target
-    #[inline]
-    pub fn extend_from_ref_iter<I: Iterator, C: Converter<I::Item, T>>(
-        &mut self,
-        iter: &mut I,
-        n: usize,
-    ) {
-        if n > 0 {
-            self.reserve(n);
-            for _ in 0..n {
-                if let Some(value) = iter.next() {
-                    self.push_unsafe(C::convert(value))
-                }
-            }
-        }
-    }
-}
-
 #[inline]
 unsafe fn copy<T>(v: *mut T, from: usize, to: usize, n: usize) {
     // if to < from {
