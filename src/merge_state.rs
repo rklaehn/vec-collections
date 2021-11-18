@@ -62,7 +62,7 @@ impl<'a, A: Array, B: Array, C: Converter<B::Item, A::Item>> MergeStateMut
     }
     fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
-            self.a.extend_from_iter::<_, C>(&mut self.b, n);
+            self.a.extend_from_iter((&mut self.b).map(C::convert), n);
         } else {
             for _ in 0..n {
                 let _ = self.b.next();
@@ -125,7 +125,7 @@ where
     }
     fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
-            self.a.extend_from_iter::<_, C>(&mut self.b, n);
+            self.a.extend_from_iter((&mut self.b).map(C::convert), n);
         } else {
             for _ in 0..n {
                 let _ = self.b.next();
@@ -196,7 +196,7 @@ where
     }
     fn advance_b(&mut self, n: usize, take: bool) -> EarlyOut {
         if take {
-            self.a.extend_from_iter::<_, C>(&mut self.b, n);
+            self.a.extend_from_iter((&mut self.b).map(C::convert), n);
         } else {
             for _ in 0..n {
                 let _ = self.b.next();

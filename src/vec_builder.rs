@@ -4,8 +4,6 @@
 #![allow(dead_code)]
 use core::fmt::Debug;
 
-use crate::merge_state::Converter;
-
 /// builds a SmallVec out of itself
 pub struct InPlaceVecBuilder<'a, T> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
@@ -87,16 +85,12 @@ impl<'a, T> InPlaceVecBuilder<'a, T> {
 
     /// Take at most `n` elements from `iter` to the target
     #[inline]
-    pub fn extend_from_iter<I: Iterator, C: Converter<I::Item, T>>(
-        &mut self,
-        iter: &mut I,
-        n: usize,
-    ) {
+    pub fn extend_from_iter<I: Iterator<Item = T>>(&mut self, mut iter: I, n: usize) {
         if n > 0 {
             self.reserve(n);
             for _ in 0..n {
                 if let Some(value) = iter.next() {
-                    self.push_unsafe(C::convert(value))
+                    self.push_unsafe(value)
                 }
             }
         }
