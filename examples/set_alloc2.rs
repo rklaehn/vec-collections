@@ -29,7 +29,7 @@ fn main() {
     let n = 1000;
     let mut bs = Vec::<PlotStats>::new();
     for i in 0..n {
-        let reg = Region::new(&GLOBAL);
+        let reg = Region::new(GLOBAL);
         let r = (0..i).collect::<BTreeSet<_>>();
         let stats: stats_alloc::Stats = reg.change();
         bs.push(stats.into());
@@ -37,7 +37,7 @@ fn main() {
     }
     let mut vs = Vec::<PlotStats>::new();
     for i in 0..n {
-        let reg = Region::new(&GLOBAL);
+        let reg = Region::new(GLOBAL);
         let mut r = (0..i).collect::<VecSet<[u32; 4]>>();
         r.shrink_to_fit();
         let stats: stats_alloc::Stats = reg.change();
@@ -45,7 +45,7 @@ fn main() {
     }
     let mut hs = Vec::<PlotStats>::new();
     for i in 0..n {
-        let reg = Region::new(&GLOBAL);
+        let reg = Region::new(GLOBAL);
         let mut r = (0..i).collect::<HashSet<_>>();
         r.shrink_to_fit();
         let stats: stats_alloc::Stats = reg.change();

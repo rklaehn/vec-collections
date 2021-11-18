@@ -48,6 +48,7 @@ macro_rules! bitop_empty {
 }
 
 /// checks properties of the all element vs. bitops and sub/not
+#[allow(unused_macros)]
 macro_rules! bitop_sub_not_all {
     ($test:ty) => {
         #[quickcheck]

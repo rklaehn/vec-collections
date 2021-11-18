@@ -1,7 +1,7 @@
 extern crate vec_collections;
 
 use std::collections::{BTreeSet, HashSet};
-use vec_collections::VecSet2;
+use vec_collections::{AbstractVecSet, VecSet2};
 
 // #[macro_use]
 // extern crate lazy_static;
@@ -137,24 +137,24 @@ fn is_disjoint_hashset(data: &TestData) {
     let dt = std::time::Instant::now() - t0;
     println!("is_disjoint hashset {} {} {:?}", _r, data.params, dt);
 }
-fn creation_arrayset(name: &str, data: &Vec<Element>) {
-    let elems = data.clone();
+fn creation_arrayset(name: &str, data: &[Element]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: VecSet2<Element> = elems.into_iter().collect();
+    let a: VecSet2<Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation vecset {} {} {:?}", a.len(), name, dt);
 }
-fn creation_btreeset(name: &str, data: &Vec<Element>) {
-    let elems = data.clone();
+fn creation_btreeset(name: &str, data: &[Element]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: BTreeSet<Element> = elems.into_iter().collect();
+    let a: BTreeSet<Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation btreeset {} {} {:?}", a.len(), name, dt);
 }
-fn creation_hashset(name: &str, data: &Vec<Element>) {
-    let elems = data.clone();
+fn creation_hashset(name: &str, data: &[Element]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: HashSet<Element> = elems.into_iter().collect();
+    let a: HashSet<Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation hashset {} {} {:?}", a.len(), name, dt);
 }

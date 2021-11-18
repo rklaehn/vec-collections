@@ -1,8 +1,4 @@
-use crate::{
-    binary_merge::{EarlyOut, MergeOperation},
-    merge_state::SmallVecMergeState,
-    vec_map::VecMap,
-};
+use crate::vec_map::{AbstractVecMap, VecMap};
 use core::{
     borrow::Borrow,
     cmp,
@@ -210,110 +206,24 @@ impl<K: Ord + Clone, V: One + Eq + Clone, A: Array<Item = (K, V)>> One for Total
     }
 }
 
-struct CombineOp<F, V> {
-    f: F,
-    a_default: V,
-    b_default: V,
-    r_default: V,
-}
-
-/// a fast combine op is an op where we know that the default for both a and b is the neutral element of the operation
-struct FastCombineOp<'a, F, V> {
-    f: F,
-    r_default: &'a V,
-}
-
-type PairMergeState2<'a, Arr> =
-    SmallVecMergeState<'a, <Arr as Array>::Item, <Arr as Array>::Item, Arr>;
-
-impl<'a, K: Ord + Clone, V: Eq, F: Fn(&V, &V) -> V, Arr: Array<Item = (K, V)>>
-    MergeOperation<PairMergeState2<'a, Arr>> for CombineOp<F, &'a V>
-{
-    fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
-        a.0.cmp(&b.0)
-    }
-    fn from_a(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) -> EarlyOut {
-        for _ in 0..n {
-            if let Some((k, a)) = m.a.next() {
-                let result = (self.f)(a, self.b_default);
-                if result != *self.r_default {
-                    m.r.push((k.clone(), result))
-                }
-            }
-        }
-        Some(())
-    }
-    fn from_b(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) -> EarlyOut {
-        for _ in 0..n {
-            if let Some((k, b)) = m.b.next() {
-                let result = (self.f)(self.a_default, b);
-                if result != *self.r_default {
-                    m.r.push((k.clone(), result))
-                }
-            }
-        }
-        Some(())
-    }
-    fn collision(&self, m: &mut PairMergeState2<'a, Arr>) -> EarlyOut {
-        if let Some((k, a)) = m.a.next() {
-            if let Some((_, b)) = m.b.next() {
-                let result = (self.f)(a, b);
-                if result != *self.r_default {
-                    m.r.push((k.clone(), result))
-                }
-            }
-        }
-        Some(())
-    }
-}
-
-impl<'a, K: Ord + Clone, V: Eq + Clone, F: Fn(&V, &V) -> V, Arr: Array<Item = (K, V)>>
-    MergeOperation<PairMergeState2<'a, Arr>> for FastCombineOp<'a, F, V>
-{
-    fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
-        a.0.cmp(&b.0)
-    }
-    fn from_a(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) -> EarlyOut {
-        for _ in 0..n {
-            if let Some((k, a)) = m.a.next() {
-                m.r.push((k.clone(), a.clone()));
-            }
-        }
-        Some(())
-    }
-    fn from_b(&self, m: &mut PairMergeState2<'a, Arr>, n: usize) -> EarlyOut {
-        for _ in 0..n {
-            if let Some((k, b)) = m.b.next() {
-                m.r.push((k.clone(), b.clone()));
-            }
-        }
-        Some(())
-    }
-    fn collision(&self, m: &mut PairMergeState2<'a, Arr>) -> EarlyOut {
-        if let Some((k, a)) = m.a.next() {
-            if let Some((_, b)) = m.b.next() {
-                let result = (self.f)(a, b);
-                if result != *self.r_default {
-                    m.r.push((k.clone(), result))
-                }
-            }
-        }
-        Some(())
-    }
-}
-
 impl<K: Ord + Clone, V: Eq, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
     /// combine a total map with another total map, using a function that takes value references
     pub fn combine_ref<F: Fn(&V, &V) -> V>(&self, that: &Self, f: F) -> Self {
+        use crate::vec_map::OuterJoinArg;
         let r_default = f(&self.1, &that.1);
-        let op = CombineOp {
-            f,
-            a_default: &self.1,
-            b_default: &that.1,
-            r_default: &r_default,
-        };
-        let r = SmallVecMergeState::merge(self.0.as_ref(), that.0.as_ref(), op);
-        Self(VecMap::new(r), r_default)
+        let r = self.0.outer_join(&that.0, |arg| {
+            let r = match arg {
+                OuterJoinArg::Left(_, v) => f(v, &that.1),
+                OuterJoinArg::Right(_, w) => f(&self.1, w),
+                OuterJoinArg::Both(_, v, w) => f(v, w),
+            };
+            if r != r_default {
+                Some(r)
+            } else {
+                None
+            }
+        });
+        Self(r, r_default)
     }
 }
 
@@ -323,24 +233,6 @@ impl<K: Ord + Clone, V: Ord + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> 
     }
     pub fn infimum(&self, that: &Self) -> Self {
         self.combine_ref(that, |a, b| cmp::min(a, b).clone())
-    }
-}
-
-/// not sure if I can even use fast_combine in rust
-#[allow(dead_code)]
-impl<K: Ord + Clone, V: Eq + Clone, A: Array<Item = (K, V)>> TotalVecMap<V, A> {
-    pub(crate) fn fast_combine<F: Fn(&V, &V) -> V>(
-        &self,
-        that: &TotalVecMap<V, A>,
-        f: F,
-    ) -> TotalVecMap<V, A> {
-        let r_default = f(&self.1, &that.1);
-        let op = FastCombineOp {
-            f,
-            r_default: &r_default,
-        };
-        let r = SmallVecMergeState::merge(self.0.as_ref(), that.0.as_ref(), op);
-        Self(VecMap::new(r), r_default)
     }
 }
 
@@ -391,7 +283,7 @@ mod tests {
 
     fn from_ref(r: Ref) -> Test {
         let (elements, default) = r;
-        Test::new(elements.clone().into(), default)
+        Test::new(elements.into(), default)
     }
 
     impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap1<K, V> {
@@ -433,17 +325,17 @@ mod tests {
         }
 
         fn supremum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::max(a, b)));
-            let a1 = from_ref(a.clone());
-            let b1 = from_ref(b.clone());
+            let expected = from_ref(combine_reference(&a, &b, cmp::max));
+            let a1 = from_ref(a);
+            let b1 = from_ref(b);
             let actual = a1.supremum(&b1);
             expected == actual
         }
 
         fn infimum(a: Ref, b: Ref) -> bool {
-            let expected = from_ref(combine_reference(&a, &b, |a, b| cmp::min(a, b)));
-            let a1 = from_ref(a.clone());
-            let b1 = from_ref(b.clone());
+            let expected = from_ref(combine_reference(&a, &b, cmp::min));
+            let a1 = from_ref(a);
+            let b1 = from_ref(b);
             let actual = a1.infimum(&b1);
             expected == actual
         }

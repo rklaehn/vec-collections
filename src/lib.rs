@@ -31,6 +31,10 @@
 //!
 //! Provides a map backed by a [SmallVec] of key value pairs.
 //!
+//! ## [RadixTree]
+//!
+//! A [RadixTree] that comes in different flavours.
+//!
 //! ## [TotalVecSet]
 //!
 //! A [VecSet] with an additional flag so it can support negation. This way it is possible to represent e.g. the set of all u64 except 1.
@@ -48,6 +52,7 @@
 //! [VecMap]: struct.VecMap.html
 //! [TotalVecSet]: struct.TotalVecSet
 //! [TotalVecMap]: struct.TotalVecMap
+//! [RadixTree]: radix_tree/struct.RadixTree.html
 //! [Ord]: https://doc.rust-lang.org/std/cmp/trait.Ord.html
 //! [BTreeSet]: https://doc.rust-lang.org/std/collections/struct.BTreeSet.html
 //! [BTreeMap]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
@@ -76,10 +81,17 @@ mod merge_state;
 mod vec_map;
 mod vec_set;
 
+#[cfg(feature = "radixtree")]
+pub mod radix_tree;
+
 #[cfg(feature = "total")]
-mod total_vec_map;
+pub mod total_vec_map;
+
 #[cfg(feature = "total")]
-mod total_vec_set;
+pub mod total_vec_set;
+
+#[cfg(feature = "std_support")]
+pub mod btree_map;
 
 mod dedup;
 mod iterators;
@@ -90,13 +102,10 @@ mod macros;
 mod obey;
 
 mod small_vec_builder;
+mod vec_builder;
 
 pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
 pub use macros::*;
 pub use smallvec::Array;
-#[cfg(feature = "total")]
-pub use total_vec_map::*;
-#[cfg(feature = "total")]
-pub use total_vec_set::*;
 pub use vec_map::*;
 pub use vec_set::*;

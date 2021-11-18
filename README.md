@@ -53,6 +53,10 @@ A [VecSet] with an additional flag so it can support negation. This way it is po
 
 A [VecMap] with an additional default value, so lookup is a total function.
 
+## [RadixTree]
+
+A generic radix tree, coming in different flavours
+
 # Unsafe
 
 The in place operations use unsafe code. If that is a problem for you, let me know and I can hide them behind a feature.

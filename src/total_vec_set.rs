@@ -1,4 +1,4 @@
-use crate::VecSet;
+use crate::{AbstractVecSet, VecSet};
 use core::{
     fmt,
     fmt::{Debug, Write},
@@ -334,7 +334,7 @@ impl<T: Ord, A: Array<Item = T>> Not for TotalVecSet<A> {
 
 #[cfg(test)]
 mod tests {
-    #[allow(dead_code)]
+    #![allow(dead_code)]
     use super::*;
     use quickcheck::*;
     use std::collections::BTreeSet;
@@ -350,7 +350,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
     /// just a helper to get good output when a check fails
     fn print_on_failure_unary<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {
         let res = expected == actual;

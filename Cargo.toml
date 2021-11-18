@@ -1,6 +1,6 @@
 [package]
 name = "vec-collections"
-version = "0.3.6"
+version = "0.4.0"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>"]
 description = "Rust collections that are newtype wrappers around smallvec"
 repository = "https://github.com/rklaehn/vec-collections"
@@ -15,7 +15,10 @@ homepage = "https://github.com/rklaehn"
 default = ["inplace", "serde"]
 inplace = []
 total = []
+radixtree = []
+lazy_radixtree = ["parking_lot"]
 rkyv_validated = ["rkyv", "bytecheck"]
+std_support = []
 
 [dependencies]
 sorted-iter = "0.1"
@@ -24,6 +27,8 @@ smallvec = "1.4"
 serde = { version = "1", default-features = false, optional = true }
 rkyv = { version= "0.7.18", optional = true }
 bytecheck = { version = "0.6.5", optional = true }
+parking_lot = { version = "0.11.2", optional = true }
+lazy_static = "1.4.0"
 
 [dev-dependencies]
 quickcheck = "0.8"
@@ -38,7 +43,11 @@ criterion = "0.3.0"
 fnv = "1.0.7"
 anyhow = "1.0.32"
 stats_alloc = "0.1.8"
-rkyv = { version = "0.7.18", features = ["validation"] }
+rkyv = { version = "0.7.19", features = ["validation", "smallvec"] }
+hex = "0.4.3"
+hexdump = "0.1.1"
+futures = "0.3.17"
+tokio = { version = "1.13.0", features = ["full"] }
 
 [[bench]]
 name = "set_comparison"
@@ -48,3 +57,12 @@ harness = false
 [[bench]]
 name = "set_ops"
 harness = false
+
+[[example]]
+name = "radix_db"
+required-features = ["radixtree", "rkyv", "rkyv_validated"]
+
+[[example]]
+name = "radix_tree"
+required-features = ["radixtree", "lazy_radixtree"]
+

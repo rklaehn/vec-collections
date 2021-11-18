@@ -1,25 +1,24 @@
-//! A data structure for in place modification of smallvecs.
+//! A data structure for in place modification of vecs.
 // #![deny(warnings)]
 #![deny(missing_docs)]
 #![allow(dead_code)]
 use core::fmt::Debug;
-use smallvec::{Array, SmallVec};
 
 use crate::merge_state::Converter;
 
 /// builds a SmallVec out of itself
-pub struct InPlaceSmallVecBuilder<'a, A: Array> {
+pub struct InPlaceVecBuilder<'a, T> {
     /// the underlying vector, possibly containing some uninitialized values in the middle!
-    v: &'a mut SmallVec<A>,
+    v: &'a mut Vec<T>,
     /// the end of the target area
     t1: usize,
     /// the start of the source area
     s0: usize,
 }
 
-impl<'a, T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<'a, A> {
+impl<'a, T: Debug> Debug for InPlaceVecBuilder<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let InPlaceSmallVecBuilder { s0, t1, v } = self;
+        let InPlaceVecBuilder { s0, t1, v } = self;
         let s1 = v.len();
         let cap = v.capacity();
         write!(
@@ -32,9 +31,9 @@ impl<'a, T: Debug, A: Array<Item = T>> Debug for InPlaceSmallVecBuilder<'a, A> {
 
 /// initializes the source part of this flip buffer with the given vector.
 /// The target part is initially empty.
-impl<'a, A: Array> From<&'a mut SmallVec<A>> for InPlaceSmallVecBuilder<'a, A> {
-    fn from(value: &'a mut SmallVec<A>) -> Self {
-        InPlaceSmallVecBuilder {
+impl<'a, T> From<&'a mut Vec<T>> for InPlaceVecBuilder<'a, T> {
+    fn from(value: &'a mut Vec<T>) -> Self {
+        InPlaceVecBuilder {
             v: value,
             s0: 0,
             t1: 0,
@@ -42,24 +41,24 @@ impl<'a, A: Array> From<&'a mut SmallVec<A>> for InPlaceSmallVecBuilder<'a, A> {
     }
 }
 
-impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
+impl<'a, T> InPlaceVecBuilder<'a, T> {
     fn assert_invariants(&self) {
         assert!(self.t1 <= self.s0);
         assert!(self.s0 <= self.v.len());
         // assert!(self.v.len() <= self.v.capacity()); vec invariant
     }
     /// The current target part as a slice
-    pub fn target_slice(&self) -> &[A::Item] {
+    pub fn target_slice(&self) -> &[T] {
         &self.v[..self.t1]
     }
 
     /// The current source part as a slice
-    pub fn source_slice(&self) -> &[A::Item] {
+    pub fn source_slice(&self) -> &[T] {
         &self.v[self.s0..]
     }
 
     /// The current source part as a slice
-    pub fn source_slice_mut(&mut self) -> &mut [A::Item] {
+    pub fn source_slice_mut(&mut self) -> &mut [T] {
         &mut self.v[self.s0..]
     }
 
@@ -88,7 +87,7 @@ impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
 
     /// Take at most `n` elements from `iter` to the target
     #[inline]
-    pub fn extend_from_iter<I: Iterator, C: Converter<I::Item, A::Item>>(
+    pub fn extend_from_iter<I: Iterator, C: Converter<I::Item, T>>(
         &mut self,
         iter: &mut I,
         n: usize,
@@ -104,13 +103,13 @@ impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
     }
 
     /// Push a single value to the target
-    pub fn push(&mut self, value: A::Item) {
+    pub fn push(&mut self, value: T) {
         // ensure we have space!
         self.reserve(1);
         self.push_unsafe(value);
     }
 
-    fn push_unsafe(&mut self, value: A::Item) {
+    fn push_unsafe(&mut self, value: T) {
         unsafe { std::ptr::write(self.v.as_mut_ptr().add(self.t1), value) }
         self.t1 += 1;
     }
@@ -166,7 +165,7 @@ impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
     }
 
     /// Takes the next element from the source, if it exists
-    pub fn pop_front(&mut self) -> Option<A::Item> {
+    pub fn pop_front(&mut self) -> Option<T> {
         if self.s0 < self.v.len() {
             self.s0 += 1;
             Some(unsafe { std::ptr::read(self.v.as_ptr().add(self.s0 - 1)) })
@@ -187,13 +186,13 @@ impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A> {
     }
 }
 
-impl<'a, A: Array> InPlaceSmallVecBuilder<'a, A>
+impl<'a, T> InPlaceVecBuilder<'a, T>
 where
-    A::Item: Clone,
+    T: Clone,
 {
     /// Take at most `n` elements from `iter` to the target
     #[inline]
-    pub fn extend_from_ref_iter<I: Iterator, C: Converter<I::Item, A::Item>>(
+    pub fn extend_from_ref_iter<I: Iterator, C: Converter<I::Item, T>>(
         &mut self,
         iter: &mut I,
         n: usize,
@@ -225,7 +224,7 @@ unsafe fn copy<T>(v: *mut T, from: usize, to: usize, n: usize) {
 
 /// the purpose of drop is to clean up and make the SmallVec that we reference into a normal
 /// SmallVec again.
-impl<'a, A: Array> Drop for InPlaceSmallVecBuilder<'a, A> {
+impl<'a, T> Drop for InPlaceVecBuilder<'a, T> {
     fn drop(&mut self) {
         // drop the source part.
         self.drop_source();
@@ -238,14 +237,12 @@ mod tests {
     use super::*;
     use testdrop::{Item, TestDrop};
 
-    type Array<'a> = [Item<'a>; 2];
-
     fn everything_dropped<'a, F>(td: &'a TestDrop, n: usize, f: F)
     where
-        F: Fn(SmallVec<Array<'a>>, SmallVec<Array<'a>>),
+        F: Fn(Vec<Item<'a>>, Vec<Item<'a>>),
     {
-        let mut a: SmallVec<Array<'a>> = SmallVec::new();
-        let mut b: SmallVec<Array<'a>> = SmallVec::new();
+        let mut a: Vec<Item<'a>> = Vec::new();
+        let mut b: Vec<Item<'a>> = Vec::new();
         let mut ids: Vec<usize> = Vec::new();
         for _ in 0..n {
             let (id, item) = td.new_item();
@@ -266,14 +263,14 @@ mod tests {
     #[test]
     fn drop_just_source() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let _: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let _: InPlaceVecBuilder<Item> = (&mut a).into();
         })
     }
 
     #[test]
     fn target_push_gap() {
         everything_dropped(&TestDrop::new(), 10, |mut a, b| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             for x in b.into_iter() {
                 res.push(x);
             }
@@ -283,7 +280,7 @@ mod tests {
     #[test]
     fn source_move_some() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             res.take(3);
         })
     }
@@ -291,7 +288,7 @@ mod tests {
     #[test]
     fn source_move_all() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             res.take(10);
         })
     }
@@ -299,7 +296,7 @@ mod tests {
     #[test]
     fn source_drop_some() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             res.skip(3);
         })
     }
@@ -307,7 +304,7 @@ mod tests {
     #[test]
     fn source_drop_all() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             res.skip(10);
         })
     }
@@ -315,7 +312,7 @@ mod tests {
     #[test]
     fn source_pop_some() {
         everything_dropped(&TestDrop::new(), 10, |mut a, _| {
-            let mut res: InPlaceSmallVecBuilder<Array> = (&mut a).into();
+            let mut res: InPlaceVecBuilder<Item> = (&mut a).into();
             res.pop_front();
             res.pop_front();
             res.pop_front();

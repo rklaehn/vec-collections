@@ -8,24 +8,24 @@ fn element(x: usize) -> Element {
     x as Element
 }
 
-fn creation_vecmap(name: &str, data: &Vec<(Element, Element)>) {
-    let elems = data.clone();
+fn creation_vecmap(name: &str, data: &[(Element, Element)]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: VecMap1<Element, Element> = elems.into_iter().collect();
+    let a: VecMap1<Element, Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation vecmap {} {} {:?}", a.len(), name, dt);
 }
-fn creation_btreemap(name: &str, data: &Vec<(Element, Element)>) {
-    let elems = data.clone();
+fn creation_btreemap(name: &str, data: &[(Element, Element)]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: BTreeMap<Element, Element> = elems.into_iter().collect();
+    let a: BTreeMap<Element, Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation btreemap {} {} {:?}", a.len(), name, dt);
 }
-fn creation_hashmap(name: &str, data: &Vec<(Element, Element)>) {
-    let elems = data.clone();
+fn creation_hashmap(name: &str, data: &[(Element, Element)]) {
+    let elems = data;
     let t0 = std::time::Instant::now();
-    let a: HashMap<Element, Element> = elems.into_iter().collect();
+    let a: HashMap<Element, Element> = elems.iter().cloned().collect();
     let dt = std::time::Instant::now() - t0;
     println!("creation hashmap {} {} {:?}", a.len(), name, dt);
 }

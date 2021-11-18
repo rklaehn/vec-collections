@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use core::fmt::Debug;
 use std::collections::BTreeSet;
 
@@ -13,7 +14,6 @@ pub trait TestSamples<K, V> {
     fn at(&self, k: K) -> V;
 }
 
-#[allow(dead_code)]
 pub fn unary_element_test<C, K, V>(a: &C, r: C, op: impl Fn(V) -> V) -> bool
 where
     C: TestSamples<K, V> + Debug + Clone,

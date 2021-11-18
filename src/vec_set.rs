@@ -1,12 +1,14 @@
-use crate::merge_state::InPlaceMergeState;
+pub use crate::iterators::VecSetIter;
+use crate::merge_state::{
+    CloneConverter, IdConverter, InPlaceMergeState, InPlaceSmallVecMergeStateRef, NoConverter,
+};
 use crate::{
     binary_merge::{EarlyOut, MergeOperation},
     dedup::sort_and_dedup,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
-
-pub use crate::iterators::VecSetIter;
-
+#[cfg(feature = "rkyv_validated")]
+use bytecheck::CheckBytes;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -65,7 +67,7 @@ struct SetDiffOpt;
 ///
 /// # General usage
 /// ```
-/// use vec_collections::VecSet;
+/// use vec_collections::{VecSet, AbstractVecSet};
 /// let a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
 /// println!("{}", a.is_disjoint(&b)); // true
@@ -75,7 +77,7 @@ struct SetDiffOpt;
 ///
 /// # In place operations
 /// ```
-/// use vec_collections::VecSet;
+/// use vec_collections::{VecSet, AbstractVecSet};
 /// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let b: VecSet<[u32; 4]> = (2..6).collect(); // does not allocate
 /// a &= b; // in place intersection, will yield 2..4, will not allocate
@@ -104,6 +106,111 @@ pub struct VecSet<A: Array>(SmallVec<A>);
 ///
 /// This is a good default, since for usize sized types, 2 is the max you can fit in without making the struct larger.
 pub type VecSet2<T> = VecSet<[T; 2]>;
+
+/// An abstract vec set
+///
+/// this is implemented by VecSet and ArchivedVecSet, so they are interoperable.
+pub trait AbstractVecSet<T: Ord> {
+    // the elements as a slice, must be strictly ordered
+    fn as_slice(&self) -> &[T];
+    fn is_empty(&self) -> bool {
+        self.as_slice().is_empty()
+    }
+    fn contains(&self, value: &T) -> bool {
+        self.as_slice().binary_search(value).is_ok()
+    }
+
+    /// true if this set has no common elements with another set.
+    fn is_disjoint(&self, that: &impl AbstractVecSet<T>) -> bool {
+        !BoolOpMergeState::merge(self.as_slice(), that.as_slice(), SetIntersectionOp)
+    }
+
+    /// true if this set is a subset of another set.
+    ///
+    /// A set is considered to be a subset of itself.
+    fn is_subset(&self, that: &impl AbstractVecSet<T>) -> bool {
+        !BoolOpMergeState::merge(self.as_slice(), that.as_slice(), SetDiffOpt)
+    }
+
+    /// true if this set is a superset of another set.
+    ///
+    /// A set is considered to be a superset of itself.
+    fn is_superset(&self, that: &impl AbstractVecSet<T>) -> bool {
+        !BoolOpMergeState::merge(that.as_slice(), self.as_slice(), SetDiffOpt)
+    }
+
+    fn union<A: Array<Item = T>>(&self, that: &impl AbstractVecSet<T>) -> VecSet<A>
+    where
+        T: Clone,
+    {
+        VecSet(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetUnionOp,
+            CloneConverter,
+        ))
+    }
+
+    fn intersection<A: Array<Item = T>>(&self, that: &impl AbstractVecSet<T>) -> VecSet<A>
+    where
+        T: Clone,
+    {
+        VecSet(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetIntersectionOp,
+            CloneConverter,
+        ))
+    }
+
+    fn symmetric_difference<A: Array<Item = T>>(&self, that: &impl AbstractVecSet<T>) -> VecSet<A>
+    where
+        T: Clone,
+    {
+        VecSet(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetXorOp,
+            CloneConverter,
+        ))
+    }
+
+    fn difference<A: Array<Item = T>>(&self, that: &impl AbstractVecSet<T>) -> VecSet<A>
+    where
+        T: Clone,
+    {
+        VecSet(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetDiffOpt,
+            CloneConverter,
+        ))
+    }
+
+    /// An iterator that returns references to the items of this set in sorted order
+    fn iter(&self) -> VecSetIter<core::slice::Iter<T>> {
+        VecSetIter::new(self.as_slice().iter())
+    }
+}
+
+impl<A: Array> AbstractVecSet<A::Item> for VecSet<A>
+where
+    A::Item: Ord,
+{
+    fn as_slice(&self) -> &[A::Item] {
+        self.0.as_ref()
+    }
+}
+
+#[cfg(feature = "rkyv")]
+impl<T> AbstractVecSet<T> for ArchivedVecSet<T>
+where
+    T: Ord,
+{
+    fn as_slice(&self) -> &[T] {
+        self.0.as_ref()
+    }
+}
 
 impl<T: fmt::Debug, A: Array<Item = T>> fmt::Debug for VecSet<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -191,7 +298,7 @@ where
     /// insert an element.
     ///
     /// The time complexity of this is O(N), so building a large set using single element inserts will be slow!
-    /// Prefer using [from_iter](from_iter) when building a large VecSet from elements.
+    /// Prefer using [from_iter](std::iter::FromIterator::from_iter) when building a large VecSet from elements.
     pub fn insert(&mut self, that: A::Item) -> bool {
         match self.0.binary_search(&that) {
             Ok(index) => {
@@ -208,7 +315,7 @@ where
     /// Remove an element.
     ///
     /// The time complexity of this is O(N), so removing many elements using single element removes inserts will be slow!
-    /// Prefer using [retain](retain) when removing a large number of elements.
+    /// Prefer using [retain](VecSet::retain) when removing a large number of elements.
     pub fn remove(&mut self, that: &A::Item) -> bool {
         if let Ok(index) = self.0.binary_search(that) {
             self.0.remove(index);
@@ -221,32 +328,6 @@ where
     /// Retain all elements matching a predicate.
     pub fn retain<F: FnMut(&A::Item) -> bool>(&mut self, mut f: F) {
         self.0.retain(|entry| f(entry))
-    }
-
-    /// true if this set has no common elements with another set.
-    pub fn is_disjoint<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetIntersectionOp)
-    }
-
-    /// true if this set is a subset of another set.
-    ///
-    /// A set is considered to be a subset of itself.
-    pub fn is_subset<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
-        !BoolOpMergeState::merge(&self.0, &that.0, SetDiffOpt)
-    }
-
-    /// true if this set is a superset of another set.
-    ///
-    /// A set is considered to be a superset of itself.
-    pub fn is_superset<B: Array<Item = A::Item>>(&self, that: &VecSet<B>) -> bool {
-        that.is_subset(self)
-    }
-
-    /// true if this set contains the item.
-    ///
-    /// Time complexity is O(log N). Binary search.
-    pub fn contains(&self, value: &A::Item) -> bool {
-        self.0.binary_search(value).is_ok()
     }
 
     /// creates a set from a vec.
@@ -294,59 +375,88 @@ impl<A: Array> From<VecSet<A>> for SmallVec<A> {
     }
 }
 
-impl<T: Ord + Clone, Arr: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<Arr> {
-    type Output = VecSet<Arr>;
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAnd<&VecSet<B>> for &VecSet<A> {
+    type Output = VecSet<A>;
     fn bitand(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new_unsafe(SmallVecMergeState::merge(
-            &self.0,
-            &that.0,
-            SetIntersectionOp,
-        ))
+        self.intersection(that)
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOr<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn bitor(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetUnionOp))
+        self.union(that)
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXor<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn bitxor(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetXorOp))
+        self.symmetric_difference(that)
     }
 }
 
 impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> Sub<&VecSet<B>> for &VecSet<A> {
     type Output = VecSet<A>;
     fn sub(self, that: &VecSet<B>) -> Self::Output {
-        Self::Output::new_unsafe(SmallVecMergeState::merge(&self.0, &that.0, SetDiffOpt))
+        self.difference(that)
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<VecSet<B>> for VecSet<A> {
     fn bitand_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetIntersectionOp, IdConverter);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitAndAssign<&VecSet<B>>
+    for VecSet<A>
+{
+    fn bitand_assign(&mut self, that: &VecSet<B>) {
+        InPlaceSmallVecMergeStateRef::merge(
+            &mut self.0,
+            &that.0,
+            SetIntersectionOp,
+            CloneConverter,
+        );
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<VecSet<B>> for VecSet<A> {
     fn bitor_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetUnionOp, IdConverter);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitOrAssign<&VecSet<B>> for VecSet<A> {
+    fn bitor_assign(&mut self, that: &VecSet<B>) {
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetUnionOp, CloneConverter);
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<VecSet<B>> for VecSet<A> {
     fn bitxor_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetXorOp, IdConverter);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> BitXorAssign<&VecSet<B>>
+    for VecSet<A>
+{
+    fn bitxor_assign(&mut self, that: &VecSet<B>) {
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetXorOp, CloneConverter);
     }
 }
 
 impl<T: Ord, A: Array<Item = T>, B: Array<Item = T>> SubAssign<VecSet<B>> for VecSet<A> {
     fn sub_assign(&mut self, that: VecSet<B>) {
-        InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt);
+        InPlaceMergeState::merge(&mut self.0, that.0, SetDiffOpt, IdConverter);
+    }
+}
+
+impl<T: Ord + Clone, A: Array<Item = T>, B: Array<Item = T>> SubAssign<&VecSet<B>> for VecSet<A> {
+    fn sub_assign(&mut self, that: &VecSet<B>) {
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.0, SetDiffOpt, CloneConverter);
     }
 }
 
@@ -560,7 +670,7 @@ where
     }
 }
 
-/// Validation error for a range set
+/// Validation error for a vec set
 #[cfg(feature = "rkyv_validated")]
 #[derive(Debug)]
 pub enum ArchivedVecSetError {
@@ -593,7 +703,7 @@ where
         context: &mut C,
     ) -> Result<&'a Self, Self::Error> {
         let values = &(*value).0;
-        rkyv::vec::ArchivedVec::<T>::check_bytes(values, context)
+        CheckBytes::check_bytes(values, context)
             .map_err(|_| ArchivedVecSetError::ValueCheckError)?;
         if !values.iter().zip(values.iter().skip(1)).all(|(a, b)| a < b) {
             return Err(ArchivedVecSetError::OrderCheckError);
@@ -602,52 +712,78 @@ where
     }
 }
 
-// impl<T: Ord> BitAnd for VecSet<T> {
-//     type Output = VecSet<T>;
-//     fn bitand(mut self, that: Self) -> Self::Output {
-//         self &= that;
-//         self
-//     }
-// }
+impl<A: Array> VecSet<A>
+where
+    A::Item: Ord + Clone,
+{
+    pub fn union(&self, that: &impl AbstractVecSet<A::Item>) -> Self {
+        Self(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetUnionOp,
+            CloneConverter,
+        ))
+    }
 
-// impl<T: Ord> BitOr for VecSet<T> {
-//     type Output = VecSet<T>;
-//     fn bitor(mut self, that: Self) -> Self::Output {
-//         self |= that;
-//         self
-//     }
-// }
+    pub fn intersection(&self, that: &impl AbstractVecSet<A::Item>) -> Self {
+        Self(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetIntersectionOp,
+            CloneConverter,
+        ))
+    }
 
-// impl<T: Ord> BitXor for VecSet<T> {
-//     type Output = VecSet<T>;
-//     fn bitxor(mut self, that: Self) -> Self::Output {
-//         self ^= that;
-//         self
-//     }
-// }
+    pub fn symmetric_difference(&self, that: &impl AbstractVecSet<A::Item>) -> Self {
+        Self(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetXorOp,
+            CloneConverter,
+        ))
+    }
 
-// impl<T: Ord + Default + Copy> VecSet<T> {
-//     pub fn union_with(&mut self, that: &VecSet<T>) {
-//         InPlaceMergeState::merge(&mut self.0, &that.0, SetUnionOp());
-//     }
+    pub fn difference(&self, that: &impl AbstractVecSet<A::Item>) -> Self {
+        Self(SmallVecMergeState::merge(
+            self.as_slice(),
+            that.as_slice(),
+            SetDiffOpt,
+            CloneConverter,
+        ))
+    }
 
-//     pub fn intersection_with(&mut self, that: &VecSet<T>) {
-//         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
-//     }
+    pub fn union_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.as_slice(), SetUnionOp, NoConverter);
+    }
 
-//     pub fn xor_with(&mut self, that: &VecSet<T>) {
-//         InPlaceMergeState::merge(&mut self.0, &that.0, SetIntersectionOp());
-//     }
+    pub fn intersection_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
+        InPlaceSmallVecMergeStateRef::merge(
+            &mut self.0,
+            &that.as_slice(),
+            SetIntersectionOp,
+            NoConverter,
+        );
+    }
 
-//     pub fn difference_with(&mut self, that: &VecSet<T>) {
-//         InPlaceMergeState::merge(&mut self.0, &that.0, SetDiffOpt());
-//     }
-// }
+    pub fn xor_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
+        InPlaceSmallVecMergeStateRef::merge(
+            &mut self.0,
+            &that.as_slice(),
+            SetIntersectionOp,
+            NoConverter,
+        );
+    }
+
+    pub fn difference_with(&mut self, that: &impl AbstractVecSet<A::Item>) {
+        InPlaceSmallVecMergeStateRef::merge(&mut self.0, &that.as_slice(), SetDiffOpt, NoConverter);
+    }
+}
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::obey::*;
+    use crate::vec_set::AbstractVecSet;
     use num_traits::PrimInt;
     use quickcheck::*;
 

@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use vec_collections::{vecset, VecSet};
+use vec_collections::{vecset, AbstractVecSet, VecSet};
 
 type TestSet = VecSet<[u64; 4]>;
 
@@ -23,7 +23,7 @@ fn is_subset_small(c: &mut Criterion) {
     c.bench_with_input(
         BenchmarkId::new("is_subset", 0),
         &(&a, &b),
-        |bencher, (a, b)| bencher.iter(|| black_box(a).is_subset(black_box(b))),
+        |bencher, (a, b)| bencher.iter(|| black_box(a).is_subset(black_box(*b))),
     );
 }
 

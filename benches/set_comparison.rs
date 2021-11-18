@@ -3,7 +3,7 @@ use fnv::FnvHashSet;
 use std::collections::{BTreeSet, HashSet};
 use vec_collections::*;
 
-fn vs_create(v: &Vec<u32>) -> usize {
+fn vs_create(v: &[u32]) -> usize {
     let res: VecSet<[u32; 4]> = v.iter().cloned().collect();
     res.len()
 }
@@ -18,7 +18,7 @@ fn vs_contains(x: &VecSet<[u32; 4]>, values: &[u32]) -> usize {
     res
 }
 
-fn bs_create(v: &Vec<u32>) -> usize {
+fn bs_create(v: &[u32]) -> usize {
     let res: BTreeSet<u32> = v.iter().cloned().collect();
     res.len()
 }
@@ -33,7 +33,7 @@ fn bs_contains(x: &BTreeSet<u32>, values: &[u32]) -> usize {
     res
 }
 
-fn hs_create(v: &Vec<u32>) -> usize {
+fn hs_create(v: &[u32]) -> usize {
     let res: HashSet<u32> = v.iter().cloned().collect();
     res.len()
 }
@@ -48,7 +48,7 @@ fn hs_contains(x: &HashSet<u32>, values: &[u32]) -> usize {
     res
 }
 
-fn fh_create(v: &Vec<u32>) -> usize {
+fn fh_create(v: &[u32]) -> usize {
     let res: FnvHashSet<u32> = v.iter().cloned().collect();
     res.len()
 }
@@ -118,28 +118,28 @@ pub fn lookup_bench(c: &mut Criterion, title: &str, range: impl Iterator<Item = 
         group.bench_with_input(
             BenchmarkId::new("VecSet<[u32; 4]> lookup 10", i),
             &(coll, &lookup),
-            |b, coll| b.iter(|| vs_contains(black_box(&coll.0), &coll.1)),
+            |b, coll| b.iter(|| vs_contains(black_box(&coll.0), coll.1)),
         );
 
         let coll: BTreeSet<u32> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("BTreeSet<u32> lookup 10", i),
             &(coll, &lookup),
-            |b, coll| b.iter(|| bs_contains(black_box(&coll.0), &coll.1)),
+            |b, coll| b.iter(|| bs_contains(black_box(&coll.0), coll.1)),
         );
 
         let coll: HashSet<u32> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("HashSet<u32> lookup 10", i),
             &(coll, &lookup),
-            |b, coll| b.iter(|| hs_contains(black_box(&coll.0), &coll.1)),
+            |b, coll| b.iter(|| hs_contains(black_box(&coll.0), coll.1)),
         );
 
         let coll: FnvHashSet<u32> = values.iter().cloned().collect();
         group.bench_with_input(
             BenchmarkId::new("FnvHashSet<u32> lookup 10", i),
             &(coll, &lookup),
-            |b, coll| b.iter(|| fh_contains(black_box(&coll.0), &coll.1)),
+            |b, coll| b.iter(|| fh_contains(black_box(&coll.0), coll.1)),
         );
     }
 }
