@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::binary_merge::{EarlyOut, MergeOperation, MergeStateRead};
 use crate::iterators::SliceIterator;
 use crate::small_vec_builder::InPlaceSmallVecBuilder;
