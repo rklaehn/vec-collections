@@ -778,9 +778,9 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::obey::*;
     use crate::vec_set::AbstractVecSet;
     use num_traits::PrimInt;
+    use obey::*;
     use quickcheck::*;
 
     #[test]
