@@ -58,6 +58,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "binary-merge"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdb0e7489439321510c01eda25e0fe8d28ae940ea2eea7033c4dae41fcbfdb11"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -427,6 +433,15 @@ checksum = "e40283dadb02f3af778878be1d717b17b4e4ab92e1d935ab03a730b0542905f2"
 dependencies = [
  "arrayvec",
  "itertools 0.4.19",
+]
+
+[[package]]
+name = "inplace-vec-builder"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b8923cdf5e9dedd127dc9a61a30771c8e0eda52ca4d3d5400ec47657acc466c"
+dependencies = [
+ "smallvec",
 ]
 
 [[package]]
@@ -1205,12 +1220,14 @@ name = "vec-collections"
 version = "0.4.1"
 dependencies = [
  "anyhow",
+ "binary-merge",
  "bytecheck",
  "criterion",
  "fnv",
  "futures",
  "hex",
  "hexdump",
+ "inplace-vec-builder",
  "lazy_static",
  "maplit",
  "num-traits",

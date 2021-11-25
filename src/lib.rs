@@ -75,7 +75,6 @@ pub use sorted_iter::{SortedIterator, SortedPairIterator};
 #[macro_use]
 mod test_macros;
 
-mod binary_merge;
 mod merge_state;
 
 mod vec_map;
@@ -100,9 +99,6 @@ mod macros;
 
 #[cfg(test)]
 mod obey;
-
-mod small_vec_builder;
-mod vec_builder;
 
 pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
 pub use macros::*;

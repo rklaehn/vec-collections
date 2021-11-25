@@ -2,12 +2,12 @@
 #[cfg(feature = "total")]
 use crate::iterators::SliceIterator;
 use crate::{
-    binary_merge::{EarlyOut, MergeOperation},
     dedup::{sort_and_dedup_by_key, Keep},
     merge_state::{InPlaceSmallVecMergeStateRef, MergeStateMut, NoConverter, SmallVecMergeState},
     VecSet,
 };
 use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
+use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
@@ -207,18 +207,18 @@ impl<'a, K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V
     fn cmp(&self, a: &(K, V), b: &(K, V)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceMergeState<A, B>, n: usize) -> bool {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut InPlaceMergeState<A, B>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceMergeState<A, B>) -> bool {
         if let (Some((ak, av)), Some((_, bv))) = (m.a.pop_front(), m.b.next()) {
             let r = (self.0)(av, bv);
             m.a.push((ak, r));
         }
-        Some(())
+        true
     }
 }
 
@@ -273,7 +273,7 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
                 let arg = OuterJoinArg::Left(k, a);
@@ -282,9 +282,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 let arg = OuterJoinArg::Right(k, b);
@@ -293,9 +293,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> EarlyOut {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> bool {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 let arg = OuterJoinArg::Both(k, a, b);
@@ -304,7 +304,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -318,7 +318,7 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, v)) = m.a.pop_front() {
                 if let Some(v) = (self.0)(OuterJoinArg::Left(&k, v)) {
@@ -326,9 +326,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 if let Some(v) = (self.0)(OuterJoinArg::Right(k, b)) {
@@ -336,9 +336,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> bool {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(v) = (self.0)(OuterJoinArg::Both(&k, v, w)) {
@@ -346,7 +346,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -360,7 +360,7 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, v)) = m.a.pop_front() {
                 if let Some(v) = (self.0)(OuterJoinArg::Left(&k, v)) {
@@ -368,9 +368,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceMergeState<'a, A, B>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 if let Some(v) = (self.0)(OuterJoinArg::Right(&k, b)) {
@@ -378,9 +378,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut InPlaceMergeState<'a, A, B>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceMergeState<'a, A, B>) -> bool {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(v) = (self.0)(OuterJoinArg::Both(&k, v, w)) {
@@ -388,7 +388,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -402,7 +402,7 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, a)) = m.a.next() {
                 if let Some(res) = (self.0)(k, a, None) {
@@ -410,13 +410,13 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         m.b.drop_front(n);
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> EarlyOut {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> bool {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 if let Some(res) = (self.0)(k, a, Some(b)) {
@@ -424,7 +424,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -438,7 +438,7 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, v)) = m.a.pop_front() {
                 if let Some(v) = (self.0)(&k, v, None) {
@@ -446,13 +446,13 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         m.b.drop_front(n);
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> bool {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(v) = (self.0)(&k, v, Some(w)) {
@@ -460,7 +460,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -474,11 +474,11 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         m.a.drop_front(n);
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, b)) = m.b.next() {
                 if let Some(res) = (self.0)(k, None, b) {
@@ -486,9 +486,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> EarlyOut {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> bool {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 if let Some(res) = (self.0)(k, Some(a), b) {
@@ -496,7 +496,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -510,11 +510,11 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         m.a.consume(n, false);
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         for _ in 0..n {
             if let Some((k, w)) = m.b.next() {
                 if let Some(v) = (self.0)(k, None, w) {
@@ -522,9 +522,9 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> bool {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(res) = (self.0)(&k, Some(v), w) {
@@ -532,7 +532,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -546,15 +546,15 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         m.a.drop_front(n);
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>, n: usize) -> bool {
         m.b.drop_front(n);
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> EarlyOut {
+    fn collision(&self, m: &mut SmallVecMergeState<'a, (K, V), (K, W), A>) -> bool {
         if let Some((k, a)) = m.a.next() {
             if let Some((_, b)) = m.b.next() {
                 if let Some(res) = (self.0)(k, a, b) {
@@ -562,7 +562,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 
@@ -576,15 +576,15 @@ where
     fn cmp(&self, a: &(K, V), b: &(K, W)) -> Ordering {
         a.0.cmp(&b.0)
     }
-    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         m.a.consume(n, false);
-        Some(())
+        true
     }
-    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>, n: usize) -> bool {
         m.b.drop_front(n);
-        Some(())
+        true
     }
-    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceSmallVecMergeStateRef<'a, A, (K, W)>) -> bool {
         if let Some((k, v)) = m.a.pop_front() {
             if let Some((_, w)) = m.b.next() {
                 if let Some(v) = (self.0)(&k, v, w) {
@@ -592,7 +592,7 @@ where
                 }
             }
         }
-        Some(())
+        true
     }
 }
 

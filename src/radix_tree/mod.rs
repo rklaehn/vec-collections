@@ -42,7 +42,7 @@ use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod flat_radix_tree;
 use crate::{
-    binary_merge::{EarlyOut, MergeOperation},
+    binary_merge::MergeOperation,
     merge_state::{
         BoolOpMergeState, Converter, InPlaceVecMergeStateRef, MergeStateMut, MutateInput,
         NoConverter, VecMergeState,
@@ -1216,13 +1216,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, false)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let a = &m.a_slice()[0];
         let b = &m.b_slice()[0];
         // if this is true, we have found an intersection and can abort.
@@ -1245,13 +1245,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let a = &m.a_slice()[0];
         let b = &m.b_slice()[0];
         // if this is true, we have found a value of a that is not in b, and we can abort
@@ -1277,13 +1277,13 @@ where
     fn cmp(&self, a: &A, b: &B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>, n: usize) -> bool {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>) -> EarlyOut {
+    fn collision(&self, m: &mut InPlaceVecMergeStateRef<'a, A, B, C>) -> bool {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
@@ -1314,27 +1314,27 @@ where
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, RadixTreeConverter<K, V>>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_a(n, true)
     }
     fn from_b(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, RadixTreeConverter<K, V>>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_b(n, true)
     }
     fn collision(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, RadixTreeConverter<K, V>>,
-    ) -> EarlyOut {
+    ) -> bool {
         let a = m.a.next().unwrap();
         let b = m.b.next().unwrap();
         let res: R = outer_combine(a, b, self.0);
         if !res.is_empty() {
             m.r.push(res);
         }
-        Some(())
+        true
     }
 }
 
@@ -1354,13 +1354,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, false)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
@@ -1392,27 +1392,27 @@ where
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_a(n, false)
     }
     fn from_b(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_b(n, false)
     }
     fn collision(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
-    ) -> EarlyOut {
+    ) -> bool {
         let a = m.a.next().unwrap();
         let b = m.b.next().unwrap();
         let res = inner_combine(a, b, self.0);
         if !res.is_empty() {
             m.r.push(res);
         }
-        Some(())
+        true
     }
 }
 
@@ -1432,13 +1432,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
@@ -1470,27 +1470,27 @@ where
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_a(n, true)
     }
     fn from_b(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
         n: usize,
-    ) -> EarlyOut {
+    ) -> bool {
         m.advance_b(n, false)
     }
     fn collision(
         &self,
         m: &mut VecMergeState<'a, A, B, R, RadixTreeConverter<K, V>, NoConverter>,
-    ) -> EarlyOut {
+    ) -> bool {
         let a = m.a.next().unwrap();
         let b = m.b.next().unwrap();
         let res = left_combine(a, b, self.0);
         if !res.is_empty() {
             m.r.push(res);
         }
-        Some(())
+        true
     }
 }
 
@@ -1510,13 +1510,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
@@ -1545,13 +1545,13 @@ where
     fn cmp(&self, a: &I::A, b: &I::B) -> Ordering {
         a.prefix()[0].cmp(&b.prefix()[0])
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, false)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
+    fn collision(&self, m: &mut I) -> bool {
         let (a, b) = m.source_slices_mut();
         let av = &mut a[0];
         let bv = &b[0];
