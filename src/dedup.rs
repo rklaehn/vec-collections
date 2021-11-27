@@ -243,6 +243,15 @@ mod tests {
     }
 
     #[test]
+    fn dedup_by() {
+        let mut v: Vec<(i32, i32)> = vec![(0, 1), (0, 2), (0, 3)];
+        let r = super::dedup_by(&mut v, |(a, _), (b, _)| a == b, Keep::Last);
+        assert_eq!(r, 1);
+        v.truncate(r);
+        assert_eq!(v, vec![(0, 3)]);
+    }
+
+    #[test]
     fn sort_and_dedup_by_test() {
         let v: Vec<(i32, i32)> = vec![(0, 1), (0, 2), (0, 3), (1, 1), (1, 2)];
         let keep_first: Vec<_> = sort_dedup_by_key(v.clone().into_iter(), Keep::First, |x| &x.0);
