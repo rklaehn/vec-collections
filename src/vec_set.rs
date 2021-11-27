@@ -1,9 +1,10 @@
+use crate::dedup::Keep;
 pub use crate::iterators::VecSetIter;
 use crate::merge_state::{
     CloneConverter, IdConverter, InPlaceMergeState, InPlaceSmallVecMergeStateRef, NoConverter,
 };
 use crate::{
-    dedup::sort_and_dedup,
+    dedup::sort_dedup,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
 use binary_merge::MergeOperation;
@@ -489,7 +490,7 @@ impl<T: Ord, A: Array<Item = T>> From<BTreeSet<T>> for VecSet<A> {
 /// significantly better. For a fully sorted collection, performance will be O(n).
 impl<T: Ord, A: Array<Item = T>> FromIterator<T> for VecSet<A> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut vec = sort_and_dedup(iter.into_iter());
+        let mut vec: SmallVec<A> = sort_dedup(iter.into_iter(), Keep::First);
         vec.shrink_to_fit();
         Self::new_unsafe(vec)
     }

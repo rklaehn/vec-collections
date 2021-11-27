@@ -41,13 +41,11 @@ pub use arc_radix_tree::ArcRadixTree;
 use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod flat_radix_tree;
-use crate::{
-    binary_merge::MergeOperation,
-    merge_state::{
-        BoolOpMergeState, Converter, InPlaceVecMergeStateRef, MergeStateMut, MutateInput,
-        NoConverter, VecMergeState,
-    },
+use crate::merge_state::{
+    BoolOpMergeState, Converter, InPlaceVecMergeStateRef, MergeStateMut, MutateInput, NoConverter,
+    VecMergeState,
 };
+use binary_merge::MergeOperation;
 pub use flat_radix_tree::RadixTree;
 
 // common prefix of two slices.
@@ -1227,8 +1225,7 @@ where
         let b = &m.b_slice()[0];
         // if this is true, we have found an intersection and can abort.
         let take = intersects(a, b);
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 struct NonSubsetOp<V>(PhantomData<V>);
@@ -1256,8 +1253,7 @@ where
         let b = &m.b_slice()[0];
         // if this is true, we have found a value of a that is not in b, and we can abort
         let take = !a.is_subset(b);
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1291,8 +1287,7 @@ where
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1368,8 +1363,7 @@ where
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1446,8 +1440,7 @@ where
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1524,8 +1517,7 @@ where
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1559,8 +1551,7 @@ where
         // we have modified av in place. We are only going to take it over if it
         // is non-empty, otherwise we skip it.
         let take = !av.is_empty();
-        m.advance_a(1, take)?;
-        m.advance_b(1, false)
+        m.advance_a(1, take) && m.advance_b(1, false)
     }
 }
 
@@ -1569,8 +1560,8 @@ mod test {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::obey::*;
     use maplit::btreeset;
+    use obey::*;
     use quickcheck::*;
 
     impl Arbitrary for RadixTree<u8, ()> {

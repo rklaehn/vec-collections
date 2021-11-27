@@ -1,18 +1,18 @@
+#![doc = include_str!("../README.md")]
 use core::{
     cmp::{min, Ordering},
     marker::PhantomData,
     ops::DerefMut,
 };
-use smallvec::{Array, SmallVec};
 
 /// deduplicate a slice, moving the duplicates to the end.
 /// returns the number of unique elements.
 ///
 /// there is an unstable library feature called slice.partition_dedup which is
-/// roughly similar: https://github.com/rust-lang/rust/issues/54279
+/// roughly similar: <https://github.com/rust-lang/rust/issues/54279>
 ///
 /// the library feature would be preferable since it is unsafe and thus has no bounds checks.
-pub fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Keep) -> usize {
+fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Keep) -> usize {
     if d.is_empty() {
         return 0;
     }
@@ -30,18 +30,29 @@ pub fn dedup_by<T, F: Fn(&T, &T) -> bool>(d: &mut [T], same_bucket: F, keep: Kee
     j + 1
 }
 
+/// Enum to determine what elements to keep in case of collisions
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Keep {
+    /// when encountering duplicate elements, keep first
     First,
+    /// when encountering duplicate elements, keep last
     Last,
 }
 
-trait Inner<T>: DerefMut<Target = [T]> {
+/// Trait to abstract over the target collection, Vec or SmallVec
+pub trait Seq<T>: DerefMut<Target = [T]> {
+    /// create a new, empty collection with the given capacity
+    fn with_capacity(capacity: usize) -> Self;
+    /// push an element to the end
     fn push(&mut self, value: T);
+    /// truncate the length
     fn truncate(&mut self, size: usize);
 }
 
-impl<T> Inner<T> for Vec<T> {
+impl<T> Seq<T> for Vec<T> {
+    fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity(capacity)
+    }
     fn push(&mut self, value: T) {
         self.push(value)
     }
@@ -50,7 +61,10 @@ impl<T> Inner<T> for Vec<T> {
     }
 }
 
-impl<A: smallvec::Array> Inner<A::Item> for SmallVec<A> {
+impl<A: smallvec::Array> Seq<A::Item> for smallvec::SmallVec<A> {
+    fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity(capacity)
+    }
     fn push(&mut self, value: A::Item) {
         self.push(value)
     }
@@ -78,33 +92,28 @@ struct SortAndDedup<I, T, F> {
     _t: PhantomData<T>,
 }
 
-pub fn sort_and_dedup<A: Array, I: Iterator<Item = A::Item>>(iter: I) -> SmallVec<A>
+/// Sort and dedup an interator `I` into a collection `R`.
+///
+/// `keep` determines whether to keep the first or the last occurrence in case of duplicates
+pub fn sort_dedup<I: Iterator, R: Seq<I::Item>>(iter: I, keep: Keep) -> R
 where
     I::Item: Ord,
 {
-    let mut agg: SortAndDedup<SmallVec<A>, I::Item, _> = SortAndDedup {
-        data: SmallVec::<A>::with_capacity(min(iter.size_hint().0, 16)),
-        sorted: 0,
-        cmp: |a: &I::Item, b: &I::Item| a.cmp(b),
-        keep: Keep::First,
-        _t: PhantomData,
-    };
-    for x in iter {
-        agg.push(x);
-    }
-    agg.into_inner()
+    sort_dedup_by(iter, keep, |a: &I::Item, b: &I::Item| a.cmp(b))
 }
 
-pub fn sort_and_dedup_by_key<K, I, F>(iter: I, key: F, keep: Keep) -> Vec<I::Item>
+/// Sort and dedup an interator `I` into a collection `R`, using a comparison fn.
+///
+/// `keep` determines whether to keep the first or the last occurrence in case of duplicates
+/// `key` is a function that produces a key to sort and dedup by
+pub fn sort_dedup_by<I: Iterator, R: Seq<I::Item>, F>(iter: I, keep: Keep, cmp: F) -> R
 where
-    K: Ord,
-    I: Iterator,
-    F: Fn(&I::Item) -> &K,
+    F: Fn(&I::Item, &I::Item) -> std::cmp::Ordering,
 {
-    let mut agg: SortAndDedup<Vec<I::Item>, I::Item, _> = SortAndDedup {
-        data: Vec::with_capacity(min(iter.size_hint().0, 16)),
+    let mut agg: SortAndDedup<R, I::Item, _> = SortAndDedup {
+        data: R::with_capacity(min(iter.size_hint().0, 16)),
         sorted: 0,
-        cmp: |a: &I::Item, b: &I::Item| key(a).cmp(key(b)),
+        cmp,
         keep,
         _t: PhantomData,
     };
@@ -114,10 +123,22 @@ where
     agg.into_inner()
 }
 
+/// Sort and dedup an interator `I` into a collection `R`, using a key fn.
+///
+/// `keep` determines whether to keep the first or the last occurrence in case of duplicates
+/// `key` is a function that produces a key to sort and dedup by
+pub fn sort_dedup_by_key<I: Iterator, R: Seq<I::Item>, K: Ord, F: Fn(&I::Item) -> &K>(
+    iter: I,
+    keep: Keep,
+    key: F,
+) -> R {
+    sort_dedup_by(iter, keep, |a: &I::Item, b: &I::Item| key(a).cmp(key(b)))
+}
+
 impl<I, T, F> SortAndDedup<I, T, F>
 where
     F: Fn(&T, &T) -> Ordering,
-    I: Inner<T>,
+    I: Seq<T>,
 {
     fn sort_and_dedup(&mut self) {
         if self.sorted < self.data.len() {
@@ -198,18 +219,18 @@ mod tests {
 
     #[quickcheck]
     fn sort_and_dedup_check(x: Vec<i32>) -> bool {
-        let expected: SmallVec<[i32; 4]> = x
+        let expected: Vec<i32> = x
             .iter()
             .cloned()
             .collect::<BTreeSet<i32>>()
             .into_iter()
             .collect();
-        let actual: SmallVec<[i32; 4]> = sort_and_dedup(x.into_iter());
+        let actual: Vec<i32> = sort_dedup(x.into_iter(), Keep::First);
         expected == actual
     }
 
     #[quickcheck]
-    fn dsort_and_dedup_by_check(x: Vec<(i32, i32)>) -> bool {
+    fn sort_and_dedup_by_check(x: Vec<(i32, i32)>) -> bool {
         // TODO: make the keep_last work!
         let expected: Vec<(i32, i32)> = x
             .iter()
@@ -217,15 +238,15 @@ mod tests {
             .collect::<std::collections::BTreeMap<i32, i32>>()
             .into_iter()
             .collect();
-        let actual = sort_and_dedup_by_key(x.iter().cloned(), |x| &x.0, Keep::Last);
+        let actual = sort_dedup_by_key(x.iter().cloned(), Keep::Last, |x| &x.0);
         unary_op(x, expected, actual)
     }
 
     #[test]
     fn sort_and_dedup_by_test() {
         let v: Vec<(i32, i32)> = vec![(0, 1), (0, 2), (0, 3), (1, 1), (1, 2)];
-        let keep_first = sort_and_dedup_by_key(v.clone().into_iter(), |x| &x.0, Keep::First);
-        let keep_last = sort_and_dedup_by_key(v.clone().into_iter(), |x| &x.0, Keep::Last);
+        let keep_first: Vec<_> = sort_dedup_by_key(v.clone().into_iter(), Keep::First, |x| &x.0);
+        let keep_last: Vec<_> = sort_dedup_by_key(v.clone().into_iter(), Keep::Last, |x| &x.0);
         assert_eq!(keep_first, vec![(0, 1), (1, 1)]);
         assert_eq!(keep_last, vec![(0, 3), (1, 2)]);
         let expected: Vec<(i32, i32)> = v

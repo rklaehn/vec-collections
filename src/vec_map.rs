@@ -2,7 +2,7 @@
 #[cfg(feature = "total")]
 use crate::iterators::SliceIterator;
 use crate::{
-    dedup::{sort_and_dedup_by_key, Keep},
+    dedup::{sort_dedup_by_key, Keep},
     merge_state::{InPlaceSmallVecMergeStateRef, MergeStateMut, NoConverter, SmallVecMergeState},
     VecSet,
 };
@@ -235,7 +235,7 @@ struct InnerJoinOp<F>(F);
 
 impl<K: Ord, V, A: Array<Item = (K, V)>> FromIterator<(K, V)> for VecMap<A> {
     fn from_iter<I: IntoIterator<Item = A::Item>>(iter: I) -> Self {
-        VecMap(sort_and_dedup_by_key(iter.into_iter(), |(k, _)| k, Keep::Last).into())
+        VecMap(sort_dedup_by_key(iter.into_iter(), Keep::Last, |(k, _)| k))
     }
 }
 
