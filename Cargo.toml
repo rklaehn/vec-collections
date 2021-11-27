@@ -1,6 +1,6 @@
 [package]
 name = "vec-collections"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Rüdiger Klaehn <rklaehn@protonmail.com>"]
 description = "Rust collections that are newtype wrappers around smallvec"
 repository = "https://github.com/rklaehn/vec-collections"
@@ -29,6 +29,8 @@ rkyv = { version= "0.7.18", optional = true }
 bytecheck = { version = "0.6.5", optional = true }
 parking_lot = { version = "0.11.2", optional = true }
 lazy_static = "1.4.0"
+binary-merge = "0.1.1"
+inplace-vec-builder = { version = "0.1.0", features = ["smallvec"] }
 
 [dev-dependencies]
 quickcheck = "0.8"
@@ -48,6 +50,7 @@ hex = "0.4.3"
 hexdump = "0.1.1"
 futures = "0.3.17"
 tokio = { version = "1.13.0", features = ["full"] }
+obey = "0.1.0"
 
 [[bench]]
 name = "set_comparison"

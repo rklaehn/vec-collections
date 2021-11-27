@@ -1,12 +1,13 @@
+use crate::dedup::Keep;
 pub use crate::iterators::VecSetIter;
 use crate::merge_state::{
     CloneConverter, IdConverter, InPlaceMergeState, InPlaceSmallVecMergeStateRef, NoConverter,
 };
 use crate::{
-    binary_merge::{EarlyOut, MergeOperation},
-    dedup::sort_and_dedup,
+    dedup::sort_dedup,
     merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
 };
+use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
 use core::{
@@ -489,7 +490,7 @@ impl<T: Ord, A: Array<Item = T>> From<BTreeSet<T>> for VecSet<A> {
 /// significantly better. For a fully sorted collection, performance will be O(n).
 impl<T: Ord, A: Array<Item = T>> FromIterator<T> for VecSet<A> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut vec = sort_and_dedup(iter.into_iter());
+        let mut vec: SmallVec<A> = sort_dedup(iter.into_iter(), Keep::First);
         vec.shrink_to_fit();
         Self::new_unsafe(vec)
     }
@@ -505,15 +506,14 @@ impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetUnionOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.advance_a(1, true)?;
-        m.advance_b(1, false)
+    fn collision(&self, m: &mut I) -> bool {
+        m.advance_a(1, true) && m.advance_b(1, false)
     }
 }
 
@@ -521,15 +521,14 @@ impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetIntersecti
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, false)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.advance_a(1, true)?;
-        m.advance_b(1, false)
+    fn collision(&self, m: &mut I) -> bool {
+        m.advance_a(1, true) && m.advance_b(1, false)
     }
 }
 
@@ -537,15 +536,14 @@ impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetDiffOpt {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, false)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.advance_a(1, false)?;
-        m.advance_b(1, false)
+    fn collision(&self, m: &mut I) -> bool {
+        m.advance_a(1, false) && m.advance_b(1, false)
     }
 }
 
@@ -553,15 +551,14 @@ impl<T: Ord, I: MergeStateMut<A = T, B = T>> MergeOperation<I> for SetXorOp {
     fn cmp(&self, a: &T, b: &T) -> Ordering {
         a.cmp(b)
     }
-    fn from_a(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_a(&self, m: &mut I, n: usize) -> bool {
         m.advance_a(n, true)
     }
-    fn from_b(&self, m: &mut I, n: usize) -> EarlyOut {
+    fn from_b(&self, m: &mut I, n: usize) -> bool {
         m.advance_b(n, true)
     }
-    fn collision(&self, m: &mut I) -> EarlyOut {
-        m.advance_a(1, false)?;
-        m.advance_b(1, false)
+    fn collision(&self, m: &mut I) -> bool {
+        m.advance_a(1, false) && m.advance_b(1, false)
     }
 }
 
@@ -782,9 +779,9 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::obey::*;
     use crate::vec_set::AbstractVecSet;
     use num_traits::PrimInt;
+    use obey::*;
     use quickcheck::*;
 
     #[test]

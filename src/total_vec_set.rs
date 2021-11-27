@@ -336,6 +336,7 @@ impl<T: Ord, A: Array<Item = T>> Not for TotalVecSet<A> {
 mod tests {
     #![allow(dead_code)]
     use super::*;
+    use obey::*;
     use quickcheck::*;
     use std::collections::BTreeSet;
 

@@ -71,11 +71,6 @@ extern crate maplit;
 extern crate sorted_iter;
 pub use sorted_iter::{SortedIterator, SortedPairIterator};
 
-#[cfg(test)]
-#[macro_use]
-mod test_macros;
-
-mod binary_merge;
 mod merge_state;
 
 mod vec_map;
@@ -98,13 +93,7 @@ mod iterators;
 
 mod macros;
 
-#[cfg(test)]
-mod obey;
-
-mod small_vec_builder;
-mod vec_builder;
-
-pub use dedup::{sort_and_dedup, sort_and_dedup_by_key};
+pub use dedup::{sort_dedup, sort_dedup_by_key};
 pub use macros::*;
 pub use smallvec::Array;
 pub use vec_map::*;
