@@ -10,6 +10,7 @@ use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
 use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
+use rkyv::{Archive, validation::ArchiveContext};
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeMap;
@@ -893,9 +894,11 @@ impl std::fmt::Display for ArchivedVecMapError {
 #[cfg(feature = "rkyv_validated")]
 impl<C: ?Sized, K, V> bytecheck::CheckBytes<C> for ArchivedVecMap<K, V>
 where
-    K: Ord,
+    C: ArchiveContext,
+    C::Error: std::error::Error,
+    K: Ord + Archive + CheckBytes<C>,
+    V: Archive + CheckBytes<C>,
     bool: bytecheck::CheckBytes<C>,
-    rkyv::vec::ArchivedVec<(K, V)>: bytecheck::CheckBytes<C>,
 {
     type Error = ArchivedVecMapError;
     unsafe fn check_bytes<'a>(

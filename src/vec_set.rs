@@ -10,6 +10,8 @@ use crate::{
 use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
+use rkyv::validation::ArchiveContext;
+use rkyv::Archive;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -690,9 +692,10 @@ impl std::fmt::Display for ArchivedVecSetError {
 #[cfg(feature = "rkyv_validated")]
 impl<C: ?Sized, T> bytecheck::CheckBytes<C> for ArchivedVecSet<T>
 where
-    T: Ord,
+    C: ArchiveContext,
+    C::Error: std::error::Error,
+    T: Ord + Archive + CheckBytes<C>,
     bool: bytecheck::CheckBytes<C>,
-    rkyv::vec::ArchivedVec<T>: bytecheck::CheckBytes<C>,
 {
     type Error = ArchivedVecSetError;
     unsafe fn check_bytes<'a>(
