@@ -58,6 +58,7 @@
 //! [BTreeMap]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
 //! [HashSet]: https://doc.rust-lang.org/std/collections/struct.HashSet.html
 //! [HashMap]: https://doc.rust-lang.org/std/collections/struct.HashMap.html
+#[cfg_attr(docsrs, doc(cfg(feature = "rkyv_validated", feature = "radixtree")))]
 #[cfg(test)]
 extern crate quickcheck;
 

@@ -10,8 +10,9 @@ use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
 use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
-use rkyv::{Archive, validation::ArchiveContext};
 use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
+#[cfg(feature = "rkyv")]
+use rkyv::{validation::ArchiveContext, Archive};
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeMap;
 #[cfg(feature = "serde")]

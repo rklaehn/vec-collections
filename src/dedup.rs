@@ -1,4 +1,3 @@
-#![doc = include_str!("../README.md")]
 use core::{
     cmp::{min, Ordering},
     marker::PhantomData,

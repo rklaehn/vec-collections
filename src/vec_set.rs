@@ -10,8 +10,6 @@ use crate::{
 use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
-use rkyv::validation::ArchiveContext;
-use rkyv::Archive;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -19,6 +17,8 @@ use core::{
     iter::FromIterator,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
 };
+#[cfg(feature = "rkyv")]
+use rkyv::{validation::ArchiveContext, Archive};
 use smallvec::{Array, SmallVec};
 use std::collections::BTreeSet;
 #[cfg(feature = "serde")]
