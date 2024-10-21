@@ -932,7 +932,7 @@ mod tests {
     type Ref = BTreeMap<i32, i32>;
 
     impl<K: Arbitrary + Ord, V: Arbitrary> Arbitrary for VecMap1<K, V> {
-        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+        fn arbitrary(g: &mut Gen) -> Self {
             let t: BTreeMap<K, V> = Arbitrary::arbitrary(g);
             t.into()
         }
