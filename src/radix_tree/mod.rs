@@ -1565,7 +1565,7 @@ mod test {
     use quickcheck::*;
 
     impl Arbitrary for RadixTree<u8, ()> {
-        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+        fn arbitrary(g: &mut Gen) -> Self {
             let t: Vec<String> = Arbitrary::arbitrary(g);
             t.iter()
                 .take(2)
