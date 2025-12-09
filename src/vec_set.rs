@@ -191,7 +191,7 @@ pub trait AbstractVecSet<T: Ord> {
     }
 
     /// An iterator that returns references to the items of this set in sorted order
-    fn iter(&self) -> VecSetIter<core::slice::Iter<T>> {
+    fn iter<'a>(&'a self) -> VecSetIter<core::slice::Iter<'a, T>> {
         VecSetIter::new(self.as_slice().iter())
     }
 }
@@ -269,7 +269,7 @@ impl<A: Array> VecSet<A> {
         Self::new_unsafe(SmallVec::new())
     }
     /// An iterator that returns references to the items of this set in sorted order
-    pub fn iter(&self) -> VecSetIter<core::slice::Iter<A::Item>> {
+    pub fn iter<'a>(&'a self) -> VecSetIter<core::slice::Iter<'a, A::Item>> {
         VecSetIter::new(self.0.iter())
     }
     /// The underlying memory as a slice.

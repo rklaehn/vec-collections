@@ -34,7 +34,7 @@ pub trait AbstractVecMap<K, V> {
         self.as_slice().is_empty()
     }
 
-    fn iter(&self) -> VecMapIter<core::slice::Iter<(K, V)>> {
+    fn iter<'a>(&'a self) -> VecMapIter<core::slice::Iter<'a, (K, V)>> {
         VecMapIter::new(self.as_slice().iter())
     }
 
