@@ -15,8 +15,8 @@ homepage = "https://github.com/rklaehn"
 default = ["inplace", "serde"]
 inplace = []
 total = []
-radixtree = []
-lazy_radixtree = ["parking_lot"]
+radixtree = ["lazy_static"]
+lazy_radixtree = ["parking_lot", "lazy_static"]
 rkyv_validated = ["rkyv", "bytecheck"]
 std_support = []
 
@@ -28,7 +28,7 @@ serde = { version = "1", default-features = false, optional = true }
 rkyv = { version= "0.7.18", optional = true }
 bytecheck = { version = "0.6.5", optional = true }
 parking_lot = { version = "0.11.2", optional = true }
-lazy_static = "1.4.0"
+lazy_static = { version = "1.4.0", optional = true }
 binary-merge = "0.1.1"
 inplace-vec-builder = { version = "0.1.0", features = ["smallvec"] }
 
