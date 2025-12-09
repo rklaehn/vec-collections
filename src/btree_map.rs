@@ -1,13 +1,13 @@
 //! Some support for operations that combine BTreeMaps and archived BTreeMaps
 //!
-//!
-use rkyv::collections::ArchivedBTreeMap;
-
-use crate::OuterJoinArg;
 use std::{
     borrow::Borrow,
     collections::{btree_map, BTreeMap},
 };
+
+use rkyv::collections::ArchivedBTreeMap;
+
+use crate::OuterJoinArg;
 
 pub enum AbstractBTreeMapIter<'a, K, V> {
     BTreeMap(btree_map::Iter<'a, K, V>),

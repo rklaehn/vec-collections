@@ -18,12 +18,11 @@ use rkyv::{
     archived_root,
     de::{deserializers::SharedDeserializeMapError, SharedDeserializeRegistry, SharedPointer},
     ser::{
-        serializers::{AllocScratch, FallbackScratch, HeapScratch},
-        Serializer,
-    },
-    ser::{
-        serializers::{CompositeSerializer, SharedSerializeMapError, WriteSerializer},
-        SharedSerializeRegistry,
+        serializers::{
+            AllocScratch, CompositeSerializer, FallbackScratch, HeapScratch,
+            SharedSerializeMapError, WriteSerializer,
+        },
+        Serializer, SharedSerializeRegistry,
     },
     validation::validators::DefaultValidator,
     AlignedVec, Archived, Deserialize, Fallible, Serialize,

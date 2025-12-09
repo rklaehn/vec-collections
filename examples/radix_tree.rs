@@ -1,6 +1,7 @@
+use std::time::Instant;
+
 use rkyv::*;
 use ser::Serializer;
-use std::time::Instant;
 use vec_collections::radix_tree::{
     AbstractRadixTree, AbstractRadixTreeMut, LazyRadixTree, RadixTree,
 };

@@ -1,10 +1,12 @@
 #![allow(dead_code)]
-use crate::iterators::SliceIterator;
-use binary_merge::{MergeOperation, MergeState};
 use core::{fmt, fmt::Debug};
+use std::marker::PhantomData;
+
+use binary_merge::{MergeOperation, MergeState};
 use inplace_vec_builder::{InPlaceSmallVecBuilder, InPlaceVecBuilder};
 use smallvec::{Array, SmallVec};
-use std::marker::PhantomData;
+
+use crate::iterators::SliceIterator;
 
 /// A typical write part for the merge state
 pub(crate) trait MergeStateMut: MergeState {

@@ -41,12 +41,13 @@ pub use arc_radix_tree::ArcRadixTree;
 use smallvec::SmallVec;
 use sorted_iter::sorted_pair_iterator::SortedByKey;
 mod flat_radix_tree;
+use binary_merge::MergeOperation;
+pub use flat_radix_tree::RadixTree;
+
 use crate::merge_state::{
     BoolOpMergeState, Converter, InPlaceVecMergeStateRef, MergeStateMut, MutateInput, NoConverter,
     VecMergeState,
 };
-use binary_merge::MergeOperation;
-pub use flat_radix_tree::RadixTree;
 
 // common prefix of two slices.
 fn common_prefix<'a, T: Eq>(a: &'a [T], b: &'a [T]) -> usize {
@@ -1559,10 +1560,11 @@ where
 mod test {
     use std::collections::BTreeSet;
 
-    use super::*;
     use maplit::btreeset;
     use obey::*;
     use quickcheck::*;
+
+    use super::*;
 
     impl Arbitrary for RadixTree<u8, ()> {
         fn arbitrary<G: Gen>(g: &mut G) -> Self {

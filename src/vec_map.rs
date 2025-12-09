@@ -1,20 +1,13 @@
 #![allow(clippy::clone_on_copy)]
-#[cfg(feature = "total")]
-use crate::iterators::SliceIterator;
-use crate::{
-    dedup::{sort_dedup_by_key, Keep},
-    merge_state::{InPlaceSmallVecMergeStateRef, MergeStateMut, NoConverter, SmallVecMergeState},
-    VecSet,
-};
-use crate::{iterators::VecMapIter, merge_state::InPlaceMergeState};
+use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
+use std::collections::BTreeMap;
+
 use binary_merge::MergeOperation;
 #[cfg(feature = "rkyv_validated")]
 use bytecheck::CheckBytes;
-use core::{borrow::Borrow, cmp::Ordering, fmt, fmt::Debug, hash, hash::Hash, iter::FromIterator};
 #[cfg(feature = "rkyv")]
 use rkyv::{validation::ArchiveContext, Archive};
 use smallvec::{Array, SmallVec};
-use std::collections::BTreeMap;
 #[cfg(feature = "serde")]
 use {
     core::marker::PhantomData,
@@ -22,6 +15,18 @@ use {
         de::{Deserialize, Deserializer, MapAccess, Visitor},
         ser::{Serialize, SerializeMap, Serializer},
     },
+};
+
+#[cfg(feature = "total")]
+use crate::iterators::SliceIterator;
+use crate::{
+    dedup::{sort_dedup_by_key, Keep},
+    iterators::VecMapIter,
+    merge_state::{
+        InPlaceMergeState, InPlaceSmallVecMergeStateRef, MergeStateMut, NoConverter,
+        SmallVecMergeState,
+    },
+    VecSet,
 };
 
 /// An abstract vec map
@@ -52,7 +57,6 @@ pub trait AbstractVecMap<K, V> {
     }
 
     /// Perform an outer join with another VecMap, producing a new result
-    ///
     ///
     fn outer_join<W, R, F, A>(&self, that: &impl AbstractVecMap<K, W>, f: F) -> VecMap<A>
     where
@@ -922,11 +926,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::BTreeMap;
+
     use maplit::btreemap;
     use quickcheck::*;
-    use std::collections::BTreeMap;
     use OuterJoinArg::*;
+
+    use super::*;
 
     type Test = VecMap1<i32, i32>;
     type Ref = BTreeMap<i32, i32>;

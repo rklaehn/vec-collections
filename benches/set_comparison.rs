@@ -1,6 +1,7 @@
+use std::collections::{BTreeSet, HashSet};
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use fnv::FnvHashSet;
-use std::collections::{BTreeSet, HashSet};
 use vec_collections::*;
 
 fn vs_create(v: &[u32]) -> usize {
@@ -62,8 +63,7 @@ fn fh_contains(x: &FnvHashSet<u32>, values: &[u32]) -> usize {
     }
     res
 }
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
+use rand::{seq::SliceRandom, SeedableRng};
 
 fn creation_bench(c: &mut Criterion, title: &str, range: impl Iterator<Item = u32>) {
     let mut group = c.benchmark_group(format!("Creation {}", title));

@@ -202,10 +202,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use core::fmt::Debug;
-    use quickcheck_macros::quickcheck;
     use std::collections::*;
+
+    use quickcheck_macros::quickcheck;
+
+    use super::*;
 
     /// just a helper to get good output when a check fails
     fn unary_op<E: Debug, R: Eq + Debug>(x: E, expected: R, actual: R) -> bool {

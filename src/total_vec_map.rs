@@ -1,4 +1,3 @@
-use crate::vec_map::{AbstractVecMap, VecMap};
 use core::{
     borrow::Borrow,
     cmp,
@@ -9,6 +8,7 @@ use core::{
     hash::Hash,
     ops::{Add, Div, Index, Mul, Neg, Sub},
 };
+
 use num_traits::{Bounded, One, Zero};
 #[cfg(feature = "serde")]
 use serde::{
@@ -16,6 +16,8 @@ use serde::{
     ser::{Serialize, Serializer},
 };
 use smallvec::Array;
+
+use crate::vec_map::{AbstractVecMap, VecMap};
 
 /// A [VecMap] with default value.
 ///
@@ -274,9 +276,11 @@ where
 // we don't implement IndexMut since that would allow changing a value to the default and all sorts of other nasty things!
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use quickcheck::*;
     use std::collections::{BTreeMap, BTreeSet};
+
+    use quickcheck::*;
+
+    use super::*;
 
     type Ref = (BTreeMap<i32, i32>, i32);
     type Test = TotalVecMap1<i32, i32>;
