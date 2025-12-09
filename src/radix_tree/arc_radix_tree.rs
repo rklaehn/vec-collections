@@ -1,7 +1,6 @@
 use super::internals;
 use internals::{AbstractRadixTreeMut as _, Fragment};
-use lazy_static::lazy_static;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::{Arc, LazyLock}};
 
 use super::{location, offset_from, AbstractRadixTree, RadixTree, TKey, TValue};
 use rkyv::{
@@ -11,9 +10,7 @@ use rkyv::{
     Archive, Archived, Deserialize, Resolver, Serialize,
 };
 
-lazy_static! {
-    static ref EMPTY_ARC_VEC: Arc<Vec<u128>> = Arc::new(Vec::new());
-}
+static EMPTY_ARC_VEC: LazyLock<Arc<Vec<u128>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
 fn empty_arc<T>() -> Arc<Vec<T>> {
     // TODO: this seems to work, but is strictly speaking ub. Get rid of the unsafe
