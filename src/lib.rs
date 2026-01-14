@@ -58,7 +58,8 @@
 //! [BTreeMap]: https://doc.rust-lang.org/std/collections/struct.BTreeMap.html
 //! [HashSet]: https://doc.rust-lang.org/std/collections/struct.HashSet.html
 //! [HashMap]: https://doc.rust-lang.org/std/collections/struct.HashMap.html
-#[cfg_attr(docsrs, doc(cfg(feature = "rkyv_validated", feature = "radixtree")))]
+#![cfg_attr(vec_collections_docsrs, feature(doc_cfg))]
+
 #[cfg(test)]
 extern crate quickcheck;
 
@@ -78,15 +79,19 @@ mod vec_map;
 mod vec_set;
 
 #[cfg(feature = "radixtree")]
+#[cfg_attr(vec_collections_docsrs, doc(cfg(feature = "radixtree")))]
 pub mod radix_tree;
 
 #[cfg(feature = "total")]
+#[cfg_attr(vec_collections_docsrs, doc(cfg(feature = "total")))]
 pub mod total_vec_map;
 
 #[cfg(feature = "total")]
+#[cfg_attr(vec_collections_docsrs, doc(cfg(feature = "total")))]
 pub mod total_vec_set;
 
 #[cfg(feature = "std_support")]
+#[cfg_attr(vec_collections_docsrs, doc(cfg(feature = "std_support")))]
 pub mod btree_map;
 
 mod dedup;
@@ -95,7 +100,6 @@ mod iterators;
 mod macros;
 
 pub use dedup::{sort_dedup, sort_dedup_by_key};
-pub use macros::*;
 pub use smallvec::Array;
 pub use vec_map::*;
 pub use vec_set::*;

@@ -11,6 +11,9 @@ edition = "2018"
 readme = "README.md"
 homepage = "https://github.com/rklaehn"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(vec_collections_docsrs)'] }
+
 [features]
 default = ["inplace", "serde"]
 inplace = []
@@ -66,4 +69,8 @@ required-features = ["radixtree", "rkyv", "rkyv_validated"]
 [[example]]
 name = "radix_tree"
 required-features = ["radixtree", "lazy_radixtree"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "vec_collections_docsrs"]
 
