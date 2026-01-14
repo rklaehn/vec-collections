@@ -205,6 +205,7 @@ impl<A: Array> From<VecMap<A>> for VecSet<A> {
     }
 }
 
+#[allow(dead_code)]
 struct CombineOp<F, K>(F, std::marker::PhantomData<K>);
 
 impl<'a, K: Ord, V, A: Array<Item = (K, V)>, B: Array<Item = (K, V)>, F: Fn(V, V) -> V>

@@ -100,7 +100,6 @@ mod iterators;
 mod macros;
 
 pub use dedup::{sort_dedup, sort_dedup_by_key};
-pub use macros::*;
 pub use smallvec::Array;
 pub use vec_map::*;
 pub use vec_set::*;
