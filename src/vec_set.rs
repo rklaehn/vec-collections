@@ -782,7 +782,9 @@ where
 
 #[cfg(test)]
 mod test {
-    use num_traits::PrimInt;
+    use super::*;
+    use crate::vec_set::AbstractVecSet;
+    use num_traits::{PrimInt, WrappingAdd, WrappingSub};
     use obey::*;
     use quickcheck::*;
 
@@ -800,18 +802,18 @@ mod test {
     }
 
     impl<T: Arbitrary + Ord + Copy + Default + fmt::Debug> Arbitrary for VecSet<[T; 2]> {
-        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+        fn arbitrary(g: &mut Gen) -> Self {
             Self::from_vec(Arbitrary::arbitrary(g))
         }
     }
 
-    impl<E: PrimInt> TestSamples<E, bool> for VecSet<[E; 2]> {
+    impl<E: PrimInt + WrappingAdd + WrappingSub> TestSamples<E, bool> for VecSet<[E; 2]> {
         fn samples(&self, res: &mut BTreeSet<E>) {
             res.insert(E::min_value());
             for x in self.0.iter().cloned() {
-                res.insert(x - E::one());
+                res.insert(x.wrapping_sub(&E::one()));
                 res.insert(x);
-                res.insert(x + E::one());
+                res.insert(x.wrapping_add(&E::one()));
             }
             res.insert(E::max_value());
         }

@@ -291,7 +291,7 @@ mod tests {
     }
 
     impl<K: Arbitrary + Ord, V: Arbitrary + Eq> Arbitrary for TotalVecMap1<K, V> {
-        fn arbitrary<G: Gen>(g: &mut G) -> Self {
+        fn arbitrary(g: &mut Gen) -> Self {
             TotalVecMap::new(Arbitrary::arbitrary(g), Arbitrary::arbitrary(g))
         }
     }
