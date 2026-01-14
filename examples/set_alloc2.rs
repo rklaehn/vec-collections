@@ -1,12 +1,14 @@
 extern crate stats_alloc;
 
-use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
 use std::alloc::System;
+
+use stats_alloc::{Region, StatsAlloc, INSTRUMENTED_SYSTEM};
 
 #[global_allocator]
 static GLOBAL: &StatsAlloc<System> = &INSTRUMENTED_SYSTEM;
 
 use std::collections::{BTreeSet, HashSet};
+
 use vec_collections::VecSet;
 
 struct PlotStats {

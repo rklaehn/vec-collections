@@ -1,6 +1,6 @@
+use std::{fmt::Debug, iter::FromIterator};
+
 use super::{internals, AbstractRadixTree, AbstractRadixTreeMut, Fragment, TKey, TValue};
-use std::fmt::Debug;
-use std::iter::FromIterator;
 
 /// A generic radix tree
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,13 +70,16 @@ impl<K: Clone, V> Default for RadixTree<K, V> {
 
 #[cfg(feature = "rkyv")]
 mod rkyv_support {
-    use super::super::{internals, offset_from};
-    use super::{AbstractRadixTree, Fragment, RadixTree, TKey, TValue};
     use internals::AbstractRadixTreeMut as _;
     use rkyv::{
         ser::{ScratchSpace, Serializer},
         vec::ArchivedVec,
         Archive, Archived, Deserialize, Fallible, Resolver, Serialize,
+    };
+
+    use super::{
+        super::{internals, offset_from},
+        AbstractRadixTree, Fragment, RadixTree, TKey, TValue,
     };
 
     #[repr(C)]
@@ -192,12 +195,12 @@ mod rkyv_support {
 
     #[cfg(feature = "rkyv_validated")]
     mod validation_support {
-        use super::{TKey, TValue};
-        use bytecheck::CheckBytes;
         use core::fmt;
+
+        use bytecheck::CheckBytes;
         use rkyv::{validation::ArchiveContext, Archived};
 
-        use super::ArchivedRadixTree;
+        use super::{ArchivedRadixTree, TKey, TValue};
 
         /// Validation error for a radix tree
         #[derive(Debug)]

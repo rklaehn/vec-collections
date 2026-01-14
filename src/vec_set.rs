@@ -1,15 +1,3 @@
-use crate::dedup::Keep;
-pub use crate::iterators::VecSetIter;
-use crate::merge_state::{
-    CloneConverter, IdConverter, InPlaceMergeState, InPlaceSmallVecMergeStateRef, NoConverter,
-};
-use crate::{
-    dedup::sort_dedup,
-    merge_state::{BoolOpMergeState, MergeStateMut, SmallVecMergeState},
-};
-use binary_merge::MergeOperation;
-#[cfg(feature = "rkyv_validated")]
-use bytecheck::CheckBytes;
 use core::{
     cmp::Ordering,
     fmt, hash,
@@ -17,16 +5,29 @@ use core::{
     iter::FromIterator,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Sub, SubAssign},
 };
+use std::collections::BTreeSet;
+
+use binary_merge::MergeOperation;
+#[cfg(feature = "rkyv_validated")]
+use bytecheck::CheckBytes;
 #[cfg(feature = "rkyv")]
 use rkyv::{validation::ArchiveContext, Archive};
 use smallvec::{Array, SmallVec};
-use std::collections::BTreeSet;
 #[cfg(feature = "serde")]
 use {
     core::marker::PhantomData,
     serde::{
         de::{Deserialize, Deserializer, SeqAccess, Visitor},
         ser::{Serialize, SerializeSeq, Serializer},
+    },
+};
+
+pub use crate::iterators::VecSetIter;
+use crate::{
+    dedup::{sort_dedup, Keep},
+    merge_state::{
+        BoolOpMergeState, CloneConverter, IdConverter, InPlaceMergeState,
+        InPlaceSmallVecMergeStateRef, MergeStateMut, NoConverter, SmallVecMergeState,
     },
 };
 
@@ -70,7 +71,7 @@ struct SetDiffOpt;
 ///
 /// # General usage
 /// ```
-/// use vec_collections::{VecSet, AbstractVecSet};
+/// use vec_collections::{AbstractVecSet, VecSet};
 /// let a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let b: VecSet<[u32; 2]> = (4..6).collect(); // does not allocate
 /// println!("{}", a.is_disjoint(&b)); // true
@@ -80,7 +81,7 @@ struct SetDiffOpt;
 ///
 /// # In place operations
 /// ```
-/// use vec_collections::{VecSet, AbstractVecSet};
+/// use vec_collections::{AbstractVecSet, VecSet};
 /// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let b: VecSet<[u32; 4]> = (2..6).collect(); // does not allocate
 /// a &= b; // in place intersection, will yield 2..4, will not allocate
@@ -93,8 +94,8 @@ struct SetDiffOpt;
 ///
 /// ## Example: choosing a random element
 /// ```
-/// use vec_collections::VecSet;
 /// use rand::seq::SliceRandom;
+/// use vec_collections::VecSet;
 /// let mut a: VecSet<[u32; 4]> = (0..4).collect(); // does not allocate
 /// let mut rng = rand::thread_rng();
 /// let e = a.as_ref().choose(&mut rng).unwrap();
@@ -191,7 +192,7 @@ pub trait AbstractVecSet<T: Ord> {
     }
 
     /// An iterator that returns references to the items of this set in sorted order
-    fn iter(&self) -> VecSetIter<core::slice::Iter<T>> {
+    fn iter<'a>(&'a self) -> VecSetIter<core::slice::Iter<'a, T>> {
         VecSetIter::new(self.as_slice().iter())
     }
 }
@@ -269,7 +270,7 @@ impl<A: Array> VecSet<A> {
         Self::new_unsafe(SmallVec::new())
     }
     /// An iterator that returns references to the items of this set in sorted order
-    pub fn iter(&self) -> VecSetIter<core::slice::Iter<A::Item>> {
+    pub fn iter<'a>(&'a self) -> VecSetIter<core::slice::Iter<'a, A::Item>> {
         VecSetIter::new(self.0.iter())
     }
     /// The underlying memory as a slice.
@@ -786,6 +787,9 @@ mod test {
     use num_traits::{PrimInt, WrappingAdd, WrappingSub};
     use obey::*;
     use quickcheck::*;
+
+    use super::*;
+    use crate::vec_set::AbstractVecSet;
 
     #[test]
     fn drop_pointer_being_freed_was_not_allocated() {

@@ -1,9 +1,9 @@
-use super::internals;
-use internals::{AbstractRadixTreeMut as _, Fragment};
-use lazy_static::lazy_static;
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, LazyLock},
+};
 
-use super::{location, offset_from, AbstractRadixTree, RadixTree, TKey, TValue};
+use internals::{AbstractRadixTreeMut as _, Fragment};
 use rkyv::{
     de::SharedDeserializeRegistry,
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
@@ -11,9 +11,9 @@ use rkyv::{
     Archive, Archived, Deserialize, Resolver, Serialize,
 };
 
-lazy_static! {
-    static ref EMPTY_ARC_VEC: Arc<Vec<u128>> = Arc::new(Vec::new());
-}
+use super::{internals, location, offset_from, AbstractRadixTree, RadixTree, TKey, TValue};
+
+static EMPTY_ARC_VEC: LazyLock<Arc<Vec<u128>>> = LazyLock::new(|| Arc::new(Vec::new()));
 
 fn empty_arc<T>() -> Arc<Vec<T>> {
     // TODO: this seems to work, but is strictly speaking ub. Get rid of the unsafe
@@ -244,15 +244,15 @@ where
 
 #[cfg(feature = "rkyv_validated")]
 mod validation_support {
-    use super::{TKey, TValue};
-    use bytecheck::CheckBytes;
     use core::fmt;
+
+    use bytecheck::CheckBytes;
     use rkyv::{
         validation::{ArchiveContext, SharedContext},
         Archived,
     };
 
-    use super::ArchivedArcRadixTree;
+    use super::{ArchivedArcRadixTree, TKey, TValue};
 
     /// Validation error for a radix tree
     #[derive(Debug)]

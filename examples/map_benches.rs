@@ -1,6 +1,7 @@
 extern crate vec_collections;
 
 use std::collections::{BTreeMap, HashMap};
+
 use vec_collections::VecMap1;
 
 type Element = i64;

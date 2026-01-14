@@ -1,10 +1,12 @@
-use super::{internals, location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
+use std::{collections::BTreeMap, sync::Arc};
+
 use rkyv::{
     ser::{ScratchSpace, Serializer, SharedSerializeRegistry},
     vec::ArchivedVec,
     Archive, Archived, Resolver, Serialize,
 };
-use std::{collections::BTreeMap, sync::Arc};
+
+use super::{internals, location, offset_from, AbstractRadixTree, Fragment, RadixTree, TKey};
 
 pub trait TValue: Debug + Clone + Archive<Archived = Self> + Send + Sync + 'static {}
 
@@ -225,8 +227,9 @@ where
 }
 
 use core::cell::UnsafeCell;
-use parking_lot::Mutex;
 use std::fmt::Debug;
+
+use parking_lot::Mutex;
 
 /// Utility for a lazily initialized value
 #[derive(Default)]

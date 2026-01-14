@@ -1,4 +1,3 @@
-use crate::{AbstractVecSet, VecSet};
 use core::{
     fmt,
     fmt::{Debug, Write},
@@ -6,12 +5,15 @@ use core::{
     mem,
     ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign, Not, Sub, SubAssign},
 };
+
 #[cfg(feature = "serde")]
 use serde::{
     de::{Deserialize, Deserializer},
     ser::{Serialize, Serializer},
 };
 use smallvec::Array;
+
+use crate::{AbstractVecSet, VecSet};
 
 /// A [VecSet] with an additional flag so it can support negation.
 ///
@@ -335,10 +337,12 @@ impl<T: Ord, A: Array<Item = T>> Not for TotalVecSet<A> {
 #[cfg(test)]
 mod tests {
     #![allow(dead_code)]
-    use super::*;
+    use std::collections::BTreeSet;
+
     use obey::*;
     use quickcheck::*;
-    use std::collections::BTreeSet;
+
+    use super::*;
 
     type Test = TotalVecSet<[i64; 2]>;
 
